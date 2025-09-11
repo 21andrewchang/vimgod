@@ -2,6 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 
+	type Mode = 'normal' | 'insert' | 'visual' | 'command';
+	let currentMode: Mode = 'normal';
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	let raf = 0;
@@ -9,7 +11,7 @@
 	let dpr = 1;
 	type Cursor = { row: number; col: number; goalCol: number | null };
 
-	export const lines = ['Hello, world!la;ldskfjal;sdkjfkalsdjfklasdfja', 'Second line', ''];
+	export const lines = [''];
 	export const cursor: Cursor = { row: 0, col: 0, goalCol: null };
 
 	export let charWidth = 12; // update after measureText
@@ -21,7 +23,7 @@
 		return Math.max(lo, Math.min(hi, n));
 	}
 	function lineLen(r: number) {
-		return lines[r]?.length - 1;
+		return lines[r]?.length === 0 ? 0 : lines[r]?.length - 1;
 	}
 
 	export function moveLastRow() {
@@ -30,6 +32,33 @@
 		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
 	}
 
+	export function normalMode() {
+		currentMode = 'normal';
+		if (lines[cursor.row] === '') return;
+		if (cursor.col > lines[cursor.row].length - 1) cursor.col = lines[cursor.row].length - 1;
+		console.log('curr mode: ', currentMode);
+	}
+	export function insertMode() {
+		if (currentMode !== 'insert') {
+			currentMode = 'insert';
+			console.log('curr mode: ', currentMode);
+		}
+	}
+	export function newLine() {
+		console.log(lines.length);
+		lines.push('');
+		cursor.col = 0;
+		cursor.row++;
+	}
+	export function insertChar(char: String) {
+		let line = lines[cursor.row] ?? '';
+		console.log(cursor.row, cursor.col);
+		console.log(lines[cursor.row]);
+		lines[cursor.row] = line.slice(0, cursor.col) + char + line.slice(cursor.col);
+		cursor.col++;
+		cursor.goalCol = cursor.col;
+		console.log(char);
+	}
 	export function moveFirstCol() {
 		cursor.col = 0;
 		cursor.goalCol = cursor.col;
@@ -79,13 +108,12 @@
 		lineHeight = Math.ceil(ascent + descent + 4); // small padding
 	}
 
-	let count = lines.length;
 	function drawText() {
 		ctx.fillStyle = '#6b7280';
 		ctx.textAlign = 'right';
-		for (let r = 0; r < count; r++) {
+		for (let r = 0; r < lines.length; r++) {
 			const isCurrent = r === cursor.row;
-			const rel = count === 1 ? 1 : Math.abs(r - cursor.row);
+			const rel = lines.length === 1 ? 1 : Math.abs(r - cursor.row);
 			const label = isCurrent ? String(r + 1) : String(rel || 1);
 			const tx = paddingX + 10 - 20;
 			const ty = 38 + r * lineHeight;
@@ -95,8 +123,6 @@
 
 		ctx.fillStyle = '#e5e7eb'; // light gray
 		ctx.font = '20px monospace';
-		let width = ctx.measureText('P');
-		console.log('width: ', width);
 		for (let r = 0; r < lines.length; r++) {
 			ctx.fillText(lines[r], paddingX, 38 + r * lineHeight);
 		}
@@ -138,10 +164,10 @@
 	function draw() {
 		clear();
 		drawText();
-		ctx.strokeStyle = '#ddd';
 		const { x, y } = caretXY();
 		const w = 12.1; //caret width
 		ctx.fillStyle = '#dddddd';
+		if (currentMode === 'insert') ctx.fillStyle = '#FF0000';
 		ctx.globalAlpha = 0.85; // slightly translucent so text can still be seen
 		ctx.fillRect(Math.floor(x), Math.floor(y), w, lineHeight);
 		ctx.globalAlpha = 1;
@@ -151,14 +177,40 @@
 		const k = e.key;
 		if ('hjkl'.includes(k)) e.preventDefault();
 
-		if (k === 'h') moveLeft();
-		else if (k === 'l') moveRight();
-		else if (k === 'k') moveUp();
-		else if (k === 'j') moveDown();
-		else if (k === '0') moveFirstCol();
-		else if (k === '$') moveLastCol();
-		else if (k === 'G') moveLastRow();
+		if (currentMode === 'normal') {
+			if (k === 'h') moveLeft();
+			else if (k === 'l') moveRight();
+			else if (k === 'k') moveUp();
+			else if (k === 'j') moveDown();
+			else if (k === '0') moveFirstCol();
+			else if (k === '$') moveLastCol();
+			else if (k === 'G') moveLastRow();
+			else if (k === 'i') insertMode();
+			else if (k === 'o') {
+				newLine();
+				insertMode();
+			} else if (k === 'a') {
+				if (lines[cursor.row] !== '') cursor.col++;
+				insertMode();
+			} else if (k === 'I') {
+				cursor.col = 0;
+				insertMode();
+			} else if (k === 'A') {
+				moveLastCol();
+				if (lines[cursor.row] !== '') cursor.col++;
+				insertMode();
+			} else if (k === 'Escape') normalMode();
+		} else if (currentMode === 'insert') {
+			if (k === 'Escape') {
+				normalMode();
+			} else if (k === 'Enter') {
+				newLine();
+			} else {
+				insertChar(k);
+			}
+		}
 	}
+
 	onMount(async () => {
 		if (!browser) return;
 
