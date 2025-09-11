@@ -9,13 +9,13 @@
 	let dpr = 1;
 	type Cursor = { row: number; col: number; goalCol: number | null };
 
-	export const lines = ['Hello, world!', 'Second line', ''];
+	export const lines = ['Hello, world!la;ldskfjal;sdkjfkalsdjfklasdfja', 'Second line', ''];
 	export const cursor: Cursor = { row: 0, col: 0, goalCol: null };
 
 	export let charWidth = 12; // update after measureText
-	export let lineHeight = 18; // fontSize * 1.3-ish
-	export const paddingX = 8;
-	export const paddingY = 8;
+	export let lineHeight = 24; // fontSize * 1.3-ish
+	export const paddingX = 30;
+	export const paddingY = 20;
 
 	function clamp(n: number, lo: number, hi: number) {
 		return Math.max(lo, Math.min(hi, n));
@@ -29,6 +29,7 @@
 		cursor.row = lines.length - 1;
 		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
 	}
+
 	export function moveFirstCol() {
 		cursor.col = 0;
 		cursor.goalCol = cursor.col;
@@ -64,7 +65,7 @@
 
 	export function caretXY() {
 		return {
-			x: paddingX + cursor.col * 12,
+			x: paddingX + cursor.col * 12.04,
 			y: paddingY + cursor.row * lineHeight
 		};
 	}
@@ -78,13 +79,26 @@
 		lineHeight = Math.ceil(ascent + descent + 4); // small padding
 	}
 
+	let count = lines.length;
 	function drawText() {
+		ctx.fillStyle = '#6b7280';
+		ctx.textAlign = 'right';
+		for (let r = 0; r < count; r++) {
+			const isCurrent = r === cursor.row;
+			const rel = count === 1 ? 1 : Math.abs(r - cursor.row);
+			const label = isCurrent ? String(r + 1) : String(rel || 1);
+			const tx = paddingX + 10 - 20;
+			const ty = 38 + r * lineHeight;
+			ctx.fillText(label, tx, ty);
+		}
+		ctx.textAlign = 'left';
+
 		ctx.fillStyle = '#e5e7eb'; // light gray
 		ctx.font = '20px monospace';
-		let width = ctx.measureText('l');
+		let width = ctx.measureText('P');
 		console.log('width: ', width);
 		for (let r = 0; r < lines.length; r++) {
-			ctx.fillText(lines[r], paddingX, 24 + r * lineHeight);
+			ctx.fillText(lines[r], paddingX, 38 + r * lineHeight);
 		}
 	}
 	function applyDpr() {
@@ -125,9 +139,8 @@
 		clear();
 		drawText();
 		ctx.strokeStyle = '#ddd';
-		const line = lines[cursor.row] ?? '';
 		const { x, y } = caretXY();
-		const w = 12.5;
+		const w = 12.1; //caret width
 		ctx.fillStyle = '#dddddd';
 		ctx.globalAlpha = 0.85; // slightly translucent so text can still be seen
 		ctx.fillRect(Math.floor(x), Math.floor(y), w, lineHeight);
