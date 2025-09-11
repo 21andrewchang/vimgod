@@ -24,6 +24,19 @@
 		return lines[r]?.length - 1;
 	}
 
+	export function moveLastRow() {
+		setGoalIfNeeded();
+		cursor.row = lines.length - 1;
+		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
+	}
+	export function moveFirstCol() {
+		cursor.col = 0;
+		cursor.goalCol = cursor.col;
+	}
+	export function moveLastCol() {
+		cursor.col = lineLen(cursor.row);
+		cursor.goalCol = cursor.col;
+	}
 	export function moveLeft() {
 		cursor.col = clamp(cursor.col - 1, 0, lineLen(cursor.row));
 		cursor.goalCol = cursor.col;
@@ -129,6 +142,9 @@
 		else if (k === 'l') moveRight();
 		else if (k === 'k') moveUp();
 		else if (k === 'j') moveDown();
+		else if (k === '0') moveFirstCol();
+		else if (k === '$') moveLastCol();
+		else if (k === 'G') moveLastRow();
 	}
 	onMount(async () => {
 		if (!browser) return;
