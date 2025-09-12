@@ -23,13 +23,14 @@
 body {
 	min-height: 100vh;
 	margin: 0;
-	background-color: rgb(5, 5, 5);
+	background-color: #060606;
 	overscroll-behavior: none;
 	overflow-x: hidden;
 }
 
 html {
 	overscroll-behavior: none;
+	background-color: #060606;
 }
 
 h1,
