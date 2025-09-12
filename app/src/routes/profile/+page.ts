@@ -58,7 +58,7 @@ export const load = (async () => {
     // mock user
     const user = {
       id: 'u_demo_001',
-      name: 'Demo Player',
+      name: 'xc0de',
       elo: 1320,
       lp: 48
     };

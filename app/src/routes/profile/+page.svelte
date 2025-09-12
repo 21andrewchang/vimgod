@@ -5,10 +5,9 @@
     const { user, motionsGrid, motionCounts, dailyCounts, history, totals } = data;
 
     import StatCard from '$lib/components/StatCard.svelte';
+    import ProfileCard from '$lib/components/ProfileCard.svelte';
 
     const statItems = [
-        { label: 'rank', value: user.rank },
-        { label: 'games', value: totals.games },
         { label: 'wins', value: `${totals.wins} (${totals.winRate}%)` },
         { label: 'avg accuracy', value: `${totals.avgAccuracy}%` },
         { label: 'coverage', value: `${Math.round(totals.coverage * 100)}%` }
@@ -28,20 +27,32 @@
 <div
   class="w-full min-h-screen relative overflow-hidden"
 >
-  <div class="relative z-[2] px-6 py-8 max-w-6xl mx-auto space-y-8">
+  <div class="relative z-[2] px-6 pt-2 pb-8 max-w-6xl mx-auto space-y-8">
     <header class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold">{user.name}</h1>
-        <p class="text-sm text-neutral-500">ID: {user.id}</p>
-      </div>
-      <RankBadge rank={user.rank} elo={user.elo} lp={user.lp} />
+        <div class="flex items-center gap-2">
+          <span class="text-4xl font-normal" style="color:#bc93f9; font-family: 'Sono', sans-serif; font-weight: 400; transform: translateY(-1px);">{`>`}</span>
+          <span class="text-3xl font-medium" style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500;">vimgod</span>
+        </div>
     </header>
   
     <!-- Stats row -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {#each statItems as s}
-          <StatCard label={s.label} value={s.value} />
-        {/each}
+    <div class="grid grid-cols-1 md:grid-cols-11 gap-4">
+        <div class="md:col-span-5">
+            <ProfileCard 
+                userName={user.name} 
+                rank={user.rank} 
+                level={user.level || 1} 
+                experience={user.experience || 0} 
+                maxExperience={user.maxExperience || 100} 
+            />
+        </div>
+        <div class="md:col-span-6 flex gap-6">
+            {#each statItems as s}
+              <div class="flex-1">
+                <StatCard label={s.label} value={s.value} />
+              </div>
+            {/each}
+        </div>
     </div>
   
     <!-- Heatmap + Top motions -->

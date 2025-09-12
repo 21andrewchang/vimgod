@@ -6,8 +6,8 @@
 </script>
   
 <div
-    class="relative rounded-sm border border-dashed dark:border-zinc-700 border-zinc-400"
-    style="background:#0f0f0f;"
+    class="relative border border-dashed dark:border-zinc-700 border-zinc-400 h-full"
+    style="background:#0a0a0a;"
 >
     <!-- corner pins -->
     <CardIcon class="-top-2 -left-2" />
@@ -15,7 +15,7 @@
     <CardIcon class="-bottom-2 -left-2" />
     <CardIcon class="-bottom-2 -right-2" />
   
-    <div class="p-5">
+    <div class="p-5 flex flex-col justify-center h-full">
       <div class="text-[11px] tracking-[0.08em]" style="color:#c9ced6; font-family:
           'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
         {label}
