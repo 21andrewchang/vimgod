@@ -46,5 +46,8 @@
 		"vite": "^7.1.5",
 		"vitest": "^3.2.3",
 		"vitest-browser-svelte": "^0.1.0"
+	},
+	"dependencies": {
+		"dotenv": "^17.2.2"
 	}
 }

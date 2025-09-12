@@ -2,8 +2,7 @@
 	import { scale } from 'svelte/transition';
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
-	import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-	import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+	import { supabase } from '$lib/supabaseClient';
 
 	const IGNORED_KEYS = new Set([
 		'Shift',
@@ -22,39 +21,39 @@
 		// ignore named modifier keys outright
 		if (IGNORED_KEYS.has(e.key)) return false;
 
-		// Allow AltGraph characters (e.g., many EU layouts for @, [, ], etc.)
 		const altGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
 
-		// Block control/meta combos (Cmd/Ctrl); allow Shift; optionally block Alt (Option) to avoid weird symbols.
 		if (e.ctrlKey || e.metaKey) return false;
 		if (e.altKey && !altGraph) return false;
 
 		// Single-character keys only (letters, digits, symbols, whitespace)
 		return e.key.length === 1;
 	}
-	export let supabase: SupabaseClient | null = null;
 
-	// Only build the client in the browser, and only if envs exist.
-	if (browser && PUBLIC_SUPABASE_URL && PUBLIC_SUPABASE_ANON_KEY) {
-		supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY);
-	}
 	let lastSubmitted = '';
+	let vimversion = '';
+
 	async function submitWaitlist(payload: {
-		email: string | null;
-		special: boolean;
-		source: 'vim' | 'rc';
+		email: string;
+		special?: boolean | null;
+		source: string;
 	}) {
 		if (!browser) return;
 		const key = JSON.stringify(payload);
-		if (key === lastSubmitted) return;
+		if (key === lastSubmitted) {
+			shellLog.push('relax... i already wrote u down');
+			return;
+		}
 		lastSubmitted = key;
 
 		const { error } = await supabase.from('waitlist').upsert(payload, { onConflict: 'email' });
 
 		if (error) {
-			shellLog.push('im busy, try again later. sorry...');
+			shellLog.push(`somethings not working, try again later`);
 		} else {
-			shellLog.push('[200] saved');
+			shellLog.push(
+				sourcedSpecial ? 'you earned a spot on the special waitlist.' : `alright, you're in.`
+			);
 		}
 	}
 	function onGlobalTab(e: KeyboardEvent) {
@@ -81,9 +80,9 @@
 	const aliases: Record<string, string> = {}; // optional: parsed from .waitlistrc
 
 	function sourceFile(name: string): string[] {
-		if (name !== '.waitlistrc') return [`did you just try to source a markdown file?`];
+		if (name === 'waitlist.md') return [`did you just try to source a markdown file?`];
 		const f = fs[name];
-		if (!f) return [`source: ${name}: No such file`];
+		if (!f) return [`source: no such file: ${name}`];
 
 		for (const ln of f.content.split(/\r?\n/)) {
 			const mAlias = ln.match(/^\s*alias\s+([A-Za-z_][\w-]*)=(?:"([^"]*)"|'([^']*)'|([^\s#]+))?/);
@@ -105,10 +104,8 @@
 		}
 
 		sourcedSpecial = true;
-		// push immediately (optional)
-		submitWaitlist({ email: rcEmail, special: true, source: 'rc' });
-
-		return ['impressive', 'you earned a spot on the special waitlist'];
+		submitWaitlist({ email: rcEmail, special: true, source: vimversion });
+		return ['impressive...'];
 	}
 
 	// write the current Vim buffer back to fs
@@ -154,15 +151,10 @@
 			return;
 		}
 
-		// push to Supabase
 		submitWaitlist({
 			email: normalizedEmail,
-			special: sourcedSpecial,
-			source: 'vim'
+			source: vimversion
 		});
-
-		// UX message
-		shellLog.push(sourcedSpecial ? 'ur on the SPECIAL waitlist' : `alright, you're in.`);
 	}
 
 	const cwd = '~/vimgod';
@@ -221,14 +213,9 @@
 			case 'pwd':
 				out.push(cwd);
 				break;
-			case 'cat': {
-				const n = args[0];
-				out.push(n && fs[n] ? fs[n].content : `cat: ${n}: No such file`);
-				break;
-			}
 			case 'help': {
 				out.push(
-					helpCount === 0 ? 'fine try ls' : 'really? u want me to spoonfeed you? nvim waitlist.md'
+					helpCount === 0 ? 'fine. try ls' : 'really? u want me to spoonfeed you? nvim waitlist.md'
 				);
 				helpCount = Math.min(helpCount + 1, 2);
 				break;
@@ -243,7 +230,7 @@
 					break;
 				}
 				try {
-					openVim(n);
+					openVim('vi', n);
 				} catch (e: any) {
 					out.push(String(e?.message ?? e));
 				}
@@ -256,7 +243,7 @@
 					break;
 				}
 				try {
-					openVim(n);
+					openVim('vim', n);
 				} catch (e: any) {
 					out.push(String(e?.message ?? e));
 				}
@@ -269,7 +256,7 @@
 					break;
 				}
 				try {
-					openVim(n);
+					openVim('nvim', n);
 				} catch (e: any) {
 					out.push(String(e?.message ?? e));
 				}
@@ -281,10 +268,10 @@
 		return out;
 	}
 
-	function openVim(name: string) {
+	function openVim(version: string, name: string) {
 		if (name === '.') throw new Error(`were you really expecting netrw too?`);
 		const f = fs[name];
-		if (!f) throw new Error(`nvim: ${name}: No such file`);
+		if (!f) throw new Error(`nvim: no such file: ${name}`);
 		currentFile = name;
 		// load file into vim buffer
 		lines.length = 0;
@@ -293,7 +280,8 @@
 		cursor.col = Math.max(0, (lines[cursor.row] ?? '').length - 1);
 		currentMode = 'normal';
 		commandBuf = '';
-		dirty = false; // <— reset dirty when opening
+		vimversion = version;
+		dirty = false;
 		state = 'vim';
 	}
 
@@ -623,7 +611,7 @@
 			const { x, y } = caretXY();
 			const w = 9.8;
 			ctx.fillStyle =
-				currentMode === 'insert' ? '#FF0000' : currentMode === 'command' ? '#333333' : '#dddddd';
+				currentMode === 'insert' ? '#B990F5' : currentMode === 'command' ? '#333333' : '#dddddd';
 			ctx.globalAlpha = 0.85;
 			ctx.fillRect(Math.floor(x), Math.floor(y), w, lineHeight);
 			ctx.globalAlpha = 1;
@@ -749,7 +737,7 @@
 
 		{#if currentMode === 'command'}
 			<div
-				class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] w-full -translate-x-1/2"
+				class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 w-full -translate-x-1/2"
 			>
 				<div class="mx-auto w-[50vw] max-w-[50vw]">
 					<div
