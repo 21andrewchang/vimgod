@@ -2,6 +2,12 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 
+	const MAX_ROWS = 12;
+	function viewBase() {
+		return Math.max(0, lines.length - MAX_ROWS);
+	}
+	let state: 'shell' | 'vim' = 'shell';
+	// VIM
 	type Mode = 'normal' | 'insert' | 'visual' | 'command';
 	let currentMode: Mode = 'normal';
 	let canvas: HTMLCanvasElement;
@@ -19,6 +25,17 @@
 	export const paddingX = 30;
 	export const paddingY = 20;
 
+	let commandBuf = '';
+	let currentFile: string | null = null;
+
+	function enterCommand() {
+		currentMode = 'command';
+		commandBuf = '';
+	}
+	function exitCommand() {
+		currentMode = 'normal';
+		commandBuf = '';
+	}
 	function clamp(n: number, lo: number, hi: number) {
 		return Math.max(lo, Math.min(hi, n));
 	}
@@ -49,6 +66,9 @@
 		lines.push('');
 		cursor.col = 0;
 		cursor.row++;
+	}
+	export function backspace() {
+		let line = lines[cursor.row] ?? '';
 	}
 	export function insertChar(char: String) {
 		let line = lines[cursor.row] ?? '';
@@ -173,11 +193,18 @@
 		ctx.globalAlpha = 1;
 		raf = requestAnimationFrame(draw);
 	}
+	let pendingCount: number;
 	function onKeyDown(e: KeyboardEvent) {
 		const k = e.key;
 		if ('hjkl'.includes(k)) e.preventDefault();
 
 		if (currentMode === 'normal') {
+			if (k >= '1' && k <= '9') {
+				e.preventDefault();
+				pendingCount = (pendingCount ?? 0) * 10 + (k.charCodeAt(0) - 48);
+				console.log(pendingCount);
+				return;
+			}
 			if (k === 'h') moveLeft();
 			else if (k === 'l') moveRight();
 			else if (k === 'k') moveUp();
@@ -186,6 +213,7 @@
 			else if (k === '$') moveLastCol();
 			else if (k === 'G') moveLastRow();
 			else if (k === 'i') insertMode();
+			else if (k === ':') enterCommand();
 			else if (k === 'o') {
 				newLine();
 				insertMode();
@@ -205,8 +233,21 @@
 				normalMode();
 			} else if (k === 'Enter') {
 				newLine();
+			} else if (k === 'Backspace') {
+				backspace();
 			} else {
 				insertChar(k);
+			}
+		} else if (currentMode === 'command') {
+			if (k === 'Escape') {
+				normalMode();
+			} else if (k === 'Enter') {
+				console.log(commandBuf);
+				exitCommand();
+			} else if (k === 'Backspace') {
+				commandBuf = commandBuf.slice(0, commandBuf.length - 1);
+			} else {
+				commandBuf += k;
 			}
 		}
 	}
@@ -237,9 +278,15 @@
 	});
 </script>
 
-<canvas
-	bind:this={canvas}
-	style="display:block; width:100%; height:100%; outline:none;"
-	on:keydown={onKeyDown}
-	class="rounded-xl"
-></canvas>
+<div class="fixed inset-0 grid place-items-center">
+	<div
+		class="aspect-[16/10] max-h-[50dvh] w-[50vw] overflow-hidden rounded-xl border border-white/20 shadow-lg"
+	>
+		<canvas
+			bind:this={canvas}
+			class="block h-full w-full rounded-xl outline-none"
+			on:keydown={onKeyDown}
+			on:click={() => canvas?.focus()}
+		/>
+	</div>
+</div>
