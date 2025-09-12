@@ -46,5 +46,11 @@
 		"vite": "^7.0.4",
 		"vitest": "^3.2.3",
 		"vitest-browser-svelte": "^0.1.0"
+	},
+	"dependencies": {
+		"class-variance-authority": "^0.7.1",
+		"clsx": "^2.1.1",
+		"svelte-motion": "^0.12.2",
+		"tailwind-merge": "^3.3.1"
 	}
 }

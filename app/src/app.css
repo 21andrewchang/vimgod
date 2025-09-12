@@ -23,7 +23,13 @@
 body {
 	min-height: 100vh;
 	margin: 0;
-	background-color: rgb(50, 50, 50);
+	background-color: rgb(5, 5, 5);
+	overscroll-behavior: none;
+	overflow-x: hidden;
+}
+
+html {
+	overscroll-behavior: none;
 }
 
 h1,
