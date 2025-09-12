@@ -2,6 +2,61 @@
 	import { scale } from 'svelte/transition';
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
+	import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+	import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+
+	const IGNORED_KEYS = new Set([
+		'Shift',
+		'Control',
+		'Alt',
+		'Meta',
+		'CapsLock',
+		'NumLock',
+		'ScrollLock',
+		'OS',
+		'Dead',
+		'Compose'
+	]);
+
+	function isPrintable(e: KeyboardEvent) {
+		// ignore named modifier keys outright
+		if (IGNORED_KEYS.has(e.key)) return false;
+
+		// Allow AltGraph characters (e.g., many EU layouts for @, [, ], etc.)
+		const altGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
+
+		// Block control/meta combos (Cmd/Ctrl); allow Shift; optionally block Alt (Option) to avoid weird symbols.
+		if (e.ctrlKey || e.metaKey) return false;
+		if (e.altKey && !altGraph) return false;
+
+		// Single-character keys only (letters, digits, symbols, whitespace)
+		return e.key.length === 1;
+	}
+	export let supabase: SupabaseClient | null = null;
+
+	// Only build the client in the browser, and only if envs exist.
+	if (browser && PUBLIC_SUPABASE_URL && PUBLIC_SUPABASE_ANON_KEY) {
+		supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY);
+	}
+	let lastSubmitted = '';
+	async function submitWaitlist(payload: {
+		email: string | null;
+		special: boolean;
+		source: 'vim' | 'rc';
+	}) {
+		if (!browser) return;
+		const key = JSON.stringify(payload);
+		if (key === lastSubmitted) return;
+		lastSubmitted = key;
+
+		const { error } = await supabase.from('waitlist').upsert(payload, { onConflict: 'email' });
+
+		if (error) {
+			shellLog.push('im busy, try again later. sorry...');
+		} else {
+			shellLog.push('[200] saved');
+		}
+	}
 	function onGlobalTab(e: KeyboardEvent) {
 		if (e.key !== 'Tab') return;
 		if (document.activeElement !== canvas) return; // only when terminal is focused
@@ -30,9 +85,6 @@
 		const f = fs[name];
 		if (!f) return [`source: ${name}: No such file`];
 
-		const out: string[] = [];
-
-		// Parse aliases into memory (unchanged behavior)
 		for (const ln of f.content.split(/\r?\n/)) {
 			const mAlias = ln.match(/^\s*alias\s+([A-Za-z_][\w-]*)=(?:"([^"]*)"|'([^']*)'|([^\s#]+))?/);
 			if (mAlias) {
@@ -46,18 +98,17 @@
 			}
 		}
 
-		// Gate the "special" unlock on valid contact info *inside .waitlistrc*
-		const { email } = parseRcFields(f.content);
-		const ok = isValidEmail(email);
-
-		if (!ok) {
-			out.push('');
-			return out;
+		// validate contact info *inside* .waitlistrc
+		const rcEmail = normalizeEmail(aliases.email);
+		if (!rcEmail) {
+			return [];
 		}
 
 		sourcedSpecial = true;
-		out.push('impressive', 'you earned a spot on the special waitlist');
-		return out;
+		// push immediately (optional)
+		submitWaitlist({ email: rcEmail, special: true, source: 'rc' });
+
+		return ['impressive', 'you earned a spot on the special waitlist'];
 	}
 
 	// write the current Vim buffer back to fs
@@ -88,13 +139,29 @@
 	function isValidEmail(s?: string | null) {
 		return !!s && EMAIL_RE.test(s);
 	}
+	function normalizeEmail(s?: string | null) {
+		const v = s?.trim().toLowerCase() || '';
+		return isValidEmail(v) ? v : null;
+	}
 	function announceWaitlistResult() {
 		if (currentFile !== 'waitlist.md') return;
+
 		const { email } = parseWaitlistFields(fs['waitlist.md']?.content ?? '');
-		if (!email) {
+		const normalizedEmail = normalizeEmail(email);
+
+		if (!normalizedEmail) {
 			shellLog.push('maybe try putting ur email in...');
 			return;
 		}
+
+		// push to Supabase
+		submitWaitlist({
+			email: normalizedEmail,
+			special: sourcedSpecial,
+			source: 'vim'
+		});
+
+		// UX message
 		shellLog.push(sourcedSpecial ? 'ur on the SPECIAL waitlist' : `alright, you're in.`);
 	}
 
@@ -605,27 +672,35 @@
 				if (lines[cursor.row] !== '') cursor.col++;
 				insertMode();
 			} else if (k === 'Escape') normalMode();
+			// INSERT mode
 		} else if (currentMode === 'insert') {
 			if (k === 'Escape') {
+				e.preventDefault();
 				normalMode();
 			} else if (k === 'Enter') {
+				e.preventDefault();
 				newLine();
 			} else if (k === 'Backspace') {
+				e.preventDefault();
 				backspace();
-			} else {
-				insertChar(k);
-			}
+			} else if (isPrintable(e)) {
+				e.preventDefault();
+				insertChar(e.key); // '@' works; Shift is ignored as a modifier
+			} // else ignore
 		} else if (currentMode === 'command') {
 			if (k === 'Escape') {
+				e.preventDefault();
 				normalMode();
 			} else if (k === 'Enter') {
-				console.log(commandBuf);
+				e.preventDefault();
 				exitCommand();
 			} else if (k === 'Backspace') {
-				commandBuf = commandBuf.slice(0, commandBuf.length - 1);
-			} else {
-				commandBuf += k;
-			}
+				e.preventDefault();
+				commandBuf = commandBuf.slice(0, -1);
+			} else if (isPrintable(e)) {
+				e.preventDefault();
+				commandBuf += e.key;
+			} // else ignore
 		}
 	}
 
