@@ -4,6 +4,21 @@
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabaseClient';
 
+	const ROWS = 15; // same as MAX_ROWS
+	const COLS = 64; // pick what looks right; fixed column budget
+	const GUTTER_PAD = 20; // space for line numbers + gap
+	const TEXT_TOP = 38; // replace your magic 38 with a named const
+
+	let targetW = 0,
+		targetH = 0;
+
+	function recomputeLayout() {
+		// assumes ctx.font is set and charWidth/lineHeight are up to date
+		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
+		targetW = Math.round(paddingX + gutter + COLS * charWidth + paddingX);
+		targetH = Math.round(TEXT_TOP + ROWS * lineHeight + paddingY); // top offset + rows + bottom pad
+	}
+
 	const IGNORED_KEYS = new Set([
 		'Shift',
 		'Control',
@@ -70,7 +85,7 @@
 		}
 	}
 	let helpCount = 0;
-	const MAX_ROWS = 12;
+	const MAX_ROWS = 15;
 	function viewBase() {
 		return Math.max(0, lines.length - MAX_ROWS);
 	}
@@ -585,6 +600,7 @@
 
 	function resize() {
 		applyDpr();
+		recomputeLayout();
 	}
 
 	function clear() {
@@ -700,6 +716,7 @@
 		ctx.textBaseline = 'top';
 		setFontMetrics();
 		applyDpr();
+		recomputeLayout();
 
 		ro = new ResizeObserver(resize);
 		ro.observe(canvas);
@@ -726,6 +743,7 @@
 			data-mode={currentMode}
 			class="aspect-[16/10] max-h-[50dvh] w-[50vw] overflow-hidden rounded-xl border border-white/20
          shadow-lg transition-colors data-[mode=command]:border-white/10"
+			style={`width:${targetW}px; height:${targetH}px`}
 		>
 			<canvas
 				bind:this={canvas}
@@ -737,17 +755,17 @@
 
 		{#if currentMode === 'command'}
 			<div
-				class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 w-full -translate-x-1/2"
+				class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2"
+				style={`width:${targetW}px`}
 			>
-				<div class="mx-auto w-[50vw] max-w-[50vw]">
-					<div
-						data-mode={currentMode}
-						transition:scale={{ duration: 100, start: 0.8 }}
-						class="rounded-md border border-white/10 bg-black/60 px-3 py-1.5 data-[mode=command]:border-white/20"
-					>
-						<span class="text-gray-300">:</span>
-						<span class="font-mono text-gray-100">{commandBuf}</span>
-					</div>
+				<div
+					data-mode={currentMode}
+					transition:scale={{ duration: 100, start: 0.8 }}
+					class="w-full rounded-md border border-white/10 bg-black/60 px-3 py-1.5
+             data-[mode=command]:border-white/20"
+				>
+					<span class="text-gray-300">:</span>
+					<span class="font-mono text-gray-100">{commandBuf}</span>
 				</div>
 			</div>
 		{/if}
