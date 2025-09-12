@@ -17,6 +17,7 @@
 	let dpr = 1;
 	type Cursor = { row: number; col: number; goalCol: number | null };
 
+
 	export const lines = [''];
 	export const cursor: Cursor = { row: 0, col: 0, goalCol: null };
 
@@ -40,7 +41,9 @@
 		return Math.max(lo, Math.min(hi, n));
 	}
 	function lineLen(r: number) {
+
 		return lines[r]?.length === 0 ? 0 : lines[r]?.length - 1;
+
 	}
 
 	export function moveLastRow() {
@@ -48,6 +51,7 @@
 		cursor.row = lines.length - 1;
 		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
 	}
+
 
 	export function normalMode() {
 		currentMode = 'normal';
@@ -193,10 +197,13 @@
 		ctx.globalAlpha = 1;
 		raf = requestAnimationFrame(draw);
 	}
+
 	let pendingCount: number;
+
 	function onKeyDown(e: KeyboardEvent) {
 		const k = e.key;
 		if ('hjkl'.includes(k)) e.preventDefault();
+
 
 		if (currentMode === 'normal') {
 			if (k >= '1' && k <= '9') {
@@ -252,6 +259,7 @@
 		}
 	}
 
+
 	onMount(async () => {
 		if (!browser) return;
 
@@ -277,6 +285,7 @@
 		cancelAnimationFrame(raf);
 	});
 </script>
+
 
 <div class="fixed inset-0 grid place-items-center">
 	<div
