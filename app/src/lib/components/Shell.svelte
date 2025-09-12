@@ -228,6 +228,9 @@
 			case 'pwd':
 				out.push(cwd);
 				break;
+			case 'cd':
+				out.push('a sleeping snorlax blocked the way...');
+				break;
 			case 'help': {
 				out.push(
 					helpCount === 0 ? 'fine. try ls' : 'really? u want me to spoonfeed you? nvim waitlist.md'
