@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Editor from '$lib/components/Editor.svelte';
+	import Shell from '$lib/components/Shell.svelte';
 </script>
 
 <svelte:head>
@@ -17,6 +17,6 @@
 <main class="grid h-[100dvh] w-[100dvw] place-items-center bg-black">
 	<!-- Outer frame centered on screen -->
 	<div class="mx-30 rounded-xl border border-white/20">
-		<Editor />
+		<Shell />
 	</div>
 </main>
