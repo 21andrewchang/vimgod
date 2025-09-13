@@ -100,7 +100,6 @@
 		currentMode = 'normal';
 		if (lines[cursor.row] === '') return;
 		if (cursor.col > lines[cursor.row].length - 1) cursor.col = lines[cursor.row].length - 1;
-		console.log('curr mode: ', currentMode);
 	}
 
 	export function visualLineMode() {
@@ -113,7 +112,6 @@
 	export function insertMode() {
 		if (currentMode !== 'insert') {
 			currentMode = 'insert';
-			console.log('curr mode: ', currentMode);
 		}
 	}
 
@@ -185,24 +183,138 @@
 		cursor.col = 0;
 		cursor.goalCol = cursor.col;
 	}
+	export function moveFirstChar() {
+		const curr = lines[cursor.row];
+		let i = 0;
+		for (i; i < curr.length; i++) {
+			if (curr[i] !== ' ') {
+				break;
+			}
+		}
+		cursor.col = i;
+		cursor.goalCol = cursor.col;
+	}
+
+	function _isSpaceCh(ch: string | null) {
+		return ch === ' ' || ch === '\t';
+	}
+
+	const ISKEYWORD_RE = /[\p{L}\p{N}_]/u;
+	function _isWordCh(ch: string | null) {
+		if (!ch) return false;
+		try {
+			return ISKEYWORD_RE.test(ch);
+		} catch {
+			return /[A-Za-z0-9_]/.test(ch);
+		}
+	}
+
+	function _classOf(r: number, c: number, big: boolean): 'space' | 'word' | 'punct' {
+		const s = lines[r] ?? '';
+		if (c < 0 || c >= s.length) return 'space';
+		const ch = s[c];
+		if (_isSpaceCh(ch)) return 'space';
+		if (big) return 'word'; // any non-space is one WORD
+		return _isWordCh(ch) ? 'word' : 'punct';
+	}
+
+	export function moveNextWord(count: number | null, big: boolean) {
+		let foundSol = false;
+		let c = count ? count : 1;
+		let target_col = cursor.col;
+		let target_row = cursor.row;
+		let target_class = _classOf(cursor.row, cursor.col, big);
+		let curr = lines[cursor.row];
+		console.log('row', target_row);
+		console.log('col', target_col);
+
+		// HAVE TO USE WHILE LOOP CANNOT USE FOR LOOP
+		// using curr.length makes it stop at this line which isnt correct
+		for (; c > 0; c--) {
+			for (; target_col < curr.length - 1; target_col++) {
+				let curr_class = _classOf(target_row, target_col, big);
+				if (curr_class !== target_class) {
+					target_class = curr_class;
+					foundSol = true;
+					break;
+				}
+			}
+			if (target_class === 'space') {
+				while (_classOf(target_row, target_col, big) === 'space') {
+					target_col++;
+				}
+			}
+			if (target_col == curr.length - 1) {
+				if (target_row != lines.length - 1) target_col = 0;
+				if (target_row < lines.length - 1) target_row++;
+				curr = lines[target_row];
+			}
+		}
+		if (!foundSol && cursor.row == lines.length - 1) cursor.col = lines[cursor.row].length;
+		cursor.col = target_col;
+		cursor.goalCol = cursor.col;
+		cursor.row = target_row;
+	}
+
+	//very not functional. goes to previous end of word
+	export function moveBackWord(count: number | null, big: boolean) {
+		let foundSol = false;
+		let c = count ? count : 1;
+		let target_col = cursor.col;
+		let target_row = cursor.row;
+		let target_class = _classOf(cursor.row, cursor.col, big);
+		let curr = lines[cursor.row];
+		console.log('row', target_row);
+		console.log('col', target_col);
+
+		// HAVE TO USE WHILE LOOP CANNOT USE FOR LOOP
+		// using curr.length makes it stop at this line which isnt correct
+		for (; c > 0; c--) {
+			for (; target_col > 0; target_col--) {
+				let curr_class = _classOf(target_row, target_col, big);
+				if (curr_class !== target_class) {
+					target_class = curr_class;
+					foundSol = true;
+					break;
+				}
+			}
+			if (target_class === 'space') {
+				while (_classOf(target_row, target_col, big) === 'space') {
+					target_col--;
+				}
+			}
+			if (target_col == 0) {
+				if (target_row != 0) target_col = 0;
+				if (target_row > 0) target_row--;
+				curr = lines[target_row];
+			}
+		}
+		if (!foundSol && cursor.row == 0) cursor.col = 0;
+		cursor.col = target_col;
+		cursor.goalCol = cursor.col;
+		cursor.row = target_row;
+	}
 	export function moveLastCol() {
 		cursor.col = lineLen(cursor.row);
 		cursor.goalCol = cursor.col;
 	}
+
 	export function moveLeft(count: number | null) {
 		cursor.col = clamp(cursor.col - (count ? count : 1), 0, lineLen(cursor.row));
 		cursor.goalCol = cursor.col;
 		pendingCount = null;
 	}
+
 	export function moveRight(count: number | null) {
 		cursor.col = clamp(cursor.col + (count ? count : 1), 0, lineLen(cursor.row));
 		cursor.goalCol = cursor.col;
 		pendingCount = null;
 	}
+
 	function setGoalIfNeeded() {
 		if (cursor.goalCol == null) cursor.goalCol = cursor.col;
 	}
-	// 3) Clamp vertical motion to the visible window when overflowed
+
 	export function moveUp(count: number | null) {
 		setGoalIfNeeded();
 		const base = viewBase();
@@ -371,13 +483,13 @@
 				else {
 					pendingCount = (pendingCount ?? 0) * 10 + (k.charCodeAt(0) - 48);
 				}
-				console.log(pendingCount);
 				return;
 			}
 			if (k === 'h') moveLeft(pendingCount);
 			else if (k === 'l') moveRight(pendingCount);
 			else if (k === 'k') moveUp(pendingCount);
 			else if (k === 'j') moveDown(pendingCount);
+			else if (k === '^') moveFirstChar();
 			else if (k === '0') {
 				if (pendingCount != null) {
 					pendingCount = (pendingCount ?? 0) * 10 + (k.charCodeAt(0) - 48);
@@ -387,9 +499,13 @@
 			} else if (k === '$') moveLastCol();
 			else if (k === 'G') moveLastRow();
 			// else if (k === 'u') console.log('undo');
-			else if (k === 'w') console.log('forward word');
-			else if (k === 'b') console.log('backwards word');
-			else if (k === 'e') console.log('forward end');
+			else if (k === 'W') {
+				moveNextWord(pendingCount, true);
+			} else if (k === 'w') {
+				moveNextWord(pendingCount, false);
+			} else if (k === 'b') {
+				moveBackWord(pendingCount, false);
+			} else if (k === 'e') console.log('forward end');
 			else if (k === 'x') console.log('cut current letter');
 			// else if (k === 'q') console.log('macro start');
 			// else if (k === 'r') console.log('replace curr letter');
@@ -435,7 +551,6 @@
 				normalMode();
 			} else {
 				combo.push(k);
-				console.log(k);
 			}
 		} else if (currentMode === 'line') {
 			if (k === 'Escape') {
