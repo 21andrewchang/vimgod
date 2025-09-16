@@ -1,3 +1,4 @@
+
 import { writable, type Writable } from 'svelte/store';
 
 export type MatchStatus = 'idle' | 'running' | 'complete';
@@ -20,6 +21,9 @@ export interface MatchRoundResult {
   completedAt: number;
   durationMs: number;
   keys: MatchKeypress[];
+  points: number;
+  timeLimitMs: number;
+  succeeded: boolean;
 }
 
 export interface ActiveRound {
@@ -37,36 +41,58 @@ export interface MatchState {
   completed: MatchRoundResult[];
   startTime?: number;
   endTime?: number;
+  timeLimitMs: number;
+  totalPoints: number;
+  maxPoints: number;
+  pointsPerRound: number;
 }
 
 export type MatchTargetGenerator = () => MatchTarget;
 
 const defaultNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
 interface MatchControllerOptions {
   totalRounds?: number;
   now?: () => number;
+  timeLimitMs?: number;
+  maxPoints?: number;
 }
 
 interface StartOptions {
   generator?: MatchTargetGenerator;
 }
 
-const createInitialState = (totalRounds: number): MatchState => ({
+interface InitialConfig {
+  totalRounds: number;
+  timeLimitMs: number;
+  maxPoints: number;
+  pointsPerRound: number;
+}
+
+const createInitialState = (config: InitialConfig): MatchState => ({
   status: 'idle',
-  totalRounds,
+  totalRounds: config.totalRounds,
   roundIndex: 0,
   active: null,
   completed: [],
   startTime: undefined,
-  endTime: undefined
+  endTime: undefined,
+  timeLimitMs: config.timeLimitMs,
+  totalPoints: 0,
+  maxPoints: config.maxPoints,
+  pointsPerRound: config.pointsPerRound
 });
 
 export const createMatchController = (options: MatchControllerOptions = {}) => {
   const totalRounds = options.totalRounds ?? 20;
+  const timeLimitMs = options.timeLimitMs ?? 5000;
+  const maxPoints = options.maxPoints ?? 20;
+  const pointsPerRound = maxPoints / totalRounds;
   const now = options.now ?? defaultNow;
 
-  const initialState = createInitialState(totalRounds);
+  const initialState = createInitialState({ totalRounds, timeLimitMs, maxPoints, pointsPerRound });
   const store: Writable<MatchState> = writable(initialState);
 
   let generator: MatchTargetGenerator | null = null;
@@ -90,7 +116,11 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
       },
       completed: [],
       startTime: startTs,
-      endTime: undefined
+      endTime: undefined,
+      timeLimitMs,
+      totalPoints: 0,
+      maxPoints,
+      pointsPerRound
     });
   };
 
@@ -119,13 +149,21 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
       const target = state.active.target;
       if (cursor.row !== target.row || cursor.col !== target.col) return state;
 
+      const durationMs = Math.max(0, at - state.active.startedAt);
+      const succeeded = durationMs <= state.timeLimitMs;
+      const delta = succeeded ? state.pointsPerRound : -state.pointsPerRound;
+      const nextPoints = clamp(state.totalPoints + delta, -state.maxPoints, state.maxPoints);
+
       const finished: MatchRoundResult = {
         index: state.active.index,
         target,
         startedAt: state.active.startedAt,
         completedAt: at,
-        durationMs: Math.max(0, at - state.active.startedAt),
-        keys: state.active.keys
+        durationMs,
+        keys: state.active.keys,
+        points: delta,
+        timeLimitMs: state.timeLimitMs,
+        succeeded
       };
       const results = [...state.completed, finished];
       completed = true;
@@ -137,7 +175,8 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
           active: null,
           completed: results,
           roundIndex: results.length,
-          endTime: at
+          endTime: at,
+          totalPoints: nextPoints
         };
       }
 
@@ -160,7 +199,8 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
           active: null,
           completed: results,
           roundIndex: results.length,
-          endTime: at
+          endTime: at,
+          totalPoints: nextPoints
         };
       }
 
@@ -168,6 +208,7 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
         ...state,
         completed: results,
         roundIndex: results.length,
+        totalPoints: nextPoints,
         active: {
           index: results.length,
           target: nextTarget,
@@ -180,7 +221,7 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
   };
 
   const reset = (keepGenerator = true) => {
-    store.set(createInitialState(totalRounds));
+    store.set(createInitialState({ totalRounds, timeLimitMs, maxPoints, pointsPerRound }));
     if (!keepGenerator) generator = null;
   };
 

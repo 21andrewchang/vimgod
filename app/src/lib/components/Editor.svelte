@@ -1,6 +1,7 @@
 <script lang="ts">
 	import defaultText from '$lib/default-code.svelte.txt?raw';
 	import { scale } from 'svelte/transition';
+	import CircularProgress from '$lib/components/CircularProgress.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -24,7 +25,11 @@
 		totalRounds: 20,
 		roundIndex: 0,
 		active: null,
-		completed: []
+		completed: [],
+		timeLimitMs: 5000,
+		totalPoints: 0,
+		maxPoints: 20,
+		pointsPerRound: 1
 	};
 	let unsubscribeMatch: (() => void) | null = null;
 	let averageMs = 0;
@@ -37,6 +42,26 @@
 		matchState.status === 'complete'
 			? matchState.totalRounds
 			: Math.min(matchState.roundIndex + 1, matchState.totalRounds);
+
+	let timeLimitMs = 5000;
+	let timeRemaining = timeLimitMs;
+	let timerExpired = false;
+	let timeLabel = '0.0s';
+	let totalPoints = 0;
+	let pointsLabel = '+0';
+	let timerBackground = 'conic-gradient(#34d399 360deg, rgba(15, 23, 42, 0.35) 360deg)';
+	let timerColor = '#DDDDDD';
+	let timerProgress = 1; // remaining / limit
+	let timerValue = 0; // elapsed / limit for the ring
+
+	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
+	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
+	$: totalPoints = matchState.totalPoints ?? 0;
+	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
+	$: timerExpired = timeRemaining <= 0;
+	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
+	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
+	$: timerBackground = `conic-gradient(${timerColor} ${timerProgress * 360}deg, rgba(15, 23, 42, 0.35) ${timerProgress * 360}deg)`;
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -584,221 +609,6 @@
 		return null;
 	}
 
-	const movementGenerators: Array<() => MovementResult | null> = [
-		() => {
-			const max = Math.min(10, cursor.col);
-			if (max <= 0) return null;
-			const count = randInt(1, max);
-			const col = cursor.col - count;
-			return {
-				target: { row: cursor.row, col },
-				sequence: [...toDigitKeys(count), 'h']
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			const last = Math.max(0, line.length ? line.length - 1 : 0);
-			const max = Math.min(10, Math.max(0, last - cursor.col));
-			if (max <= 0) return null;
-			const count = randInt(1, max);
-			const col = cursor.col + count;
-			return {
-				target: { row: cursor.row, col },
-				sequence: [...toDigitKeys(count), 'l']
-			};
-		},
-		() => {
-			const max = Math.min(10, cursor.row);
-			if (max <= 0) return null;
-			const count = randInt(1, max);
-			const row = cursor.row - count;
-			const col = Math.min(Math.max(0, lineLen(row)), cursor.col);
-			return {
-				target: { row, col },
-				sequence: [...toDigitKeys(count), 'k']
-			};
-		},
-		() => {
-			const max = Math.min(10, Math.max(0, lines.length - 1 - cursor.row));
-			if (max <= 0) return null;
-			const count = randInt(1, max);
-			const row = cursor.row + count;
-			const col = Math.min(Math.max(0, lineLen(row)), cursor.col);
-			return {
-				target: { row, col },
-				sequence: [...toDigitKeys(count), 'j']
-			};
-		},
-		() => {
-			for (let tries = 0; tries < 3; tries++) {
-				const count = randInt(1, 3);
-				const res = moveNextWord(count, false, true) as unknown as [number, number] | undefined;
-				if (Array.isArray(res)) {
-					const [row, col] = res;
-					if (row !== cursor.row || col !== cursor.col) {
-						return {
-							target: { row, col },
-							sequence: [...toDigitKeys(count), 'w']
-						};
-					}
-				}
-			}
-			return null;
-		},
-		() => {
-			for (let tries = 0; tries < 3; tries++) {
-				const count = randInt(1, 3);
-				const res = moveBackWord(count, false, true) as unknown as [number, number] | undefined;
-				if (Array.isArray(res)) {
-					const [row, col] = res;
-					if (row !== cursor.row || col !== cursor.col) {
-						return {
-							target: { row, col },
-							sequence: [...toDigitKeys(count), 'b']
-						};
-					}
-				}
-			}
-			return null;
-		},
-		() => {
-			if (cursor.col === 0) return null;
-			return {
-				target: { row: cursor.row, col: 0 },
-				sequence: ['0']
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			const idx = firstNonWhitespace(line);
-			if (idx < 0 || idx === cursor.col) return null;
-			return {
-				target: { row: cursor.row, col: idx },
-				sequence: ['^']
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			const last = Math.max(0, line.length ? line.length - 1 : 0);
-			if (cursor.col === last) return null;
-			return {
-				target: { row: cursor.row, col: last },
-				sequence: ['$']
-			};
-		},
-		() => {
-			if (cursor.row === 0) return null;
-			const col = goalColumnForRow(0);
-			return {
-				target: { row: 0, col },
-				sequence: ['g', 'g']
-			};
-		},
-		() => {
-			const bottom = lines.length - 1;
-			if (cursor.row === bottom) return null;
-			const col = goalColumnForRow(bottom);
-			return {
-				target: { row: bottom, col },
-				sequence: ['G']
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			if (!line.length || cursor.col >= line.length - 1) return null;
-			const candidates: number[] = [];
-			for (let i = cursor.col + 1; i < line.length; i++) candidates.push(i);
-			if (!candidates.length) return null;
-			const idx = candidates[randInt(0, candidates.length - 1)];
-			const char = line[idx];
-			if (!char) return null;
-			return {
-				target: { row: cursor.row, col: idx },
-				sequence: ['f', char]
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			if (!line.length || cursor.col <= 0) return null;
-			const candidates: number[] = [];
-			for (let i = cursor.col - 1; i >= 0; i--) candidates.push(i);
-			if (!candidates.length) return null;
-			const idx = candidates[randInt(0, candidates.length - 1)];
-			const char = line[idx];
-			if (!char) return null;
-			return {
-				target: { row: cursor.row, col: idx },
-				sequence: ['F', char]
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			if (!line.length || cursor.col >= line.length - 1) return null;
-			const candidates: number[] = [];
-			for (let i = cursor.col + 1; i < line.length; i++) {
-				if (i - 1 !== cursor.col) candidates.push(i);
-			}
-			if (!candidates.length) return null;
-			const idx = candidates[randInt(0, candidates.length - 1)];
-			const char = line[idx];
-			if (!char) return null;
-			const pos = simulateSearchMotion(char, 'to', false, cursor.row, cursor.col);
-			if (!pos) return null;
-			return {
-				target: pos,
-				sequence: ['t', char]
-			};
-		},
-		() => {
-			const line = lines[cursor.row] ?? '';
-			if (!line.length || cursor.col <= 0) return null;
-			const candidates: number[] = [];
-			for (let i = cursor.col - 1; i >= 0; i--) {
-				if (i + 1 !== cursor.col) candidates.push(i);
-			}
-			if (!candidates.length) return null;
-			const idx = candidates[randInt(0, candidates.length - 1)];
-			const char = line[idx];
-			if (!char) return null;
-			const pos = simulateSearchMotion(char, 'to', true, cursor.row, cursor.col);
-			if (!pos) return null;
-			return {
-				target: pos,
-				sequence: ['T', char]
-			};
-		},
-		() => {
-			if (lastSearch === '') return null;
-			const pos = simulateSearchMotion(
-				lastSearch,
-				(lastSearchType as 'find' | 'to') ?? 'find',
-				lastSearchDirection,
-				cursor.row,
-				cursor.col
-			);
-			if (!pos) return null;
-			return {
-				target: pos,
-				sequence: [';']
-			};
-		},
-		() => {
-			if (lastSearch === '') return null;
-			const pos = simulateSearchMotion(
-				lastSearch,
-				(lastSearchType as 'find' | 'to') ?? 'find',
-				!lastSearchDirection,
-				cursor.row,
-				cursor.col
-			);
-			if (!pos) return null;
-			return {
-				target: pos,
-				sequence: [',']
-			};
-		}
-	];
-
 	function generateSequenceTarget(): MatchTarget {
 		const fallback = randomTargetInViewport();
 		return { row: fallback.row, col: fallback.col, sequence: [] };
@@ -816,7 +626,7 @@
 		const rowTop = paddingY + (target.row - base) * lineHeight;
 		const caretH = Math.max(1, lineHeight - 1);
 		ctx.save();
-		ctx.fillStyle = '#93c5fd';
+		ctx.fillStyle = 'rgb(194, 123, 255)';
 		ctx.globalAlpha = 0.5;
 		ctx.lineWidth = 1.5;
 		ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
@@ -824,6 +634,16 @@
 	}
 	function draw() {
 		clear();
+
+		const limit = timeLimitMs;
+		if (matchState.status === 'running' && matchState.active) {
+			const elapsed = performance.now() - matchState.active.startedAt;
+			timeRemaining = Math.max(0, limit - elapsed);
+		} else {
+			timeRemaining = limit;
+		}
+		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
+
 		drawGhostMove();
 		if (state === 'vim') {
 			drawText();
@@ -1157,15 +977,22 @@
 
 <div class="fixed inset-0 flex flex-col items-center justify-center">
 	<div class="flex flex-col gap-2">
-		{#if matchState.active}
-			<div class="pointer-events-none flex gap-2">
-				<span
-					class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
-				>
-					{matchState.active.index + 1}/{matchState.totalRounds}
-				</span>
-			</div>
-		{/if}
+		<div class="flex flex-row items-center justify-between">
+			{#if matchState.active}
+				<div class="pointer-events-none flex gap-2">
+					<span
+						class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
+					>
+						{matchState.active.index + 1}/{matchState.totalRounds}
+					</span>
+				</div>
+			{/if}
+			{#if matchState.status === 'running' && matchState.active}
+				<div class="relative h-8 w-8">
+					<CircularProgress value={timerValue} size={32} stroke={1} track="rgba(255,255,255,0.1)" />
+				</div>
+			{/if}
+		</div>
 		<div class="relative mb-10">
 			<div
 				data-mode={currentMode}
@@ -1200,12 +1027,8 @@
 		</div>
 	</div>
 </div>
-<div class="fixed bottom-3 left-4 z-50 font-mono text-gray-100">
-	avg {matchState.completed.length ? averageMs.toFixed(0) : '—'} ms
-</div>
 
 <div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
-	<div>Round {currentRoundDisplay}/{matchState.totalRounds}</div>
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
