@@ -62,7 +62,8 @@
 	let dpr = 1;
 	type Cursor = { row: number; col: number; goalCol: number | null };
 
-	export const lines: string[] = defaultText.replace(/\r\n/g, '\n').split('\n');
+	const normalized = defaultText.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+	export const lines: string[] = normalized.length ? normalized.split('\n') : [''];
 	export const cursor: Cursor = { row: 0, col: 0, goalCol: null };
 
 	export let charWidth = 9.6; // update after measureText
@@ -231,7 +232,50 @@
 		return [curr_row, curr_col];
 	}
 
-	export function moveNextWord(count: number | null, big: boolean) {
+	export function to(char: string, reverse: boolean) {
+		let curr_row = cursor.row;
+		let curr_col = cursor.col;
+		let new_row = cursor.row;
+		let new_col = curr_col;
+		if (!reverse && curr_col < lines[curr_row].length - 1) {
+			new_col = curr_col + 1;
+		} else if (reverse && curr_col > 0) {
+			new_col = curr_col - 1;
+		}
+		while (lines[new_row][new_col] !== char) {
+			if (new_col == lines[curr_row].length - 1 || new_col == 0) {
+				new_col = curr_col;
+				break;
+			}
+			new_col += reverse ? -1 : 1;
+		}
+		cursor.col = new_col + (reverse ? 1 : -1);
+		cursor.goalCol = cursor.col;
+		cursor.row = new_row;
+	}
+	export function find(char: string, reverse: boolean) {
+		let curr_row = cursor.row;
+		let curr_col = cursor.col;
+		let new_row = cursor.row;
+		let new_col = curr_col;
+		if (!reverse && curr_col < lines[curr_row].length - 1) {
+			new_col = curr_col + 1;
+		} else if (reverse && curr_col > 0) {
+			new_col = curr_col - 1;
+		}
+		while (lines[new_row][new_col] !== char) {
+			if (new_col == lines[curr_row].length - 1 || new_col == 0) {
+				new_col = curr_col;
+				break;
+			}
+			new_col += reverse ? -1 : 1;
+		}
+		cursor.col = new_col;
+		cursor.goalCol = cursor.col;
+		cursor.row = new_row;
+	}
+
+	export function moveNextWord(count: number | null, big: boolean, ghost: boolean) {
 		let c = count ? count : 1;
 		let curr_row = cursor.row;
 		let curr_col = cursor.col;
@@ -262,15 +306,19 @@
 				[new_row, new_col] = skipSpaces(curr_row, curr_col, false);
 			}
 		}
-		cursor.col = new_col;
-		cursor.goalCol = cursor.col;
-		cursor.row = new_row;
-		pendingCount = null;
+		if (!ghost) {
+			cursor.col = new_col;
+			cursor.goalCol = cursor.col;
+			cursor.row = new_row;
+			pendingCount = null;
+		} else {
+			return [new_row, new_col];
+		}
 	}
 
 	// 1. move until start of a letnum or punctuation sequence
 	// 2. if in middle of sequence, go until diff class (including space)
-	export function moveBackWord(count: number | null, big: boolean) {
+	export function moveBackWord(count: number | null, big: boolean, ghost: boolean) {
 		let c = count ? count : 1;
 		let curr_row = cursor.row;
 		let curr_col = cursor.col;
@@ -298,10 +346,14 @@
 				new_col--;
 			}
 		}
-		cursor.col = new_col + 1;
-		cursor.goalCol = cursor.col;
-		cursor.row = new_row;
-		pendingCount = null;
+		if (!ghost) {
+			cursor.col = new_col + 1;
+			cursor.goalCol = cursor.col;
+			cursor.row = new_row;
+			pendingCount = null;
+		} else {
+			return [new_row, new_col + 1];
+		}
 	}
 
 	export function moveLastCol() {
@@ -534,11 +586,96 @@
 	}
 	let pendingCount: number | null;
 	let pendingCombo: string = '';
+	let lastSearch: string = '';
+	let lastSearchDirection: boolean = false;
+	let lastSearchType: string = 'find';
 	function onKeyDown(e: KeyboardEvent) {
 		const k = e.key;
 		if ('hjkl'.includes(k)) e.preventDefault();
 
 		if (currentMode === 'normal') {
+			if (pendingCombo === 'T') {
+				if (k === 'Escape') {
+					e.preventDefault();
+					pendingCombo = ''; // cancel
+					pendingCount = null;
+					return;
+				}
+				if (isPrintable(e) && k.length === 1) {
+					e.preventDefault();
+					lastSearch = k;
+					lastSearchDirection = true;
+					lastSearchType = 'to';
+					pendingCount = null;
+					to(k, true);
+					pendingCombo = '';
+					return;
+				}
+				return; // ignore everything else (Shift, Ctrl, etc.)
+			}
+			if (pendingCombo === 't') {
+				if (k === 'Escape') {
+					e.preventDefault();
+					pendingCombo = ''; // cancel
+					pendingCount = null;
+					return;
+				}
+				if (isPrintable(e) && k.length === 1) {
+					e.preventDefault();
+					lastSearch = k;
+					lastSearchType = 'to';
+					lastSearchDirection = false;
+					pendingCount = null;
+					to(k, false);
+					pendingCombo = '';
+					return;
+				}
+				return;
+			}
+			if (pendingCombo === 'F') {
+				if (k === 'Escape') {
+					e.preventDefault();
+					pendingCombo = ''; // cancel
+					pendingCount = null;
+					return;
+				}
+				if (isPrintable(e) && k.length === 1) {
+					e.preventDefault();
+					lastSearch = k;
+					lastSearchDirection = true;
+					pendingCount = null;
+					lastSearchType = 'find';
+					find(k, true);
+					pendingCombo = '';
+					return;
+				}
+				return; // ignore everything else (Shift, Ctrl, etc.)
+			}
+			if (pendingCombo === 'f') {
+				if (k === 'Escape') {
+					e.preventDefault();
+					pendingCombo = ''; // cancel
+					pendingCount = null;
+					return;
+				}
+				if (isPrintable(e) && k.length === 1) {
+					e.preventDefault();
+					lastSearch = k;
+					lastSearchDirection = false;
+					pendingCount = null;
+					lastSearchType = 'find';
+					find(k, false);
+					pendingCombo = '';
+					return;
+				}
+				return; // ignore everything else (Shift, Ctrl, etc.)
+			}
+			if (k === ';') {
+				if (lastSearch !== '') {
+					if (lastSearchType === 'find') find(lastSearch, lastSearchDirection);
+					else to(lastSearch, lastSearchDirection);
+				}
+			}
 			if (k >= '1' && k <= '9') {
 				e.preventDefault();
 				if (pendingCount == null) pendingCount = k.charCodeAt(0) - 48;
@@ -562,19 +699,29 @@
 			else if (k === 'G') moveLastRow();
 			// else if (k === 'u') console.log('undo');
 			else if (k === 'W') {
-				moveNextWord(pendingCount, true);
+				moveNextWord(pendingCount, true, false);
 			} else if (k === 'w') {
-				moveNextWord(pendingCount, false);
+				moveNextWord(pendingCount, false, false);
 			} else if (k === 'b') {
-				moveBackWord(pendingCount, false);
+				moveBackWord(pendingCount, false, false);
 			} else if (k === 'e') console.log('forward end');
 			else if (k === 'x') console.log('cut current letter');
 			// else if (k === 'q') console.log('macro start');
 			// else if (k === 'r') console.log('replace curr letter');
 			// else if (k === 'p') console.log('paste numeral combo 2p');
-			else if (k === 't') console.log('COMBO to __');
-			else if (k === 'f') console.log('COMBO find next __');
-			else if (k === 'y') console.log('COMBO yoink');
+			else if (k === 'T') {
+				pendingCombo = 'T';
+			} else if (k === 't') {
+				pendingCombo = 't';
+			} else if (k === 'F') {
+				pendingCombo = 'F';
+			} else if (k === 'f') {
+				pendingCombo = 'f';
+			} else if (k === 'T') {
+				pendingCombo = 'T';
+			} else if (k === 't') {
+				pendingCombo = 't';
+			} else if (k === 'y') console.log('COMBO yoink');
 			else if (k === 'g') {
 				if (pendingCombo == 'g') {
 					moveFirstRow();
