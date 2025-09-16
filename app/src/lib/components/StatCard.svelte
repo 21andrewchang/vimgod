@@ -3,12 +3,31 @@
     import CardIcon from '$lib/components/CardIcon.svelte';
     const { label, value, description } =
       $props<{ label: string; value: string | number; description?: string }>();
+    
+    let cardElement: HTMLDivElement;
+    let isHovered = $state(false);
+    
+    function handleMouseEnter() {
+        isHovered = true;
+    }
+    
+    function handleMouseLeave() {
+        isHovered = false;
+    }
 </script>
   
 <div
-    class="relative border border-dashed dark:border-zinc-700 border-zinc-400 h-full"
-    style="background:#0a0a0a;"
+    bind:this={cardElement}
+    class="relative border border-dashed h-full transition-all duration-300 dark:border-zinc-700 border-zinc-400"
+    style="background:#0a0a0a; position: relative;"
+    onmouseenter={handleMouseEnter}
+    onmouseleave={handleMouseLeave}
 >
+    <!-- Solid border overlay that appears on hover -->
+    <div 
+        class="absolute inset-0 border border-solid dark:border-zinc-700 border-zinc-400 transition-opacity duration-300 pointer-events-none"
+        style="opacity: {isHovered ? 1 : 0}; margin: -1px;"
+    ></div>
     <!-- corner pins -->
     <CardIcon class="-top-2 -left-2" />
     <CardIcon class="-top-2 -right-2" />

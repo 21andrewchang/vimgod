@@ -3,6 +3,20 @@
     const { data } = $props<{ data: PageData }>();
 
     const { user, motionsGrid, motionCounts, dailyCounts, history, totals } = data;
+    
+    let isHeaderHovered = $state(false);
+    
+    function handleHeaderMouseEnter() {
+        isHeaderHovered = true;
+    }
+    
+    function handleHeaderMouseLeave() {
+        isHeaderHovered = false;
+    }
+    
+    function handleHeaderClick() {
+        window.location.href = '/';
+    }
 
     import StatCard from '$lib/components/StatCard.svelte';
     import ProfileCard from '$lib/components/ProfileCard.svelte';
@@ -29,9 +43,13 @@
 >
   <div class="relative z-[2] px-6 pt-2 pb-8 max-w-6xl mx-auto space-y-8">
     <header class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 cursor-pointer" onmouseenter={handleHeaderMouseEnter} onmouseleave={handleHeaderMouseLeave} onclick={handleHeaderClick}>
           <span class="text-4xl font-normal" style="color:#bc93f9; font-family: 'Sono', sans-serif; font-weight: 400; transform: translateY(-1px);">{`>`}</span>
           <span class="text-3xl font-medium" style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500;">vimgod</span>
+          <span 
+            class="text-3xl font-medium" 
+            style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500; transform: translateX(-8px); animation: {isHeaderHovered ? 'blink 1s infinite' : 'none'};"
+          >_</span>
         </div>
     </header>
   
@@ -41,12 +59,12 @@
             <ProfileCard 
                 userName={user.name} 
                 rank={user.rank} 
-                level={user.level || 1} 
-                experience={user.experience || 0} 
+                level={user.level || 420} 
+                experience={user.experience || 67} 
                 maxExperience={user.maxExperience || 100} 
             />
         </div>
-        <div class="md:col-span-6 flex gap-6">
+        <div class="md:col-span-6 flex gap-4">
             {#each statItems as s}
               <div class="flex-1">
                 <StatCard label={s.label} value={s.value} />
@@ -55,18 +73,17 @@
         </div>
     </div>
   
-    <!-- Heatmap + Top motions -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2">
-        <h2 class="text-lg font-semibold mb-2">Play activity</h2>
-        <ContributionHeatmap {dailyCounts} weeks={16} />
-      </div>
-      <div>
-        <h2 class="text-lg font-semibold mb-2">Most used motions</h2>
-        <TopMotions {motionCounts} limit={10} />
-      </div>
-    </div>
-  
+    <!-- Heatmap -->
+    <section>
+      <ContributionHeatmap {dailyCounts} weeks={53} />
+    </section>
+
+    <!-- Top motions -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">most used motions</h2>
+      <TopMotions {motionCounts} limit={4} />
+    </section>
+
     <!-- Motions unlocked/locked -->
     <section>
       <h2 class="text-lg font-semibold mb-2">Motions</h2>

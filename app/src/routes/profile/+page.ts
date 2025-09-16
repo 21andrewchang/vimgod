@@ -22,7 +22,7 @@ function mockMastery(): Mastery {
   const boost: Motion[] = [
     'h','j','k','l','w','b','e','0','$','^',
     'gg','G','yy','dd','p','u','/','n','N',
-    'f{char}','t{char}','d{motion}','c{motion}','y{motion}','viw','ciw','.'
+    'f','t','d{motion}','c{motion}','y{motion}','viw','ciw','.'
   ].filter((m): m is Motion => MOTIONS.includes(m as Motion));
 
   // base noise
@@ -67,7 +67,8 @@ export const load = (async () => {
     const mastery = mockMastery();
     // pretend we already have skill beyond Diamond so you see Nova+ UI
     const inputs = { mastery, skillIndex: 76, skillStdDev: 6 };
-    const resolvedRank: RankName = rankFromInputs(inputs);
+    // const resolvedRank: RankName = rankFromInputs(inputs);
+    const resolvedRank: RankName = 'Singularity';
     const cov = coverage(mastery);
   
     // Known motions at default threshold 0.7
