@@ -141,7 +141,29 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
         };
       }
 
-      const nextTarget = generator();
+      let nextTarget = generator();
+      let safety = 0;
+      while (
+        nextTarget &&
+        nextTarget.row === cursor.row &&
+        nextTarget.col === cursor.col &&
+        safety < 5
+      ) {
+        nextTarget = generator();
+        safety += 1;
+      }
+
+      if (!nextTarget || (nextTarget.row === cursor.row && nextTarget.col === cursor.col)) {
+        return {
+          ...state,
+          status: 'complete',
+          active: null,
+          completed: results,
+          roundIndex: results.length,
+          endTime: at
+        };
+      }
+
       return {
         ...state,
         completed: results,
