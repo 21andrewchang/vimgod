@@ -216,23 +216,18 @@
 
 	function skipSpaces(r_start: number, c_start: number, reverse: boolean) {
 		let curr_row = r_start;
-		let curr_col = c_start + (reverse ? -1 : 1);
-		if (!_isSpaceCh(lines[curr_row][curr_col])) {
-			return [curr_row, curr_col];
-		}
+		let curr_col = c_start;
 		while (_isSpaceCh(lines[curr_row][curr_col])) {
-			console.log(curr_row);
-			console.log(curr_col);
-			if (curr_col < lines[curr_row].length - 1 && curr_col > 0) {
-				curr_col += reverse ? -1 : 1;
-			} else {
-				console.log('col is == 0', curr_row);
-				curr_row += reverse ? -1 : 1;
-				console.log(curr_row);
+			if (curr_col == lines[curr_row].length - 1 && !reverse) {
+				curr_col = 0;
+				curr_row++;
+			} else if (reverse && curr_col == 0) {
+				curr_row--;
 				curr_col = lines[curr_row].length - 1;
+			} else {
+				curr_col += reverse ? -1 : 1;
 			}
 		}
-		console.log('done');
 		return [curr_row, curr_col];
 	}
 
@@ -261,8 +256,10 @@
 					curr = lines[new_row];
 				}
 			}
-			if (_isSpaceCh(lines[new_row][new_col])) {
-				[new_row, new_col] = skipSpaces(new_row, new_col, false);
+			curr_col = new_col;
+			curr_row = new_row;
+			if (_isSpaceCh(lines[curr_row][curr_col])) {
+				[new_row, new_col] = skipSpaces(curr_row, curr_col, false);
 			}
 		}
 		cursor.col = new_col;
@@ -280,13 +277,8 @@
 		let new_row = curr_row;
 		let new_col = curr_col - 1;
 
-		// first execute will move to beginning of word
-		// from then on, it will always go to beginning of word
-		// if there is a space, move past sequence of spaces first
 		if (curr_row == 0 && curr_col == 0) return;
-
 		for (; c > 0; c--) {
-			//middle of word
 			if (curr_row == 0 && curr_col == 1) {
 				new_col--;
 				break;
@@ -300,18 +292,18 @@
 				[curr_row, curr_col] = skipSpaces(curr_row, curr_col, true);
 				new_row = curr_row;
 				new_col = curr_col - 1;
+				console.log('skipSpaces done', curr_col);
 			}
 			while (_classOf(curr_row, curr_col, big) === _classOf(new_row, new_col, big)) {
 				new_col--;
 			}
-
-			//beginning of word
 		}
 		cursor.col = new_col + 1;
 		cursor.goalCol = cursor.col;
 		cursor.row = new_row;
 		pendingCount = null;
 	}
+
 	export function moveLastCol() {
 		cursor.col = lineLen(cursor.row);
 		cursor.goalCol = cursor.col;
