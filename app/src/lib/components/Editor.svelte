@@ -1,22 +1,24 @@
 <script lang="ts">
+	import defaultText from '$lib/default-code.svelte.txt?raw';
 	import { scale } from 'svelte/transition';
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabaseClient';
 
-	const ROWS = 15; // same as MAX_ROWS
 	const COLS = 64; // pick what looks right; fixed column budget
 	const GUTTER_PAD = 20; // space for line numbers + gap
-	const TEXT_TOP = 38; // replace your magic 38 with a named const
 
 	let targetW = 0,
 		targetH = 0;
 
+	const ROWS = 15;
+	const MAX_ROWS = ROWS; // keep these in lockstep
+	const TEXT_TOP = 38;
+
 	function recomputeLayout() {
-		// assumes ctx.font is set and charWidth/lineHeight are up to date
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
-		targetW = Math.round(paddingX + gutter + COLS * charWidth + paddingX);
-		targetH = Math.round(TEXT_TOP + ROWS * lineHeight + paddingY); // top offset + rows + bottom pad
+		targetW = Math.ceil(paddingX + gutter + COLS * charWidth + paddingX);
+		targetH = Math.ceil(TEXT_TOP + MAX_ROWS * lineHeight) + 1; // +1 avoids clipping
 	}
 
 	const IGNORED_KEYS = new Set([
@@ -45,9 +47,9 @@
 		return e.key.length === 1;
 	}
 
-	const MAX_ROWS = 15;
 	function viewBase() {
-		return Math.max(0, lines.length - MAX_ROWS);
+		const maxBase = Math.max(0, lines.length - MAX_ROWS);
+		return clamp(cursor.row - Math.floor(MAX_ROWS / 2), 0, maxBase);
 	}
 	let state: 'shell' | 'vim' = 'vim';
 	// VIM
@@ -60,7 +62,7 @@
 	let dpr = 1;
 	type Cursor = { row: number; col: number; goalCol: number | null };
 
-	export const lines = [''];
+	export const lines: string[] = defaultText.replace(/\r\n/g, '\n').split('\n');
 	export const cursor: Cursor = { row: 0, col: 0, goalCol: null };
 
 	export let charWidth = 9.6; // update after measureText
@@ -116,11 +118,6 @@
 	}
 
 	export function newLine(mode: 'insert' | 'below' | 'above' | 'normal' = 'insert') {
-		// Default Vim-like semantics:
-		// - insert/Enter: split current line at cursor, insert tail on the next line
-		// - below/normal/o: insert empty line below
-		// - above/O: insert empty line above
-
 		const r = cursor.row;
 		const c = cursor.col;
 		const cur = lines[r] ?? '';
@@ -211,88 +208,109 @@
 
 	function _classOf(r: number, c: number, big: boolean): 'space' | 'word' | 'punct' {
 		const s = lines[r] ?? '';
-		if (c < 0 || c >= s.length) return 'space';
 		const ch = s[c];
 		if (_isSpaceCh(ch)) return 'space';
-		if (big) return 'word'; // any non-space is one WORD
+		if (big) return 'word';
 		return _isWordCh(ch) ? 'word' : 'punct';
 	}
 
-	export function moveNextWord(count: number | null, big: boolean) {
-		let foundSol = false;
-		let c = count ? count : 1;
-		let target_col = cursor.col;
-		let target_row = cursor.row;
-		let target_class = _classOf(cursor.row, cursor.col, big);
-		let curr = lines[cursor.row];
-		console.log('row', target_row);
-		console.log('col', target_col);
-
-		// HAVE TO USE WHILE LOOP CANNOT USE FOR LOOP
-		// using curr.length makes it stop at this line which isnt correct
-		for (; c > 0; c--) {
-			for (; target_col < curr.length - 1; target_col++) {
-				let curr_class = _classOf(target_row, target_col, big);
-				if (curr_class !== target_class) {
-					target_class = curr_class;
-					foundSol = true;
-					break;
-				}
-			}
-			if (target_class === 'space') {
-				while (_classOf(target_row, target_col, big) === 'space') {
-					target_col++;
-				}
-			}
-			if (target_col == curr.length - 1) {
-				if (target_row != lines.length - 1) target_col = 0;
-				if (target_row < lines.length - 1) target_row++;
-				curr = lines[target_row];
+	function skipSpaces(r_start: number, c_start: number, reverse: boolean) {
+		let curr_row = r_start;
+		let curr_col = c_start + (reverse ? -1 : 1);
+		if (!_isSpaceCh(lines[curr_row][curr_col])) {
+			return [curr_row, curr_col];
+		}
+		while (_isSpaceCh(lines[curr_row][curr_col])) {
+			console.log(curr_row);
+			console.log(curr_col);
+			if (curr_col < lines[curr_row].length - 1 && curr_col > 0) {
+				curr_col += reverse ? -1 : 1;
+			} else {
+				console.log('col is == 0', curr_row);
+				curr_row += reverse ? -1 : 1;
+				console.log(curr_row);
+				curr_col = lines[curr_row].length - 1;
 			}
 		}
-		if (!foundSol && cursor.row == lines.length - 1) cursor.col = lines[cursor.row].length;
-		cursor.col = target_col;
-		cursor.goalCol = cursor.col;
-		cursor.row = target_row;
+		console.log('done');
+		return [curr_row, curr_col];
 	}
 
-	//very not functional. goes to previous end of word
-	export function moveBackWord(count: number | null, big: boolean) {
-		let foundSol = false;
+	export function moveNextWord(count: number | null, big: boolean) {
 		let c = count ? count : 1;
-		let target_col = cursor.col;
-		let target_row = cursor.row;
-		let target_class = _classOf(cursor.row, cursor.col, big);
+		let curr_row = cursor.row;
+		let curr_col = cursor.col;
+		let new_row = curr_row;
+		let new_col = curr_col + 1;
 		let curr = lines[cursor.row];
-		console.log('row', target_row);
-		console.log('col', target_col);
 
 		// HAVE TO USE WHILE LOOP CANNOT USE FOR LOOP
 		// using curr.length makes it stop at this line which isnt correct
 		for (; c > 0; c--) {
-			for (; target_col > 0; target_col--) {
-				let curr_class = _classOf(target_row, target_col, big);
-				if (curr_class !== target_class) {
-					target_class = curr_class;
-					foundSol = true;
+			console.log(c);
+			if (curr_row == lines.length - 1 && curr_col == lines[curr_row].length - 1) return;
+			while (_classOf(curr_row, curr_col, big) === _classOf(new_row, new_col, big)) {
+				if (new_col < curr.length - 1) {
+					new_col++;
+				} else if (curr_row == lines.length - 1) {
+					new_col = lines[curr_row].length - 1;
 					break;
+				} else {
+					new_col = 0;
+					new_row++;
+					curr = lines[new_row];
 				}
 			}
-			if (target_class === 'space') {
-				while (_classOf(target_row, target_col, big) === 'space') {
-					target_col--;
-				}
-			}
-			if (target_col == 0) {
-				if (target_row != 0) target_col = 0;
-				if (target_row > 0) target_row--;
-				curr = lines[target_row];
+			if (_isSpaceCh(lines[new_row][new_col])) {
+				[new_row, new_col] = skipSpaces(new_row, new_col, false);
 			}
 		}
-		if (!foundSol && cursor.row == 0) cursor.col = 0;
-		cursor.col = target_col;
+		cursor.col = new_col;
 		cursor.goalCol = cursor.col;
-		cursor.row = target_row;
+		cursor.row = new_row;
+		pendingCount = null;
+	}
+
+	// 1. move until start of a letnum or punctuation sequence
+	// 2. if in middle of sequence, go until diff class (including space)
+	export function moveBackWord(count: number | null, big: boolean) {
+		let c = count ? count : 1;
+		let curr_row = cursor.row;
+		let curr_col = cursor.col;
+		let new_row = curr_row;
+		let new_col = curr_col - 1;
+
+		// first execute will move to beginning of word
+		// from then on, it will always go to beginning of word
+		// if there is a space, move past sequence of spaces first
+		if (curr_row == 0 && curr_col == 0) return;
+
+		for (; c > 0; c--) {
+			//middle of word
+			if (curr_row == 0 && curr_col == 1) {
+				new_col--;
+				break;
+			}
+			if (_classOf(curr_row, curr_col, big) !== _classOf(new_row, new_col, big)) {
+				curr_col = new_col;
+				new_col--;
+			}
+			if (_isSpaceCh(lines[curr_row][curr_col])) {
+				console.log('is space');
+				[curr_row, curr_col] = skipSpaces(curr_row, curr_col, true);
+				new_row = curr_row;
+				new_col = curr_col - 1;
+			}
+			while (_classOf(curr_row, curr_col, big) === _classOf(new_row, new_col, big)) {
+				new_col--;
+			}
+
+			//beginning of word
+		}
+		cursor.col = new_col + 1;
+		cursor.goalCol = cursor.col;
+		cursor.row = new_row;
+		pendingCount = null;
 	}
 	export function moveLastCol() {
 		cursor.col = lineLen(cursor.row);
@@ -353,16 +371,18 @@
 
 	function drawText() {
 		const base = viewBase();
+		const end = Math.min(lines.length, base + MAX_ROWS);
+
 		ctx.fillStyle = '#6b7280';
 		ctx.textAlign = 'right';
 
-		for (let r = base; r < lines.length; r++) {
+		for (let r = base; r < end; r++) {
 			const isCurrent = r === cursor.row;
 			const rel = lines.length === 1 ? 1 : Math.abs(r - cursor.row);
 			const label = isCurrent ? String(r + 1) : String(rel || 1);
 
 			const tx = paddingX;
-			const ty = 38 + (r - base) * lineHeight; // <-- offset by base
+			const ty = TEXT_TOP + (r - base) * lineHeight;
 			ctx.fillText(label, tx, ty);
 		}
 
@@ -370,11 +390,12 @@
 		ctx.fillStyle = '#e5e7eb';
 		ctx.font = '16px monospace';
 
-		for (let r = base; r < lines.length; r++) {
-			const ty = 38 + (r - base) * lineHeight; // <-- offset by base
-			ctx.fillText(lines[r], paddingX + 10, ty);
+		for (let r = base; r < end; r++) {
+			const ty = TEXT_TOP + (r - base) * lineHeight;
+			ctx.fillText(lines[r] ?? '', paddingX + 10, ty);
 		}
 	}
+
 	function applyDpr() {
 		// Only ever called in browser
 		const rect = canvas.getBoundingClientRect();
@@ -406,13 +427,62 @@
 	}
 
 	let visualLine_start: number;
+	let ghostrow = 0,
+		ghostcol = 0;
+	let tStart = 0; // ms timestamp when a target is spawned
+	let trials = 0; // number of completed moves
+	let avgMs = 0; // running average in ms
+	function randInt(min: number, max: number) {
+		return Math.floor(Math.random() * (max - min + 1)) + min;
+	}
+	function generateMove() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const row = randInt(top, bottom);
+
+		const len = lines[row]?.length ?? 0;
+		const col = len > 0 ? randInt(0, Math.max(0, len - 1)) : 0;
+
+		// avoid instant auto-complete target equal to current cursor (best effort)
+		if (row === cursor.row && col === cursor.col && len > 1) {
+			ghostrow = row;
+			ghostcol = col === 0 ? 1 : 0;
+		} else {
+			ghostrow = row;
+			ghostcol = col;
+		}
+
+		tStart = performance.now(); // start timer now
+	}
+	function completeIfMatched() {
+		if (!tStart) return;
+		if (cursor.row === ghostrow && cursor.col === ghostcol) {
+			const dt = performance.now() - tStart; // elapsed ms
+			trials += 1;
+			avgMs += (dt - avgMs) / trials; // online mean
+			tStart = 0;
+			generateMove(); // immediately start next round
+		}
+	}
+	function drawGhostMove() {
+		completeIfMatched();
+		const base = viewBase();
+		const x = paddingX + 10 + ghostcol * 9.6328;
+		const rowTop = paddingY + (ghostrow - base) * lineHeight;
+		const caretH = Math.max(1, lineHeight - 1);
+		ctx.save();
+		ctx.fillStyle = '#93c5fd';
+		ctx.globalAlpha = 0.5;
+		ctx.lineWidth = 1.5;
+		ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
+		ctx.restore();
+	}
 	function draw() {
 		clear();
-
+		drawGhostMove();
 		if (state === 'vim') {
 			drawText();
-
-			// Pick fill color per mode
 			switch (currentMode) {
 				case 'insert':
 					ctx.fillStyle = '#B990F5';
@@ -426,7 +496,6 @@
 				default:
 					ctx.fillStyle = '#dddddd';
 			}
-
 			const base = viewBase();
 			const rowTop = paddingY + (cursor.row - base) * lineHeight;
 			const textStartX = paddingX + 10;
@@ -444,14 +513,15 @@
 				ctx.globalAlpha = 1;
 			} else {
 				const { x } = caretXY();
-				const w = 9.8;
+				const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
 				ctx.globalAlpha = 0.85;
-				ctx.fillRect(Math.floor(x), Math.floor(rowTop), w, lineHeight);
+				ctx.fillRect(Math.floor(x), Math.floor(rowTop), 9.8, caretH);
 				ctx.globalAlpha = 1;
 			}
 		}
 		raf = requestAnimationFrame(draw);
 	}
+
 	function deleteRow() {
 		const a = Math.min(visualLine_start, cursor.row);
 		const b = Math.max(visualLine_start, cursor.row);
@@ -562,6 +632,14 @@
 				moveDown(pendingCount);
 			} else if (k === 'd') {
 				deleteRow();
+			} else if (k === 'g') {
+				if (pendingCombo == 'g') {
+					moveFirstRow();
+					pendingCombo = '';
+				} else {
+					pendingCombo += 'g';
+				}
+				console.log('COMBO go');
 			}
 		} else if (currentMode === 'insert') {
 			if (k === 'Escape') {
@@ -600,6 +678,7 @@
 		ctx = canvas.getContext('2d', { alpha: false })!;
 		ctx.textBaseline = 'top';
 		setFontMetrics();
+		generateMove();
 		applyDpr();
 		recomputeLayout();
 
@@ -625,7 +704,7 @@
 	<div class="relative mb-10">
 		<div
 			data-mode={currentMode}
-			class="aspect-[16/10] max-h-[50dvh] w-[50vw] overflow-hidden rounded-xl border border-white/20
+			class=" overflow-hidden rounded-xl border border-white/20
          shadow-lg transition-colors data-[mode=command]:border-white/10"
 			style={`width:${targetW}px; height:${targetH}px`}
 		>
@@ -655,6 +734,10 @@
 		{/if}
 	</div>
 </div>
+<div class="fixed bottom-3 left-4 z-50 font-mono text-gray-100">
+	{avgMs}
+</div>
+
 <div class="fixed bottom-3 right-4 z-50 font-mono text-gray-100">
 	{pendingCombo}
 </div>
