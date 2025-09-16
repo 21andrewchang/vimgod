@@ -749,6 +749,7 @@
 			style={`width:${targetW}px; height:${targetH}px`}
 		>
 			<canvas
+				style="font-family: 'DM Mono', monospace;"
 				bind:this={canvas}
 				class="block h-full w-full rounded-xl outline-none"
 				on:keydown={onKeyDown}
