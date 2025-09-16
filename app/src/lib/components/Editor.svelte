@@ -2,8 +2,9 @@
 	import defaultText from '$lib/default-code.svelte.txt?raw';
 	import { scale } from 'svelte/transition';
 	import { onMount, onDestroy } from 'svelte';
+	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import { supabase } from '$lib/supabaseClient';
+	import type { MatchController, MatchState, MatchTarget } from '$lib/match/match';
 
 	const COLS = 64; // pick what looks right; fixed column budget
 	const GUTTER_PAD = 20; // space for line numbers + gap
@@ -14,6 +15,28 @@
 	const ROWS = 15;
 	const MAX_ROWS = ROWS; // keep these in lockstep
 	const TEXT_TOP = 38;
+
+	export let match: MatchController;
+	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+	let matchState: MatchState = {
+		status: 'idle',
+		totalRounds: 20,
+		roundIndex: 0,
+		active: null,
+		completed: []
+	};
+	let unsubscribeMatch: (() => void) | null = null;
+	let averageMs = 0;
+	let currentRoundDisplay = 1;
+	$: averageMs = matchState.completed.length
+		? matchState.completed.reduce((sum, round) => sum + round.durationMs, 0) /
+			matchState.completed.length
+		: 0;
+	$: currentRoundDisplay =
+		matchState.status === 'complete'
+			? matchState.totalRounds
+			: Math.min(matchState.roundIndex + 1, matchState.totalRounds);
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -471,49 +494,83 @@
 	}
 
 	let visualLine_start: number;
-	let ghostrow = 0,
-		ghostcol = 0;
-	let tStart = 0; // ms timestamp when a target is spawned
-	let trials = 0; // number of completed moves
-	let avgMs = 0; // running average in ms
 	function randInt(min: number, max: number) {
 		return Math.floor(Math.random() * (max - min + 1)) + min;
 	}
-	function generateMove() {
+
+	function randomTargetInViewport(): { row: number; col: number } {
 		const base = viewBase();
 		const top = base;
 		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
 		const row = randInt(top, bottom);
-
 		const len = lines[row]?.length ?? 0;
-		const col = len > 0 ? randInt(0, Math.max(0, len - 1)) : 0;
-
-		// avoid instant auto-complete target equal to current cursor (best effort)
+		let col = len > 0 ? randInt(0, Math.max(0, len - 1)) : 0;
 		if (row === cursor.row && col === cursor.col && len > 1) {
-			ghostrow = row;
-			ghostcol = col === 0 ? 1 : 0;
-		} else {
-			ghostrow = row;
-			ghostcol = col;
+			col = col === 0 ? 1 : col - 1;
 		}
+		return { row, col };
+	}
 
-		tStart = performance.now(); // start timer now
+	type BasicMove = 'h' | 'j' | 'k' | 'l';
+
+	function basicMoveOptions(pos: { row: number; col: number }): BasicMove[] {
+		const moves: BasicMove[] = [];
+		const maxCol = Math.max(0, lineLen(pos.row));
+		if (pos.col > 0) moves.push('h');
+		if (pos.col < maxCol) moves.push('l');
+		if (pos.row > 0) moves.push('k');
+		if (pos.row < lines.length - 1) moves.push('j');
+		return moves;
 	}
-	function completeIfMatched() {
-		if (!tStart) return;
-		if (cursor.row === ghostrow && cursor.col === ghostcol) {
-			const dt = performance.now() - tStart; // elapsed ms
-			trials += 1;
-			avgMs += (dt - avgMs) / trials; // online mean
-			tStart = 0;
-			generateMove(); // immediately start next round
+
+	function applyBasicMove(pos: { row: number; col: number }, move: BasicMove) {
+		if (move === 'h') {
+			return { row: pos.row, col: Math.max(0, pos.col - 1) };
 		}
+		if (move === 'l') {
+			const maxCol = Math.max(0, lineLen(pos.row));
+			return { row: pos.row, col: Math.min(maxCol, pos.col + 1) };
+		}
+		if (move === 'j') {
+			const nextRow = Math.min(lines.length - 1, pos.row + 1);
+			const maxCol = Math.max(0, lineLen(nextRow));
+			return { row: nextRow, col: Math.min(maxCol, pos.col) };
+		}
+		// move === 'k'
+		const prevRow = Math.max(0, pos.row - 1);
+		const maxCol = Math.max(0, lineLen(prevRow));
+		return { row: prevRow, col: Math.min(maxCol, pos.col) };
 	}
+
+	function generateSequenceTarget(): MatchTarget {
+		const start = { row: cursor.row, col: cursor.col };
+		let current = { ...start };
+		const steps: BasicMove[] = [];
+		const stepBudget = randInt(1, 4);
+		for (let i = 0; i < stepBudget; i++) {
+			const options = basicMoveOptions(current);
+			if (!options.length) break;
+			const move = options[randInt(0, options.length - 1)];
+			current = applyBasicMove(current, move);
+			steps.push(move);
+		}
+		if (!steps.length || (current.row === start.row && current.col === start.col)) {
+			const fallback = randomTargetInViewport();
+			return { row: fallback.row, col: fallback.col, sequence: [] };
+		}
+		return { row: current.row, col: current.col, sequence: steps.map((s) => s) };
+	}
+
 	function drawGhostMove() {
-		completeIfMatched();
+		if (matchState.status === 'running') {
+			match.evaluate({ row: cursor.row, col: cursor.col });
+		}
+		const active = matchState.active;
+		if (!active) return;
+		const target = active.target;
 		const base = viewBase();
-		const x = paddingX + 10 + ghostcol * 9.6328;
-		const rowTop = paddingY + (ghostrow - base) * lineHeight;
+		const x = paddingX + 10 + target.col * 9.6328;
+		const rowTop = paddingY + (target.row - base) * lineHeight;
 		const caretH = Math.max(1, lineHeight - 1);
 		ctx.save();
 		ctx.fillStyle = '#93c5fd';
@@ -591,6 +648,7 @@
 	let lastSearchType: string = 'find';
 	function onKeyDown(e: KeyboardEvent) {
 		const k = e.key;
+		match.recordKey(k, now());
 		if ('hjkl'.includes(k)) e.preventDefault();
 
 		if (currentMode === 'normal') {
@@ -674,6 +732,12 @@
 				if (lastSearch !== '') {
 					if (lastSearchType === 'find') find(lastSearch, lastSearchDirection);
 					else to(lastSearch, lastSearchDirection);
+				}
+			}
+			if (k === ',') {
+				if (lastSearch !== '') {
+					if (lastSearchType === 'find') find(lastSearch, !lastSearchDirection);
+					else to(lastSearch, !lastSearchDirection);
 				}
 			}
 			if (k >= '1' && k <= '9') {
@@ -814,10 +878,18 @@
 	onMount(async () => {
 		if (!browser) return;
 
+		matchState = get(match);
+		unsubscribeMatch = match.subscribe((value) => {
+			matchState = value;
+		});
+		match.setGenerator(generateSequenceTarget);
+		if (matchState.status === 'idle') {
+			match.start();
+		}
+
 		ctx = canvas.getContext('2d', { alpha: false })!;
 		ctx.textBaseline = 'top';
 		setFontMetrics();
-		generateMove();
 		applyDpr();
 		recomputeLayout();
 
@@ -833,53 +905,64 @@
 
 	onDestroy(() => {
 		if (!browser) return;
+		unsubscribeMatch?.();
 		ro?.disconnect();
 		window.removeEventListener('resize', resize);
 		cancelAnimationFrame(raf);
 	});
 </script>
 
-<div class="fixed inset-0 grid place-items-center">
-	<div class="relative mb-10">
-		<div
-			data-mode={currentMode}
-			class=" overflow-hidden rounded-xl border border-white/20
-         shadow-lg transition-colors data-[mode=command]:border-white/10"
-			style={`width:${targetW}px; height:${targetH}px`}
-		>
-			<canvas
-				bind:this={canvas}
-				class="block h-full w-full rounded-xl outline-none"
-				on:keydown={onKeyDown}
-				on:click={() => canvas?.focus()}
-			/>
-		</div>
-
-		{#if currentMode === 'command'}
-			<div
-				class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2"
-				style={`width:${targetW}px`}
-			>
-				<div
-					data-mode={currentMode}
-					transition:scale={{ duration: 100, start: 0.8 }}
-					class="w-full rounded-md border border-white/10 bg-black/60 px-3 py-1.5
-             data-[mode=command]:border-white/20"
+<div class="fixed inset-0 flex flex-col items-center justify-center">
+	<div class="flex flex-col gap-2">
+		{#if matchState.active}
+			<div class="pointer-events-none flex gap-2">
+				<span
+					class="rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[11px] uppercase tracking-wide text-emerald-200"
 				>
-					<span class="text-gray-300">:</span>
-					<span class="font-mono text-gray-100">{commandBuf}</span>
-				</div>
+					Round {matchState.active.index + 1}/{matchState.totalRounds}
+				</span>
 			</div>
 		{/if}
+		<div class="relative mb-10">
+			<div
+				data-mode={currentMode}
+				class=" overflow-hidden rounded-xl border border-white/20
+         shadow-lg transition-colors data-[mode=command]:border-white/10"
+				style={`width:${targetW}px; height:${targetH}px`}
+			>
+				<canvas
+					bind:this={canvas}
+					class="block h-full w-full rounded-xl outline-none"
+					on:keydown={onKeyDown}
+					on:click={() => canvas?.focus()}
+				></canvas>
+			</div>
+
+			{#if currentMode === 'command'}
+				<div
+					class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2"
+					style={`width:${targetW}px`}
+				>
+					<div
+						data-mode={currentMode}
+						transition:scale={{ duration: 100, start: 0.8 }}
+						class="w-full rounded-md border border-white/10 bg-black/60 px-3 py-1.5
+             data-[mode=command]:border-white/20"
+					>
+						<span class="text-gray-300">:</span>
+						<span class="font-mono text-gray-100">{commandBuf}</span>
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 <div class="fixed bottom-3 left-4 z-50 font-mono text-gray-100">
-	{avgMs}
+	avg {matchState.completed.length ? averageMs.toFixed(0) : '—'} ms
 </div>
 
-<div class="fixed bottom-3 right-4 z-50 font-mono text-gray-100">
-	{pendingCombo}
-</div>
-<div class="fixed bottom-3 right-4 z-50 font-mono text-gray-100">
-	{pendingCount}
+<div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
+	<div>Round {currentRoundDisplay}/{matchState.totalRounds}</div>
+	<div>{pendingCombo}</div>
+	<div>{pendingCount}</div>
 </div>
