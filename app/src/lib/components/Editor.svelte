@@ -676,6 +676,12 @@
 					else to(lastSearch, lastSearchDirection);
 				}
 			}
+			if (k === ',') {
+				if (lastSearch !== '') {
+					if (lastSearchType === 'find') find(lastSearch, !lastSearchDirection);
+					else to(lastSearch, !lastSearchDirection);
+				}
+			}
 			if (k >= '1' && k <= '9') {
 				e.preventDefault();
 				if (pendingCount == null) pendingCount = k.charCodeAt(0) - 48;
