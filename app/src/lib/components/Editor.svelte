@@ -22,7 +22,8 @@
 
 	let matchState: MatchState = {
 		status: 'idle',
-		totalRounds: 20,
+		totalRounds: 21,
+		scoringRounds: 20,
 		roundIndex: 0,
 		active: null,
 		completed: [],
@@ -33,15 +34,11 @@
 	};
 	let unsubscribeMatch: (() => void) | null = null;
 	let averageMs = 0;
-	let currentRoundDisplay = 1;
-	$: averageMs = matchState.completed.length
-		? matchState.completed.reduce((sum, round) => sum + round.durationMs, 0) /
-			matchState.completed.length
-		: 0;
-	$: currentRoundDisplay =
-		matchState.status === 'complete'
-			? matchState.totalRounds
-			: Math.min(matchState.roundIndex + 1, matchState.totalRounds);
+$: averageMs = matchState.completed.length
+	? matchState.completed.reduce((sum, round) => sum + round.durationMs, 0) /
+		matchState.completed.length
+	: 0;
+$: totalRoundsDisplay = Math.max(1, (matchState.totalRounds ?? 1) - 1);
 
 	let timeLimitMs = 5000;
 	let timeRemaining = timeLimitMs;
@@ -636,8 +633,9 @@
 		clear();
 
 		const limit = timeLimitMs;
-		if (matchState.status === 'running' && matchState.active) {
-			const elapsed = performance.now() - matchState.active.startedAt;
+		if (matchState.active) {
+			const startedAt = matchState.active.startedAt;
+			const elapsed = startedAt == null ? 0 : performance.now() - startedAt;
 			timeRemaining = Math.max(0, limit - elapsed);
 		} else {
 			timeRemaining = limit;
@@ -978,16 +976,18 @@
 <div class="fixed inset-0 flex flex-col items-center justify-center">
 	<div class="flex flex-col gap-2">
 		<div class="flex flex-row items-center justify-between">
-			{#if matchState.active}
-				<div class="pointer-events-none flex gap-2">
-					<span
-						class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
-					>
-						{matchState.active.index + 1}/{matchState.totalRounds}
-					</span>
-				</div>
-			{/if}
-			{#if matchState.status === 'running' && matchState.active}
+		{#if matchState.active}
+			<div class="pointer-events-none flex gap-2">
+				<span
+					class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
+				>
+					{matchState.active.isWarmup
+						? `0/${totalRoundsDisplay}`
+						: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
+				</span>
+			</div>
+		{/if}
+			{#if matchState.active && matchState.status !== 'complete'}
 				<div class="relative h-8 w-8">
 					<CircularProgress value={timerValue} size={32} stroke={1} track="rgba(255,255,255,0.1)" />
 				</div>

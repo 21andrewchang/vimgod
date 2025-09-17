@@ -14,13 +14,15 @@
 		unsubscribe();
 	});
 
-	$: averageMs = state.completed.length
-		? state.completed.reduce((sum, round) => sum + round.durationMs, 0) / state.completed.length
+	$: completedRounds = state.completed.filter((round) => round.index > 0);
+
+	$: averageMs = completedRounds.length
+		? completedRounds.reduce((sum, round) => sum + round.durationMs, 0) / completedRounds.length
 		: 0;
 
 	$: totalKeys =
-		state.completed.reduce((sum, round) => sum + round.keys.length, 0) +
-		(state.active ? state.active.keys.length : 0);
+		completedRounds.reduce((sum, round) => sum + round.keys.length, 0) +
+		(state.active && !state.active.isWarmup ? state.active.keys.length : 0);
 
 	const formatPoints = (value: number) => {
 		const rounded = Math.round(value * 100) / 100;
@@ -28,8 +30,8 @@
 		return `${rounded > 0 ? '+' : ''}${formatted}`;
 	};
 
-	$: timeLimit = state.timeLimitMs ?? (state.completed[0]?.timeLimitMs ?? 5000);
-	$: roundTimes = state.completed.map((round) => round.durationMs);
+	$: timeLimit = state.timeLimitMs ?? completedRounds[0]?.timeLimitMs ?? 5000;
+	$: roundTimes = completedRounds.map((round) => round.durationMs);
 	$: maxTime = roundTimes.length ? Math.max(timeLimit, ...roundTimes) : timeLimit || 1;
 	$: chartPoints = roundTimes.length
 		? roundTimes.map((duration, idx) => {
@@ -76,9 +78,9 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each state.completed as round}
+					{#each completedRounds as round}
 						<tr class="border-b border-white/5">
-							<td class="px-3 py-2 font-mono text-slate-100/90">{round.index + 1}</td>
+							<td class="px-3 py-2 font-mono text-slate-100/90">{round.index}</td>
 							<td class="px-3 py-2 font-mono text-slate-100"
 								>{round.target.sequence.join(' ') || '—'}</td
 							>
@@ -146,7 +148,14 @@
 				</p>
 			</div>
 			<div class="text-right text-sm text-slate-200/70">
-				<div>Round {Math.min(state.roundIndex + 1, state.totalRounds)} / {state.totalRounds}</div>
+				<div>
+					Round
+					{state.active && state.active.isWarmup
+						? 0
+						: Math.min(state.roundIndex + 1, state.scoringRounds)}
+					/
+					{state.scoringRounds}
+				</div>
 				<div>Keys so far: {totalKeys}</div>
 			</div>
 		</div>
