@@ -989,7 +989,7 @@
 			{/if}
 			{#if matchState.active && matchState.status !== 'complete'}
 				<div class="relative flex h-8 w-8 items-center justify-center">
-					<CircularProgress value={timerValue} size={26} stroke={1} track="rgba(255,255,255,0.1)" />
+					<CircularProgress value={timerValue} size={26} stroke={1} />
 				</div>
 			{/if}
 		</div>

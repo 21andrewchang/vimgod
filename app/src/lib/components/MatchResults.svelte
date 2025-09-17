@@ -131,21 +131,21 @@
 			class="mt-6 grid gap-6 text-neutral-200 sm:grid-cols-2 lg:grid-cols-4"
 			aria-hidden={!signedIn}
 		>
-			<div class="rounded-lg border border-white/10 p-4">
+			<div class="rounded-lg border border-white/5 p-4">
 				<div class="font-mono text-xs text-neutral-400">speed</div>
-				<div class="mt-2 font-mono text-2xl">{formatSeconds(averageMs)}</div>
+				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageMs)}</div>
 			</div>
-			<div class="rounded-lg border border-white/10 p-4">
+			<div class="rounded-lg border border-white/5 p-4">
 				<div class="font-mono text-xs text-neutral-400">apm</div>
-				<div class="mt-2 font-mono text-2xl">{formatNumber(apm, 0)}</div>
+				<div class="mt-1 font-mono text-2xl">{formatNumber(apm, 0)}</div>
 			</div>
-			<div class="rounded-lg border border-white/10 p-4">
+			<div class="rounded-lg border border-white/5 p-4">
 				<div class="font-mono text-xs text-neutral-400">efficiency</div>
-				<div class="mt-2 font-mono text-2xl">{formatNumber(averageKeys, 1)} keys</div>
+				<div class="mt-1 font-mono text-2xl">{formatNumber(averageKeys, 1)}</div>
 			</div>
-			<div class="rounded-lg border border-white/10 p-4">
+			<div class="rounded-lg border border-white/5 p-4">
 				<div class="font-mono text-xs text-neutral-400">reaction time</div>
-				<div class="mt-2 font-mono text-2xl">{formatSeconds(averageReaction)}</div>
+				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageReaction)}</div>
 			</div>
 		</div>
 
