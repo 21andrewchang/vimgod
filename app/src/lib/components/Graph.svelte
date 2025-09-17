@@ -11,12 +11,10 @@
 	export let yMax: number | null = null;
 	export let eMax: number | null = null; // right axis (errors)
 	export let gridH = 5; // horizontal grid lines
-	export let color = '#9AE6B4'; // main line
-	export let colorTarget = '#9AE6B4'; // dashed target
-	export let errorColor = '#EF4444'; // red X
+	export let color = 'rgb(194, 123, 255)'; // main line
+	export let colorTarget = 'rgb(194, 123, 255, 0.5)'; // dashed target
 	export let bgGrid = 'rgba(148,163,184,0.18)';
 	export let area = 0.12; // fill under main (0 disables)
-	export let showPoints = true;
 	export let pointRadiusPx = 2.0; // marker radius in CSS pixels
 	export let tension = 0.5; // Catmull-Rom tension (0..1)
 
