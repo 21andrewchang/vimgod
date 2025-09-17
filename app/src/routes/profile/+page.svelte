@@ -33,15 +33,16 @@
     import ContributionHeatmap from '$lib/components/ContributionHeatmap.svelte';
     import MatchTable from '$lib/components/MatchTable.svelte';
     import BgDarkTiles from '$lib/components/BgDarkTiles.svelte';
+    import Footer from '$lib/components/Footer.svelte';
 </script>
   
 
-<BgDarkTiles r={40} c={80} />
+<BgDarkTiles />
 
 <div
-  class="w-full min-h-screen relative overflow-hidden"
+  class="w-full relative overflow-hidden"
 >
-  <div class="relative z-[2] px-6 pt-2 pb-8 max-w-6xl mx-auto space-y-8">
+  <div class="relative z-[2] px-6 pt-8 pb-4 max-w-6xl mx-auto space-y-8">
     <header class="flex items-center justify-between">
         <div class="flex items-center gap-2 cursor-pointer" onmouseenter={handleHeaderMouseEnter} onmouseleave={handleHeaderMouseLeave} onclick={handleHeaderClick}>
           <span class="text-4xl font-normal" style="color:#bc93f9; font-family: 'Sono', sans-serif; font-weight: 400; transform: translateY(-1px);">{`>`}</span>
@@ -79,25 +80,27 @@
     </section>
 
     <!-- Top motions -->
-    <section>
+    <section class="pb-16">
       <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">most used motions</h2>
       <TopMotions {motionCounts} limit={4} />
     </section>
 
     <!-- Motions unlocked/locked -->
-    <section>
+    <!-- <section>
       <h2 class="text-lg font-semibold mb-2">Motions</h2>
       <p class="text-sm text-neutral-500 mb-3">Unlocked vs locked (locked shows "unlock at rank …")</p>
       <MotionsGrid items={motionsGrid} />
-    </section>
+    </section> -->
   
     <!-- Match history -->
-    <section>
+    <!-- <section>
       <h2 class="text-lg font-semibold mb-2">Recent matches</h2>
       <MatchTable {history} />
-    </section>
+    </section> -->
   </div>
   
   <!-- Animated background -->
 
 </div>
+
+<Footer />

@@ -39,8 +39,8 @@
 >
     <!-- Solid border overlay that appears on hover -->
     <div 
-        class="absolute inset-0 border border-solid dark:border-zinc-700 border-zinc-400 transition-opacity duration-300 pointer-events-none"
-        style="opacity: {isHovered ? 1 : 0}; margin: -1px;"
+        class="absolute inset-0 border-solid dark:border-zinc-700 border-zinc-400 transition-opacity duration-300 pointer-events-none"
+        style="opacity: {isHovered ? 1 : 0}; margin: -1px; border-width: 1px;"
     ></div>
     <!-- corner pins -->
     <CardIcon class="-top-2 -left-2" />
