@@ -1,3 +1,11 @@
+<script lang="ts" context="module">
+	let nextGraphId = 0;
+	export const createGraphInstanceId = () => {
+		nextGraphId += 1;
+		return `graph-${nextGraphId}`;
+	};
+</script>
+
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 
@@ -10,13 +18,17 @@
 	export let yMin: number | null = null; // primary axis range
 	export let yMax: number | null = null;
 	export let eMax: number | null = null; // right axis (errors)
-	export let gridH = 5; // horizontal grid lines
+	export let gridH = 4; // horizontal grid lines
 	export let color = 'rgb(194, 123, 255)'; // main line
-	export let colorTarget = 'rgb(194, 123, 255, 0.5)'; // dashed target
+	export let colorTarget = 'rgba(244,63,94,0.3)'; // dashed target
 	export let bgGrid = 'rgba(148,163,184,0.18)';
 	export let area = 0.12; // fill under main (0 disables)
 	export let pointRadiusPx = 2.0; // marker radius in CSS pixels
 	export let tension = 0.5; // Catmull-Rom tension (0..1)
+	const formatYTick = (value: number) => `${Math.round(value / 1000).toLocaleString()}s`;
+	const axisPadLeft = 0;
+	const axisPadRight = 0;
+	const instanceId = createGraphInstanceId();
 
 	// Responsive marker sizing (avoid oval dots with preserveAspectRatio="none")
 	let svgEl: SVGSVGElement;
@@ -30,9 +42,11 @@
 
 	// Derived domains
 	$: N = samples.length;
-	$: xMax = Math.max(1, N - 1); // viewBox width in user units
-	$: pad = { t: 0, b: 0, l: 6, r: 6 };
+	$: xMax = Math.max(1, N - 1); // span of data in user units
+	$: pad = { t: 4, b: 12, l: 6, r: 6 };
 	$: plotH = 100 - pad.t - pad.b;
+	$: viewWidth = xMax + axisPadLeft + axisPadRight;
+	const viewMinX = -axisPadLeft;
 
 	// Y scales
 	$: yVals = samples.map((d) => d.y).concat(target ? target.map((t) => t.y) : []);
@@ -54,8 +68,8 @@
 	};
 
 	// Project to SVG coords
-	$: P = samples.map((d, i) => ({ x: i, y: sy(d.y), err: d.err ?? 0 }));
-	$: T = target ? target.map((d) => ({ x: d.x, y: sy(d.y) })) : null;
+	$: P = samples.map((d, i) => ({ x: axisPadLeft + i, y: sy(d.y), err: d.err ?? 0 }));
+	$: T = target ? target.map((d) => ({ x: axisPadLeft + d.x, y: sy(d.y) })) : null;
 
 	// Smooth line (Catmull-Rom → cubic)
 	function smoothPath(pts: { x: number; y: number }[]) {
@@ -78,77 +92,127 @@
 	}
 	$: dMain = smoothPath(P);
 	$: dTarget = T ? smoothPath(T) : '';
-	$: dArea = dMain ? `${dMain} L ${xMax} ${pad.t + plotH} L 0 ${pad.t + plotH} Z` : '';
+	$: dArea = dMain
+		? `${dMain} L ${axisPadLeft + xMax} ${pad.t + plotH} L ${axisPadLeft} ${pad.t + plotH} Z`
+		: '';
 
 	// Grid
-	$: hTicks = Array.from({ length: gridH + 1 }, (_, i) => pad.t + (plotH * i) / gridH);
-	$: vTicks = Array.from({ length: xMax + 1 }, (_, i) => i);
-
-	// Compensated ellipse radii so markers stay circular on stretched SVG
-	$: rx = (pointRadiusPx * xMax) / (viewportW || 1); // because sx = viewportW / xMax
-	$: ry = (pointRadiusPx * 100) / height; // because sy = height / 100
+	$: segments = Math.max(1, gridH);
+	$: hTicks = Array.from({ length: segments + 1 }, (_, i) => {
+		const y = pad.t + (plotH * i) / segments;
+		return {
+			y,
+			value: y0 + ((segments - i) * (y1 - y0)) / segments,
+			percent: y / 100
+		};
+	});
+	$: vTicks = Array.from({ length: N }, (_, i) => {
+		const svgX = axisPadLeft + i;
+		return {
+			x: i,
+			svgX,
+			label: i + 1,
+			percent: viewWidth ? svgX / viewWidth : 0
+		};
+	});
+	$: axisXPercent = viewWidth ? axisPadLeft / viewWidth : 0;
+	$: xAxisTitlePercent = viewWidth ? (axisPadLeft + xMax + axisPadRight / 2) / viewWidth : 1;
+	$: plotTopPercent = pad.t / 100;
+	$: plotBottomPercent = (pad.t + plotH) / 100;
+	$: cutoffY = target && target.length ? sy(target[0].y) : null;
+	$: cutoffHeight = cutoffY !== null ? Math.max(0, Math.min(pad.t + plotH, cutoffY) - pad.t) : null;
+	$: clipWidth = Math.max(0.0001, xMax);
 </script>
 
-<svg
-	bind:this={svgEl}
-	viewBox={`0 0 ${xMax} 100`}
-	preserveAspectRatio="none"
-	class="w-full"
-	style={`height:${height}px; display:block;`}
-	shape-rendering="geometricPrecision"
->
-	<!-- grid -->
-	{#each hTicks as y}
-		<line
-			x1="0"
-			x2={xMax}
-			y1={y}
-			y2={y}
-			stroke={bgGrid}
-			stroke-width="1"
-			opacity="0.5"
-			vector-effect="non-scaling-stroke"
-		/>
-	{/each}
-	{#each vTicks as x}
-		<line
-			x1={x}
-			x2={x}
-			y1={pad.t}
-			y2={pad.t + plotH}
-			stroke={bgGrid}
-			stroke-width="1"
-			opacity="0.5"
-			vector-effect="non-scaling-stroke"
-		/>
-	{/each}
+<div class="relative w-full" style={`height:${height}px;`}>
+	<svg
+		bind:this={svgEl}
+		viewBox={`${viewMinX} 0 ${viewWidth} 100`}
+		preserveAspectRatio="none"
+		class="h-full w-full"
+		shape-rendering="geometricPrecision"
+	>
+		<!-- grid -->
+		{#each hTicks as tick}
+			<line
+				x1={axisPadLeft}
+				x2={axisPadLeft + xMax}
+				y1={tick.y}
+				y2={tick.y}
+				stroke={bgGrid}
+				stroke-width="1"
+				opacity="0.5"
+				vector-effect="non-scaling-stroke"
+			/>
+		{/each}
+		{#each vTicks as tick}
+			<line
+				x1={tick.svgX}
+				x2={tick.svgX}
+				y1={pad.t}
+				y2={pad.t + plotH}
+				stroke={bgGrid}
+				stroke-width="1"
+				opacity="0.5"
+				vector-effect="non-scaling-stroke"
+			/>
+		{/each}
 
-	<!-- dashed target -->
-	{#if dTarget}
-		<path
-			d={dTarget}
-			fill="none"
-			stroke={colorTarget}
-			stroke-width="2"
-			stroke-dasharray="6 6"
-			opacity="0.6"
-			vector-effect="non-scaling-stroke"
-		/>
-	{/if}
+		{#if cutoffHeight !== null && cutoffHeight > 0}
+			<rect
+				x={axisPadLeft}
+				y={pad.t}
+				width={clipWidth}
+				height={cutoffHeight}
+				fill="rgba(244,63,94,0.1)"
+			/>
+		{/if}
 
-	<!-- area under main -->
-	{#if area > 0 && dArea}
-		<path d={dArea} fill={color} opacity={area} />
-	{/if}
+		<!-- dashed target -->
+		{#if dTarget}
+			<path
+				d={dTarget}
+				fill="none"
+				stroke={colorTarget}
+				stroke-width="2"
+				stroke-dasharray="6 6"
+				opacity="0.6"
+				vector-effect="non-scaling-stroke"
+			/>
+		{/if}
 
-	<!-- main smooth line -->
-	{#if dMain}
-		<path
-			d={dMain}
-			fill="none"
-			stroke={color}
-			stroke-width="2"
-			vector-effect="non-scaling-stroke"
-		/>
-	{/if}
-</svg>
+		<!-- area under main -->
+		{#if area > 0 && dArea}
+			<path d={dArea} fill={color} opacity={area} />
+		{/if}
+
+		<!-- main smooth line -->
+		{#if dMain}
+			<path
+				d={dMain}
+				fill="none"
+				stroke={color}
+				stroke-width="2"
+				vector-effect="non-scaling-stroke"
+			/>
+		{/if}
+	</svg>
+	<div class="pointer-events-none absolute inset-0">
+		{#each hTicks as tick}
+			<div
+				class="absolute font-mono text-[10px]"
+				style={`top:${tick.percent * 100}%; left:${axisXPercent * 100}%; transform: translate(-115%, -50%); color:rgba(226,232,240,0.7);`}
+			>
+				{formatYTick(tick.value)}
+			</div>
+		{/each}
+		{#each vTicks as tick}
+			<div
+				class="absolute font-mono text-[10px]"
+				style={`top:${plotBottomPercent * 100}%; left:${tick.percent * 100}%; transform: translate(-50%, 6px); color:rgba(226,232,240,0.7);`}
+			>
+				{tick.label}
+			</div>
+		{/each}
+	</div>
+</div>
