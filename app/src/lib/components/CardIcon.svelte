@@ -7,9 +7,9 @@
     viewBox="0 0 24 24"
     width="15" height="15"
     stroke="currentColor" fill="none"
-    stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+    stroke-width="2" stroke-linejoin="round"
     class={"absolute " + className}
-    style="color:#e8e8e8"
+    style="color:#3f3f47"
 >
     <path d="M12 6v12m6-6H6" />
 </svg>
