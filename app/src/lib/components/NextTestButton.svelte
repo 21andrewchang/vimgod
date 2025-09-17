@@ -33,10 +33,10 @@
 	<!-- tooltip -->
 	<div
 		class="pointer-events-none absolute left-1/2 top-10 -translate-x-1/2 whitespace-nowrap
-           rounded-md bg-black/80 px-2 py-1 text-xs text-neutral-200 opacity-0
-           transition-opacity duration-150
-           group-hover:opacity-100 group-focus-visible:opacity-100"
+           rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-neutral-200
+           opacity-0 transition-opacity
+           duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
 	>
-		New Match
+		new match
 	</div>
 </button>

@@ -31,7 +31,7 @@
 	// Derived domains
 	$: N = samples.length;
 	$: xMax = Math.max(1, N - 1); // viewBox width in user units
-	$: pad = { t: 8, b: 18, l: 6, r: 6 };
+	$: pad = { t: 0, b: 0, l: 6, r: 6 };
 	$: plotH = 100 - pad.t - pad.b;
 
 	// Y scales
