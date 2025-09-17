@@ -996,8 +996,8 @@
 		<div class="relative mb-10">
 			<div
 				data-mode={currentMode}
-				class=" overflow-hidden rounded-xl border border-white/20
-         shadow-lg transition-colors data-[mode=command]:border-white/10"
+				class=" data-[mode=command]:border-white/7 overflow-hidden rounded-xl border
+         border-white/10 shadow-lg transition-colors"
 				style={`width:${targetW}px; height:${targetH}px`}
 			>
 				<canvas
@@ -1017,7 +1017,7 @@
 						data-mode={currentMode}
 						transition:scale={{ duration: 100, start: 0.8 }}
 						class="w-full rounded-md border border-white/10 bg-black/60 px-3 py-1.5
-             data-[mode=command]:border-white/20"
+             data-[mode=command]:border-white/10"
 					>
 						<span class="text-gray-300">:</span>
 						<span class="font-mono text-gray-100">{commandBuf}</span>
