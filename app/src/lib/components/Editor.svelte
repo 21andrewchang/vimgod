@@ -472,7 +472,7 @@
 		const base = viewBase();
 		const end = Math.min(lines.length, base + MAX_ROWS);
 
-		ctx.fillStyle = '#6b7280';
+		ctx.fillStyle = '#737373';
 		ctx.textAlign = 'right';
 		ctx.font = '16px monospace';
 
@@ -487,7 +487,7 @@
 		}
 
 		ctx.textAlign = 'left';
-		ctx.fillStyle = '#e5e7eb';
+		ctx.fillStyle = '#E4E4E4';
 		ctx.font = '16px monospace';
 
 		for (let r = base; r < end; r++) {

@@ -4,10 +4,6 @@
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController } from '$lib/match/match';
 
-	const cap = `inline-flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-800 border border-[#313131]
-       font-mono text-[10px] leading-none text-neutral-500
-       shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)]`;
-
 	const match = createMatchController({ totalRounds: 20 });
 	let isHeaderHovered = false;
 
@@ -43,7 +39,7 @@
 >
 	<div class="fixed left-8 top-6 z-50">
 		<div
-			class="flex cursor-pointer items-center gap-2"
+			class="flex cursor-pointer items-center gap-2 max-[740px]:hidden"
 			on:mouseenter={handleHeaderMouseEnter}
 			on:mouseleave={handleHeaderMouseLeave}
 			on:click={handleHeaderClick}
@@ -56,13 +52,13 @@
 			</span>
 			<span
 				class="text-3xl font-medium"
-				style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500;"
+				style="color:#E4E4E4; font-family: 'DM Mono', sans-serif; font-weight: 500;"
 			>
 				vimgod
 			</span>
 			<span
 				class="text-3xl font-medium"
-				style={`color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500; transform: translateX(-8px); animation: ${isHeaderHovered ? 'blink 1s infinite' : 'none'};`}
+				style={`color:#E4E4E4; font-family: 'DM Mono', sans-serif; font-weight: 500; transform: translateX(-8px); animation: ${isHeaderHovered ? 'blink 1s infinite' : 'none'};`}
 			>
 				_
 			</span>

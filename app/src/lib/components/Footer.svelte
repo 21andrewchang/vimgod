@@ -112,7 +112,10 @@
 	}
 </script>
 
-<footer bind:this={footerElement} class="fixed bottom-0 left-0 right-0 z-[2] bg-transparent">
+<footer
+	bind:this={footerElement}
+	class="fixed bottom-0 left-0 right-0 z-[2] bg-transparent max-[740px]:hidden"
+>
 	<div class="mx-auto px-6 py-4">
 		<div class="flex flex-col items-center justify-between gap-4 md:flex-row">
 			<!-- Social Links -->
