@@ -109,15 +109,9 @@
     }
 </script>
 
-<footer bind:this={footerElement} class="relative z-[2] border-t border-zinc-700/60 bg-black/20 backdrop-blur-sm">
-    <div class="max-w-6xl mx-auto px-6 py-8">
+<footer bind:this={footerElement} class="fixed bottom-0 left-0 right-0 z-[2] bg-transparent">
+    <div class="max-w-6xl mx-auto px-6 py-6">
         <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-            <!-- Logo/Brand -->
-            <div class="flex items-center gap-2">
-                <span class="text-2xl font-normal" style="color:#bc93f9; font-family: 'Sono', sans-serif; font-weight: 400;">{`>`}</span>
-                <span class="text-xl font-medium" style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500;">vimgod</span>
-            </div>
-            
             <!-- Social Links -->
             <div class="flex items-center gap-6">
                 {#each links as link}
@@ -161,13 +155,13 @@
                     {/if}
                 {/each}
             </div>
-        </div>
-        
-        <!-- Copyright -->
-        <div class="mt-6 pt-6 border-t border-zinc-700/40 text-center">
-            <p class="text-xs" style="color:#8b949e; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
-                © 2025 vimgod. All rights reserved.
-            </p>
+            
+            <!-- Copyright -->
+            <div>
+                <p class="text-xs" style="color:#8b949e; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+                    © 2025 vimgod. All rights reserved.
+                </p>
+            </div>
         </div>
     </div>
     
