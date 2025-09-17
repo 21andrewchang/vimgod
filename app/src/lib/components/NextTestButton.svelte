@@ -18,7 +18,7 @@
 	<!-- chevron icon -->
 	<svg
 		viewBox="0 0 24 24"
-		class="h-5 w-5 text-slate-400 transition-colors duration-150 group-hover:text-purple-300"
+		class="h-5 w-5 text-neutral-400 transition-colors duration-150 group-hover:text-purple-300"
 	>
 		<path
 			d="M9 6l6 6-6 6"
@@ -33,10 +33,10 @@
 	<!-- tooltip -->
 	<div
 		class="pointer-events-none absolute left-1/2 top-10 -translate-x-1/2 whitespace-nowrap
-           rounded-md bg-black/80 px-2 py-1 text-xs text-slate-200 opacity-0
-           transition-opacity duration-150
-           group-hover:opacity-100 group-focus-visible:opacity-100"
+           rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-neutral-200
+           opacity-0 transition-opacity
+           duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
 	>
-		New Match
+		new match
 	</div>
 </button>
