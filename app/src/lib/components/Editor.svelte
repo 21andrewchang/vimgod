@@ -1,6 +1,7 @@
 <script lang="ts">
 	import defaultText from '$lib/default-code.svelte.txt?raw';
 	import { scale } from 'svelte/transition';
+	import CircularProgress from '$lib/components/CircularProgress.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
@@ -21,22 +22,43 @@
 
 	let matchState: MatchState = {
 		status: 'idle',
-		totalRounds: 20,
+		totalRounds: 21,
+		scoringRounds: 20,
 		roundIndex: 0,
 		active: null,
-		completed: []
+		completed: [],
+		timeLimitMs: 5000,
+		totalPoints: 0,
+		maxPoints: 20,
+		pointsPerRound: 1
 	};
 	let unsubscribeMatch: (() => void) | null = null;
 	let averageMs = 0;
-	let currentRoundDisplay = 1;
-	$: averageMs = matchState.completed.length
-		? matchState.completed.reduce((sum, round) => sum + round.durationMs, 0) /
-			matchState.completed.length
-		: 0;
-	$: currentRoundDisplay =
-		matchState.status === 'complete'
-			? matchState.totalRounds
-			: Math.min(matchState.roundIndex + 1, matchState.totalRounds);
+$: averageMs = matchState.completed.length
+	? matchState.completed.reduce((sum, round) => sum + round.durationMs, 0) /
+		matchState.completed.length
+	: 0;
+$: totalRoundsDisplay = Math.max(1, (matchState.totalRounds ?? 1) - 1);
+
+	let timeLimitMs = 5000;
+	let timeRemaining = timeLimitMs;
+	let timerExpired = false;
+	let timeLabel = '0.0s';
+	let totalPoints = 0;
+	let pointsLabel = '+0';
+	let timerBackground = 'conic-gradient(#34d399 360deg, rgba(15, 23, 42, 0.35) 360deg)';
+	let timerColor = '#DDDDDD';
+	let timerProgress = 1; // remaining / limit
+	let timerValue = 0; // elapsed / limit for the ring
+
+	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
+	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
+	$: totalPoints = matchState.totalPoints ?? 0;
+	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
+	$: timerExpired = timeRemaining <= 0;
+	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
+	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
+	$: timerBackground = `conic-gradient(${timerColor} ${timerProgress * 360}deg, rgba(15, 23, 42, 0.35) ${timerProgress * 360}deg)`;
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -260,6 +282,16 @@
 		let curr_col = cursor.col;
 		let new_row = cursor.row;
 		let new_col = curr_col;
+		if (
+			!reverse &&
+			curr_col < lines[curr_row].length - 1 &&
+			lines[curr_row][curr_col + 1] === char
+		) {
+			curr_col++;
+		}
+		if (reverse && curr_col > 0 && lines[curr_row][curr_col - 1] === char) {
+			curr_col--;
+		}
 		if (!reverse && curr_col < lines[curr_row].length - 1) {
 			new_col = curr_col + 1;
 		} else if (reverse && curr_col > 0) {
@@ -442,6 +474,7 @@
 
 		ctx.fillStyle = '#6b7280';
 		ctx.textAlign = 'right';
+		ctx.font = '16px monospace';
 
 		for (let r = base; r < end; r++) {
 			const isCurrent = r === cursor.row;
@@ -502,63 +535,80 @@
 		const base = viewBase();
 		const top = base;
 		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
-		const row = randInt(top, bottom);
-		const len = lines[row]?.length ?? 0;
-		let col = len > 0 ? randInt(0, Math.max(0, len - 1)) : 0;
-		if (row === cursor.row && col === cursor.col && len > 1) {
-			col = col === 0 ? 1 : col - 1;
+		const candidates: Array<{ row: number; col: number }> = [];
+		for (let r = top; r <= bottom; r++) {
+			const line = lines[r] ?? '';
+			const len = line.length;
+			const last = Math.max(0, len ? len - 1 : 0);
+			for (let c = 0; c <= last; c++) {
+				if (c !== 0 && c < len) {
+					const ch = line[c];
+					if (ch === ' ' || ch === '\t') continue;
+				}
+				if (r !== cursor.row || c !== cursor.col) {
+					candidates.push({ row: r, col: c });
+				}
+			}
 		}
-		return { row, col };
+		if (!candidates.length) {
+			return { row: cursor.row, col: cursor.col };
+		}
+		return candidates[randInt(0, candidates.length - 1)];
 	}
 
-	type BasicMove = 'h' | 'j' | 'k' | 'l';
+	type MovementResult = { target: { row: number; col: number }; sequence: string[] };
 
-	function basicMoveOptions(pos: { row: number; col: number }): BasicMove[] {
-		const moves: BasicMove[] = [];
-		const maxCol = Math.max(0, lineLen(pos.row));
-		if (pos.col > 0) moves.push('h');
-		if (pos.col < maxCol) moves.push('l');
-		if (pos.row > 0) moves.push('k');
-		if (pos.row < lines.length - 1) moves.push('j');
-		return moves;
+	function toDigitKeys(count: number) {
+		return count > 1 ? String(count).split('') : [];
 	}
 
-	function applyBasicMove(pos: { row: number; col: number }, move: BasicMove) {
-		if (move === 'h') {
-			return { row: pos.row, col: Math.max(0, pos.col - 1) };
+	function goalColumnForRow(row: number) {
+		const desired = cursor.goalCol ?? cursor.col;
+		const max = Math.max(0, lineLen(row));
+		return clamp(desired, 0, max);
+	}
+
+	function firstNonWhitespace(line: string) {
+		for (let i = 0; i < line.length; i++) {
+			const ch = line[i];
+			if (ch !== ' ' && ch !== '\t') return i;
 		}
-		if (move === 'l') {
-			const maxCol = Math.max(0, lineLen(pos.row));
-			return { row: pos.row, col: Math.min(maxCol, pos.col + 1) };
+		return -1;
+	}
+
+	function simulateSearchMotion(
+		char: string,
+		type: 'find' | 'to',
+		reverse: boolean,
+		startRow: number,
+		startCol: number
+	): { row: number; col: number } | null {
+		const line = lines[startRow] ?? '';
+		if (!line.length) return null;
+		const step = reverse ? -1 : 1;
+		let idx = reverse
+			? Math.min(startCol - 1, line.length - 1)
+			: Math.min(startCol + 1, line.length - 1);
+		while (idx >= 0 && idx < line.length) {
+			if (line[idx] === char) {
+				if (type === 'find') {
+					if (idx === startCol) return null;
+					return { row: startRow, col: idx };
+				}
+				const offset = reverse ? 1 : -1;
+				const nextCol = idx + offset;
+				if (nextCol < 0 || nextCol >= line.length) return null;
+				if (nextCol === startCol) return null;
+				return { row: startRow, col: nextCol };
+			}
+			idx += step;
 		}
-		if (move === 'j') {
-			const nextRow = Math.min(lines.length - 1, pos.row + 1);
-			const maxCol = Math.max(0, lineLen(nextRow));
-			return { row: nextRow, col: Math.min(maxCol, pos.col) };
-		}
-		// move === 'k'
-		const prevRow = Math.max(0, pos.row - 1);
-		const maxCol = Math.max(0, lineLen(prevRow));
-		return { row: prevRow, col: Math.min(maxCol, pos.col) };
+		return null;
 	}
 
 	function generateSequenceTarget(): MatchTarget {
-		const start = { row: cursor.row, col: cursor.col };
-		let current = { ...start };
-		const steps: BasicMove[] = [];
-		const stepBudget = randInt(1, 4);
-		for (let i = 0; i < stepBudget; i++) {
-			const options = basicMoveOptions(current);
-			if (!options.length) break;
-			const move = options[randInt(0, options.length - 1)];
-			current = applyBasicMove(current, move);
-			steps.push(move);
-		}
-		if (!steps.length || (current.row === start.row && current.col === start.col)) {
-			const fallback = randomTargetInViewport();
-			return { row: fallback.row, col: fallback.col, sequence: [] };
-		}
-		return { row: current.row, col: current.col, sequence: steps.map((s) => s) };
+		const fallback = randomTargetInViewport();
+		return { row: fallback.row, col: fallback.col, sequence: [] };
 	}
 
 	function drawGhostMove() {
@@ -573,7 +623,7 @@
 		const rowTop = paddingY + (target.row - base) * lineHeight;
 		const caretH = Math.max(1, lineHeight - 1);
 		ctx.save();
-		ctx.fillStyle = '#93c5fd';
+		ctx.fillStyle = 'rgb(194, 123, 255)';
 		ctx.globalAlpha = 0.5;
 		ctx.lineWidth = 1.5;
 		ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
@@ -581,6 +631,17 @@
 	}
 	function draw() {
 		clear();
+
+		const limit = timeLimitMs;
+		if (matchState.active) {
+			const startedAt = matchState.active.startedAt;
+			const elapsed = startedAt == null ? 0 : performance.now() - startedAt;
+			timeRemaining = Math.max(0, limit - elapsed);
+		} else {
+			timeRemaining = limit;
+		}
+		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
+
 		drawGhostMove();
 		if (state === 'vim') {
 			drawText();
@@ -914,15 +975,24 @@
 
 <div class="fixed inset-0 flex flex-col items-center justify-center">
 	<div class="flex flex-col gap-2">
+		<div class="flex flex-row items-center justify-between">
 		{#if matchState.active}
 			<div class="pointer-events-none flex gap-2">
 				<span
-					class="rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[11px] uppercase tracking-wide text-emerald-200"
+					class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
 				>
-					Round {matchState.active.index + 1}/{matchState.totalRounds}
+					{matchState.active.isWarmup
+						? `0/${totalRoundsDisplay}`
+						: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
 				</span>
 			</div>
 		{/if}
+			{#if matchState.active && matchState.status !== 'complete'}
+				<div class="relative h-8 w-8">
+					<CircularProgress value={timerValue} size={32} stroke={1} track="rgba(255,255,255,0.1)" />
+				</div>
+			{/if}
+		</div>
 		<div class="relative mb-10">
 			<div
 				data-mode={currentMode}
@@ -957,12 +1027,8 @@
 		</div>
 	</div>
 </div>
-<div class="fixed bottom-3 left-4 z-50 font-mono text-gray-100">
-	avg {matchState.completed.length ? averageMs.toFixed(0) : '—'} ms
-</div>
 
 <div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
-	<div>Round {currentRoundDisplay}/{matchState.totalRounds}</div>
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
