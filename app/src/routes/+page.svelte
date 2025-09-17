@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Footer from '$lib/components/Footer.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController } from '$lib/match/match';
@@ -74,28 +75,5 @@
 	{:else}
 		<MatchResults {match} />
 	{/if}
-	<div class="absolute bottom-10 left-1/2 -translate-x-1/2">
-		<div class="flex items-center gap-16 text-[10px]">
-			<div class="flex gap-2">
-				<kbd class={cap}>h</kbd><span class="text-neutral-700">–</span><span
-					class="font-mono text-neutral-700">left</span
-				>
-			</div>
-			<div class="flex gap-2">
-				<kbd class="{cap} pb-[2px]">j</kbd><span class="text-neutral-700">–</span><span
-					class="font-mono text-neutral-700">down</span
-				>
-			</div>
-			<div class="flex gap-2">
-				<kbd class={cap}>k</kbd><span class="text-neutral-700">–</span><span
-					class="font-mono text-neutral-700">up</span
-				>
-			</div>
-			<div class="flex gap-2">
-				<kbd class={cap}>l</kbd><span class="text-neutral-700">–</span><span
-					class="font-mono text-neutral-700">right</span
-				>
-			</div>
-		</div>
-	</div>
+	<Footer />
 </main>
