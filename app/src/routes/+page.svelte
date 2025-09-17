@@ -3,7 +3,7 @@
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController } from '$lib/match/match';
 
-	const cap = `inline-flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-800
+	const cap = `inline-flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-800 border border-[#313131]
        font-mono text-[10px] leading-none text-neutral-500
        shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)]`;
 
@@ -82,7 +82,7 @@
 				>
 			</div>
 			<div class="flex gap-2">
-				<kbd class={cap}>j</kbd><span class="text-neutral-700">–</span><span
+				<kbd class="{cap} pb-[2px]">j</kbd><span class="text-neutral-700">–</span><span
 					class="font-mono text-neutral-700">down</span
 				>
 			</div>
