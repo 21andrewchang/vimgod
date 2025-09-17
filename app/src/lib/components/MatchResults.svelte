@@ -14,6 +14,7 @@
 	const unsubscribe = match.subscribe((value) => (state = value));
 	onDestroy(unsubscribe);
 
+	console.log(state.completed);
 	$: completedRounds = state.completed.filter((round) => round.index > 0);
 	$: wins = completedRounds.filter((round) => round.succeeded).length;
 	$: losses = completedRounds.length - wins;
@@ -35,6 +36,47 @@
 				0
 			) / roundsWithKeys.length
 		: 0;
+
+	const IGNORED_KEYS = new Set([
+		'Alt',
+		'AltGraph',
+		'AltLeft',
+		'AltRight',
+		'CapsLock',
+		'Control',
+		'ControlLeft',
+		'ControlRight',
+		'Meta',
+		'MetaLeft',
+		'MetaRight',
+		'Shift',
+		'ShiftLeft',
+		'ShiftRight',
+		'Tab',
+		'Enter',
+		'Backspace'
+	]);
+	const isTrackableKey = (key: string) => {
+		if (!key) return false;
+		if (IGNORED_KEYS.has(key)) return false;
+		if (key.length === 1 && /[0-9]/.test(key)) return false;
+		return true;
+	};
+
+	$: keyFrequency = completedRounds.reduce<Record<string, number>>((acc, round) => {
+		round.keys.forEach((entry) => {
+			if (!isTrackableKey(entry.key)) return;
+			acc[entry.key] = (acc[entry.key] ?? 0) + 1;
+		});
+		return acc;
+	}, {});
+	$: mostUsedKey = Object.entries(keyFrequency).reduce<{ key: string; count: number } | null>(
+		(current, [key, count]) => {
+			if (!current || count > current.count) return { key, count };
+			return current;
+		},
+		null
+	);
 
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
@@ -62,7 +104,7 @@
 	const elo = 1500;
 </script>
 
-<div class="w-full rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
+<div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
 	{#if state.status === 'complete'}
 		<div class="flex items-center gap-16">
 			<div class="flex items-center justify-center">
@@ -128,22 +170,32 @@
 		</div>
 
 		<div
-			class="mt-6 grid gap-6 text-neutral-200 sm:grid-cols-2 lg:grid-cols-4"
+			class="mt-6 grid grid-cols-1 gap-x-8 gap-y-0 text-neutral-200
+	 sm:grid-cols-3 sm:gap-x-40
+         lg:grid-cols-6 lg:gap-x-8"
 			aria-hidden={!signedIn}
 		>
-			<div class="rounded-lg border border-white/5 p-4">
-				<div class="font-mono text-xs text-neutral-400">speed</div>
+			<div class="items-center rounded-lg p-4">
+				<div class=" font-mono text-xs text-neutral-400">avg speed</div>
 				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageMs)}</div>
 			</div>
-			<div class="rounded-lg border border-white/5 p-4">
-				<div class="font-mono text-xs text-neutral-400">apm</div>
-				<div class="mt-1 font-mono text-2xl">{formatNumber(apm, 0)}</div>
-			</div>
-			<div class="rounded-lg border border-white/5 p-4">
+			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">efficiency</div>
 				<div class="mt-1 font-mono text-2xl">{formatNumber(averageKeys, 1)}</div>
 			</div>
-			<div class="rounded-lg border border-white/5 p-4">
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">most used</div>
+				<div class="mt-1 font-mono text-2xl">{mostUsedKey ? mostUsedKey.key : '—'}</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">least used</div>
+				<div class="mt-1 font-mono text-2xl">V</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">apm</div>
+				<div class="mt-1 font-mono text-2xl">{formatNumber(apm, 0)}</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">reaction time</div>
 				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageReaction)}</div>
 			</div>

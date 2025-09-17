@@ -45,19 +45,19 @@
 			on:click={handleHeaderClick}
 		>
 			<span
-				class="text-4xl font-normal"
-				style="color:#bc93f9; font-family: 'Sono', sans-serif; font-weight: 400; transform: translateY(-1px);"
+				class="text-2xl font-normal text-purple-400"
+				style=" font-family: 'Sono', sans-serif; font-weight: 400; transform: translateY(-1px);"
 			>
 				{`>`}
 			</span>
 			<span
-				class="text-3xl font-medium"
+				class="text-xl font-medium"
 				style="color:#E4E4E4; font-family: 'DM Mono', sans-serif; font-weight: 500;"
 			>
 				vimgod
 			</span>
 			<span
-				class="text-3xl font-medium"
+				class="text-xl font-medium"
 				style={`color:#E4E4E4; font-family: 'DM Mono', sans-serif; font-weight: 500; transform: translateX(-8px); animation: ${isHeaderHovered ? 'blink 1s infinite' : 'none'};`}
 			>
 				_

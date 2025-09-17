@@ -123,7 +123,7 @@
 				{#each links as link}
 					{#if link.name === 'twitter'}
 						<div
-							class="flex items-center gap-2 font-mono text-sm text-neutral-700 transition-colors duration-200 hover:text-neutral-200 {isTwitterTextHovered ||
+							class="flex items-center gap-2 font-mono text-xs text-neutral-700 transition-colors duration-200 hover:text-neutral-200 {isTwitterTextHovered ||
 							isBubbleHovered
 								? 'text-neutral-200'
 								: ''} animated-underline cursor-pointer {isTwitterTextHovered || isBubbleHovered
@@ -148,7 +148,7 @@
 							href={link.url}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="animated-underline flex items-center gap-2 font-mono text-sm !text-neutral-700 transition-colors duration-200 hover:!text-neutral-200"
+							class="animated-underline flex items-center gap-2 font-mono text-xs !text-neutral-700 transition-colors duration-200 hover:!text-neutral-200"
 						>
 							<svg
 								width="16"
