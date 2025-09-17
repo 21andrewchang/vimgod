@@ -1,3 +1,11 @@
+<script lang="ts" context="module">
+	let nextGraphId = 0;
+	export const createGraphInstanceId = () => {
+		nextGraphId += 1;
+		return `graph-${nextGraphId}`;
+	};
+</script>
+
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 
@@ -20,6 +28,7 @@
 	const formatYTick = (value: number) => `${Math.round(value / 1000).toLocaleString()}s`;
 	const axisPadLeft = 0;
 	const axisPadRight = 0;
+	const instanceId = createGraphInstanceId();
 
 	// Responsive marker sizing (avoid oval dots with preserveAspectRatio="none")
 	let svgEl: SVGSVGElement;
@@ -112,10 +121,7 @@
 	$: plotBottomPercent = (pad.t + plotH) / 100;
 	$: cutoffY = target && target.length ? sy(target[0].y) : null;
 	$: cutoffHeight = cutoffY !== null ? Math.max(0, Math.min(pad.t + plotH, cutoffY) - pad.t) : null;
-
-	// Compensated ellipse radii so markers stay circular on stretched SVG
-	$: rx = viewportW ? (pointRadiusPx * viewWidth) / viewportW : pointRadiusPx;
-	$: ry = (pointRadiusPx * 100) / height; // because sy = height / 100
+	$: clipWidth = Math.max(0.0001, xMax);
 </script>
 
 <div class="relative w-full" style={`height:${height}px;`}>
@@ -156,7 +162,7 @@
 			<rect
 				x={axisPadLeft}
 				y={pad.t}
-				width={xMax}
+				width={clipWidth}
 				height={cutoffHeight}
 				fill="rgba(244,63,94,0.1)"
 			/>
