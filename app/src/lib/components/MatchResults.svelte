@@ -78,6 +78,55 @@
 		null
 	);
 
+	const RANK_VALUES = {
+		bronze4: 0,
+		bronze3: 100,
+		bronze2: 200,
+		bronze1: 300,
+		silver4: 400,
+		silver3: 500,
+		silver2: 600,
+		silver1: 700,
+		gold4: 800,
+		gold3: 900,
+		gold2: 1000,
+		gold1: 1100,
+		platinum4: 1200,
+		platinum3: 1300,
+		platinum2: 1400,
+		platinum1: 1500,
+		diamond4: 1600,
+		diamond3: 1700,
+		diamond2: 1800,
+		diamond1: 1900,
+		masters: 2000,
+		grandmaster: 2100,
+		challenger: 2200
+	} as const;
+
+	const rankBands = [
+		{ label: 'Masters+', maxMs: 900, value: RANK_VALUES.masters },
+		{ label: 'Diamond 1', maxMs: 1000, value: RANK_VALUES.diamond1 },
+		{ label: 'Platinum 1', maxMs: 2000, value: RANK_VALUES.platinum1 },
+		{ label: 'Gold 1', maxMs: 3000, value: RANK_VALUES.gold1 },
+		{ label: 'Silver 1', maxMs: 4000, value: RANK_VALUES.silver1 },
+		{ label: 'Bronze 1', maxMs: 5000, value: RANK_VALUES.bronze1 },
+		{ label: 'Bronze 4', maxMs: Number.POSITIVE_INFINITY, value: RANK_VALUES.bronze4 }
+	] as const;
+
+	const PLACEMENT_CAP = RANK_VALUES.gold4;
+
+	$: projectedRankValue = completedRounds.length
+		? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
+		: null;
+	$: placementRankValue = projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP);
+	$: projectedRankValue !== null &&
+		console.log('Projected rank (avg ms):', {
+			averageMs,
+			projectedRankValue,
+			placementRankValue
+		});
+
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
 	$: dashed = roundDurations.length
