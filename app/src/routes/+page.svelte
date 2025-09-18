@@ -3,6 +3,7 @@
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController } from '$lib/match/match';
+	import '$lib/stores/auth'; // Initialize auth store
 
 	const match = createMatchController({ totalRounds: 20 });
 	let isHeaderHovered = false;

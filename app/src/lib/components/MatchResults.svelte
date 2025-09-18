@@ -5,10 +5,12 @@
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import type { MatchController, MatchState } from '$lib/match/match';
+	import { user, signInWithGoogle } from '$lib/stores/auth';
 
 	export let match: MatchController;
-	// ← pass this from your auth store/router
-	export let signedIn = false;
+	
+	// Use auth store instead of prop
+	$: signedIn = !!$user;
 
 	let state: MatchState = get(match);
 	const unsubscribe = match.subscribe((value) => (state = value));
@@ -127,7 +129,7 @@
 							/>
 						</svg>
 						<button
-							on:click={() => goto('/profile')}
+							on:click={signInWithGoogle}
 							class="z-50 underline transition hover:text-neutral-200"
 						>
 							sign in
