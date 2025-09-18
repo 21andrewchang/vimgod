@@ -23,12 +23,15 @@
 	export let colorTarget = 'rgba(244,63,94,0.3)'; // dashed target
 	export let bgGrid = 'rgba(148,163,184,0.18)';
 	export let area = 0.12; // fill under main (0 disables)
-	export let pointRadiusPx = 2.0; // marker radius in CSS pixels
 	export let tension = 0.5; // Catmull-Rom tension (0..1)
-	const formatYTick = (value: number) => `${Math.round(value / 1000).toLocaleString()}s`;
+	const formatYTick = (ms: number) => {
+		const s = ms / 1000;
+		if (s >= 10) return `${Math.round(s)}s`; // 10s, 11s, ...
+		if (s >= 1) return `${s.toFixed(1)}s`; // 1.2s, 3.7s, ...
+		return `${s.toFixed(0)}s`; // 0.25s, 0.95s
+	};
 	const axisPadLeft = 0;
 	const axisPadRight = 0;
-	const instanceId = createGraphInstanceId();
 
 	// Responsive marker sizing (avoid oval dots with preserveAspectRatio="none")
 	let svgEl: SVGSVGElement;
@@ -200,16 +203,16 @@
 	<div class="pointer-events-none absolute inset-0">
 		{#each hTicks as tick}
 			<div
-				class="absolute font-mono text-[10px]"
-				style={`top:${tick.percent * 100}%; left:${axisXPercent * 100}%; transform: translate(-115%, -50%); color:rgba(226,232,240,0.7);`}
+				class="absolute font-mono text-[10px] text-neutral-600"
+				style={`top:${tick.percent * 100}%; left:${axisXPercent * 100}%; transform: translate(-115%, -50%); `}
 			>
 				{formatYTick(tick.value)}
 			</div>
 		{/each}
 		{#each vTicks as tick}
 			<div
-				class="absolute font-mono text-[10px]"
-				style={`top:${plotBottomPercent * 100}%; left:${tick.percent * 100}%; transform: translate(-50%, 6px); color:rgba(226,232,240,0.7);`}
+				class="absolute font-mono text-[10px] text-neutral-600"
+				style={`top:${plotBottomPercent * 100}%; left:${tick.percent * 100}%; transform: translate(-50%, 6px); `}
 			>
 				{tick.label}
 			</div>

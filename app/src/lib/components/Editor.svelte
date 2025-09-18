@@ -472,7 +472,7 @@
 		const base = viewBase();
 		const end = Math.min(lines.length, base + MAX_ROWS);
 
-		ctx.fillStyle = '#6b7280';
+		ctx.fillStyle = '#737373';
 		ctx.textAlign = 'right';
 		ctx.font = '16px monospace';
 
@@ -487,7 +487,7 @@
 		}
 
 		ctx.textAlign = 'left';
-		ctx.fillStyle = '#e5e7eb';
+		ctx.fillStyle = '#E4E4E4';
 		ctx.font = '16px monospace';
 
 		for (let r = base; r < end; r++) {
@@ -989,15 +989,15 @@
 			{/if}
 			{#if matchState.active && matchState.status !== 'complete'}
 				<div class="relative flex h-8 w-8 items-center justify-center">
-					<CircularProgress value={timerValue} size={26} stroke={1} track="rgba(255,255,255,0.1)" />
+					<CircularProgress value={timerValue} size={26} stroke={1} />
 				</div>
 			{/if}
 		</div>
 		<div class="relative mb-10">
 			<div
 				data-mode={currentMode}
-				class=" overflow-hidden rounded-xl border border-white/20
-         shadow-lg transition-colors data-[mode=command]:border-white/10"
+				class=" data-[mode=command]:border-white/7 overflow-hidden rounded-xl border
+         border-white/10 shadow-lg transition-colors"
 				style={`width:${targetW}px; height:${targetH}px`}
 			>
 				<canvas
@@ -1017,7 +1017,7 @@
 						data-mode={currentMode}
 						transition:scale={{ duration: 100, start: 0.8 }}
 						class="w-full rounded-md border border-white/10 bg-black/60 px-3 py-1.5
-             data-[mode=command]:border-white/20"
+             data-[mode=command]:border-white/10"
 					>
 						<span class="text-gray-300">:</span>
 						<span class="font-mono text-gray-100">{commandBuf}</span>

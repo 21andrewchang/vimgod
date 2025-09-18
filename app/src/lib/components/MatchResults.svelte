@@ -1,21 +1,20 @@
 <script lang="ts">
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
+	import { goto } from '$app/navigation';
 	import Graph from '$lib/components/Graph.svelte';
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import type { MatchController, MatchState } from '$lib/match/match';
 
 	export let match: MatchController;
+	// ← pass this from your auth store/router
+	export let signedIn = false;
 
 	let state: MatchState = get(match);
-	const unsubscribe = match.subscribe((value) => {
-		state = value;
-	});
+	const unsubscribe = match.subscribe((value) => (state = value));
+	onDestroy(unsubscribe);
 
-	onDestroy(() => {
-		unsubscribe();
-	});
-
+	console.log(state.completed);
 	$: completedRounds = state.completed.filter((round) => round.index > 0);
 	$: wins = completedRounds.filter((round) => round.succeeded).length;
 	$: losses = completedRounds.length - wins;
@@ -23,13 +22,63 @@
 	$: lpDelta = state.totalPoints;
 
 	$: averageMs = completedRounds.length
-		? completedRounds.reduce((sum, round) => sum + round.durationMs, 0) / completedRounds.length
+		? completedRounds.reduce((s, r) => s + r.durationMs, 0) / completedRounds.length
 		: 0;
 
-	$: totalKeys =
-		completedRounds.reduce((sum, round) => sum + round.keys.length, 0) +
-		(state.active && !state.active.isWarmup ? state.active.keys.length : 0);
-	$: roundDurations = completedRounds.map((round) => round.durationMs);
+	$: totalKeys = completedRounds.reduce((s, r) => s + r.keys.length, 0);
+	$: totalDurationMs = completedRounds.reduce((s, r) => s + r.durationMs, 0);
+	$: averageKeys = completedRounds.length ? totalKeys / completedRounds.length : 0;
+	$: apm = totalDurationMs > 0 ? (totalKeys / totalDurationMs) * 60000 : 0;
+	$: roundsWithKeys = completedRounds.filter((round) => round.keys.length > 0);
+	$: averageReaction = roundsWithKeys.length
+		? roundsWithKeys.reduce(
+				(sum, round) => sum + Math.max(0, round.keys[0].at - round.startedAt),
+				0
+			) / roundsWithKeys.length
+		: 0;
+
+	const IGNORED_KEYS = new Set([
+		'Alt',
+		'AltGraph',
+		'AltLeft',
+		'AltRight',
+		'CapsLock',
+		'Control',
+		'ControlLeft',
+		'ControlRight',
+		'Meta',
+		'MetaLeft',
+		'MetaRight',
+		'Shift',
+		'ShiftLeft',
+		'ShiftRight',
+		'Tab',
+		'Enter',
+		'Backspace'
+	]);
+	const isTrackableKey = (key: string) => {
+		if (!key) return false;
+		if (IGNORED_KEYS.has(key)) return false;
+		if (key.length === 1 && /[0-9]/.test(key)) return false;
+		return true;
+	};
+
+	$: keyFrequency = completedRounds.reduce<Record<string, number>>((acc, round) => {
+		round.keys.forEach((entry) => {
+			if (!isTrackableKey(entry.key)) return;
+			acc[entry.key] = (acc[entry.key] ?? 0) + 1;
+		});
+		return acc;
+	}, {});
+	$: mostUsedKey = Object.entries(keyFrequency).reduce<{ key: string; count: number } | null>(
+		(current, [key, count]) => {
+			if (!current || count > current.count) return { key, count };
+			return current;
+		},
+		null
+	);
+
+	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
 	$: dashed = roundDurations.length
 		? roundDurations.map((_, index) => ({ x: index, y: state.timeLimitMs }))
@@ -40,34 +89,116 @@
 		const formatted = Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(2);
 		return `${rounded > 0 ? '+' : ''}${formatted}`;
 	};
+	const formatSeconds = (value: number) => `${(value / 1000).toFixed(2)}s`;
+	const formatNumber = (value: number, digits = 1) => {
+		if (!Number.isFinite(value)) return digits > 0 ? `0.${'0'.repeat(digits)}` : '0';
+		return value.toFixed(digits);
+	};
+
 	const playAgain = () => {
 		match.reset();
 		match.start();
 	};
+
 	const graphHeight = 200;
 	const elo = 1500;
 </script>
 
-<div class="w-full rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
+<div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
 	{#if state.status === 'complete'}
-		<div class="flex items-center gap-10">
-			<div class="box-border flex h-full flex-col justify-between gap-10 rounded-md">
-				<div>
-					<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">ELO</div>
-					<div class="font-mono text-5xl text-slate-100">{elo}</div>
-				</div>
-				<div>
-					<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">{matchOutcome}</div>
-					<div class={`font-mono text-5xl ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-						{formatPoints(lpDelta)}
+		<div class="flex items-center gap-16">
+			<div class="flex items-center justify-center">
+				{#if !signedIn}
+					<div class=" absolute flex flex-col items-center p-20 font-mono text-xs text-neutral-400">
+						<svg
+							viewBox="0 0 24 24"
+							class="h-4 w-3 self-center text-neutral-400"
+							aria-hidden="true"
+						>
+							<!-- Heroicons solid: lock-closed -->
+							<path
+								fill="currentColor"
+								fill-rule="evenodd"
+								d="M12 1.5A5.25 5.25 0 0 0 6.75 6.75V9
+       A2.25 2.25 0 0 0 4.5 11.25v6A2.25 2.25 0 0 0 6.75 19.5h10.5
+       A2.25 2.25 0 0 0 19.5 17.25v-6A2.25 2.25 0 0 0 17.25 9V6.75
+       A5.25 5.25 0 0 0 12 1.5zm-3 7.5V6.75a3 3 0 1 1 6 0V9H9z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+						<button
+							on:click={() => goto('/profile')}
+							class="z-50 underline transition hover:text-neutral-200"
+						>
+							sign in
+						</button>
+						<div>to play ranked</div>
+					</div>
+				{/if}
+
+				<div
+					class="relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
+					class:blur-sm={!signedIn}
+					class:opacity-50={!signedIn}
+					aria-hidden={!signedIn}
+				>
+					<div>
+						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">ELO</div>
+						<div class="font-mono text-5xl text-slate-100 transition" class:opacity-60={!signedIn}>
+							{elo}
+						</div>
+					</div>
+
+					<div>
+						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
+							{matchOutcome}
+						</div>
+						<div
+							class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+							class:opacity-60={!signedIn}
+						>
+							{formatPoints(lpDelta)}
+						</div>
 					</div>
 				</div>
 			</div>
 
-			<!-- Graph fills remaining width and centers vertically just in case -->
-				<div class="flex h-full min-w-0 flex-1 items-center">
-					<Graph {samples} target={dashed} height={graphHeight} yMin={0} />
-				</div>
+			<!-- RIGHT: graph -->
+			<div class="flex h-full min-w-0 flex-1 items-center">
+				<Graph {samples} target={dashed} height={graphHeight} yMin={0} />
+			</div>
+		</div>
+
+		<div
+			class="mt-6 grid grid-cols-1 gap-x-8 gap-y-0 text-neutral-200
+	 sm:grid-cols-3 sm:gap-x-40
+         lg:grid-cols-6 lg:gap-x-8"
+			aria-hidden={!signedIn}
+		>
+			<div class="items-center rounded-lg p-4">
+				<div class=" font-mono text-xs text-neutral-400">avg speed</div>
+				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageMs)}</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">efficiency</div>
+				<div class="mt-1 font-mono text-2xl">{formatNumber(averageKeys, 1)}</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">most used</div>
+				<div class="mt-1 font-mono text-2xl">{mostUsedKey ? mostUsedKey.key : '—'}</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">least used</div>
+				<div class="mt-1 font-mono text-2xl">V</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">apm</div>
+				<div class="mt-1 font-mono text-2xl">{formatNumber(apm, 0)}</div>
+			</div>
+			<div class="items-center rounded-lg p-4">
+				<div class="font-mono text-xs text-neutral-400">reaction time</div>
+				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageReaction)}</div>
+			</div>
 		</div>
 
 		<div class="mt-4 flex justify-center">
