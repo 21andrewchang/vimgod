@@ -5,8 +5,16 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
+	import { supabase } from '$lib/supabaseClient';
+	import { user } from '$lib/stores/auth';
 	import { createVimController, type Cursor, type Mode } from '$lib/vim/vim';
-	import type { MatchController, MatchState, MatchTarget } from '$lib/match/match';
+	import type {
+		MatchController,
+		MatchState,
+		MatchTarget,
+		PlayerSelection,
+		HighlightSelection
+	} from '$lib/match/match';
 
 	const COLS = 64; // pick what looks right; fixed column budget
 	const GUTTER_PAD = 20; // space for line numbers + gap
@@ -17,6 +25,16 @@
 	const ROWS = 15;
 	const MAX_ROWS = ROWS; // keep these in lockstep
 	const TEXT_TOP = 38;
+
+const PLATINUM_THRESHOLD = 1200;
+const HIGHLIGHT_CHANCE = 0.4;
+const CARET_STEP = 9.6328;
+
+	type RoundBracket = 'movement-only' | 'highlight-enabled';
+
+	let roundBracket: RoundBracket = 'movement-only';
+	let loadingRating = false;
+	let unsubscribeUser: (() => void) | undefined;
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -47,19 +65,16 @@
 	let timeLabel = '0.0s';
 	let totalPoints = 0;
 	let pointsLabel = '+0';
-	let timerBackground = 'conic-gradient(#34d399 360deg, rgba(15, 23, 42, 0.35) 360deg)';
 	let timerColor = '#DDDDDD';
 	let timerProgress = 1; // remaining / limit
-	let timerValue = 0; // elapsed / limit for the ring
 
-	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
+	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: totalPoints = matchState.totalPoints ?? 0;
 	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
 	$: timerExpired = timeRemaining <= 0;
 	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
 	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
-	$: timerBackground = `conic-gradient(${timerColor} ${timerProgress * 360}deg, rgba(15, 23, 42, 0.35) ${timerProgress * 360}deg)`;
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -116,7 +131,7 @@
 	export function caretXY() {
 		const base = viewBase();
 		return {
-			x: paddingX + 10 + cursor.col * 9.6328,
+			x: paddingX + 10 + cursor.col * CARET_STEP,
 			y: paddingY + (cursor.row - base) * lineHeight
 		};
 	}
@@ -208,31 +223,270 @@
 		return candidates[randInt(0, candidates.length - 1)];
 	}
 
-	function generateSequenceTarget(): MatchTarget {
-		const fallback = randomTargetInViewport();
-		return { row: fallback.row, col: fallback.col, sequence: [] };
+	function randomVisibleRow(): number | null {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		if (bottom < top) return null;
+		return randInt(top, bottom);
 	}
 
-	function drawGhostMove() {
-		if (matchState.status === 'running') {
-			match.evaluate({ row: cursor.row, col: cursor.col });
+	function generateLineHighlightSelection(): HighlightSelection | null {
+		const row = randomVisibleRow();
+		if (row == null) return null;
+		return { type: 'line', startRow: row, endRow: row };
+	}
+
+	function generateMultiLineHighlightSelection(): HighlightSelection | null {
+		const startRow = randomVisibleRow();
+		if (startRow == null) return null;
+		if (lines.length < 2) return null;
+		const available = Math.min(lines.length - 1 - startRow, MAX_ROWS - 1);
+		if (available < 1) return null;
+		const span = randInt(1, Math.min(3, available));
+		const endRow = startRow + span;
+		return {
+			type: 'line',
+			startRow: Math.min(startRow, endRow),
+			endRow: Math.max(startRow, endRow)
+		};
+	}
+
+	function collectWordCandidates() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const candidates: Array<{ row: number; startCol: number; endCol: number }> = [];
+		for (let row = top; row <= bottom; row++) {
+			const text = lines[row] ?? '';
+			const regex = /[A-Za-z0-9_]+/g;
+			let match: RegExpExecArray | null;
+			while ((match = regex.exec(text)) !== null) {
+				const start = match.index ?? 0;
+				const end = start + (match[0]?.length ?? 0);
+				if (end > start) {
+					candidates.push({ row, startCol: start, endCol: end });
+				}
+			}
 		}
+		return candidates;
+	}
+
+	function generateWordHighlightSelection(): HighlightSelection | null {
+		const candidates = collectWordCandidates().filter((candidate) => candidate.endCol - candidate.startCol >= 2);
+		if (!candidates.length) return null;
+		const candidate = candidates[randInt(0, candidates.length - 1)];
+		return {
+			type: 'char',
+			start: { row: candidate.row, col: candidate.startCol },
+			end: { row: candidate.row, col: candidate.endCol }
+		};
+	}
+
+	function collectInsideCandidates() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const candidates: Array<{ row: number; startCol: number; endCol: number }> = [];
+		const bracketPairs: Array<{ open: string; close: string }> = [
+			{ open: '(', close: ')' },
+			{ open: '[', close: ']' },
+			{ open: '{', close: '}' },
+			{ open: '<', close: '>' }
+		];
+		const openSet = new Set(bracketPairs.map((pair) => pair.open));
+		const closeMap = new Map(bracketPairs.map((pair) => [pair.close, pair.open]));
+		for (let row = top; row <= bottom; row++) {
+			const text = lines[row] ?? '';
+			for (const quote of ['"', "'", '`']) {
+				let index = text.indexOf(quote);
+				while (index !== -1) {
+					const end = text.indexOf(quote, index + 1);
+					if (end === -1) break;
+					if (end > index + 1) {
+						candidates.push({ row, startCol: index + 1, endCol: end });
+					}
+					index = text.indexOf(quote, index + 1);
+				}
+			}
+			const stack: Array<{ char: string; index: number }> = [];
+			for (let i = 0; i < text.length; i++) {
+				const ch = text[i];
+				if (openSet.has(ch)) {
+					stack.push({ char: ch, index: i });
+					continue;
+				}
+				const matchingOpen = closeMap.get(ch);
+				if (!matchingOpen) continue;
+				for (let j = stack.length - 1; j >= 0; j--) {
+					if (stack[j].char === matchingOpen) {
+						const startIndex = stack[j].index;
+						stack.splice(j, 1);
+						if (i > startIndex + 1) {
+							candidates.push({ row, startCol: startIndex + 1, endCol: i });
+						}
+						break;
+					}
+				}
+			}
+		}
+		return candidates.filter((candidate) => candidate.endCol - candidate.startCol >= 2);
+	}
+
+	function generateInsideHighlightSelection(): HighlightSelection | null {
+		const candidates = collectInsideCandidates();
+		if (!candidates.length) return null;
+		const candidate = candidates[randInt(0, candidates.length - 1)];
+		return {
+			type: 'char',
+			start: { row: candidate.row, col: candidate.startCol },
+			end: { row: candidate.row, col: candidate.endCol }
+		};
+	}
+
+	function generateHighlightSelection(): HighlightSelection | null {
+		const generators: Array<() => HighlightSelection | null> = [
+			generateLineHighlightSelection,
+			generateMultiLineHighlightSelection,
+			generateWordHighlightSelection,
+			generateInsideHighlightSelection
+		];
+		const pool = [...generators];
+		while (pool.length) {
+			const index = randInt(0, pool.length - 1);
+			const selection = pool.splice(index, 1)[0]();
+			if (selection) return selection;
+		}
+		return null;
+	}
+
+	function generateHighlightTarget(): MatchTarget | null {
+		const selection = generateHighlightSelection();
+		return selection ? { kind: 'highlight', selection } : null;
+	}
+
+	function generateMovementTarget(): MatchTarget {
+		const fallback = randomTargetInViewport();
+		return { kind: 'move', row: fallback.row, col: fallback.col, sequence: [] };
+	}
+
+	function generateRoundTarget(): MatchTarget {
+		if (roundBracket === 'highlight-enabled') {
+			if (Math.random() < HIGHLIGHT_CHANCE) {
+				const highlight = generateHighlightTarget();
+				if (highlight) return highlight;
+			}
+		}
+		return generateMovementTarget();
+	}
+
+	function selectionForMatch(): PlayerSelection | null {
+		const selection = vim.getSelection();
+		if (!selection) return null;
+		if (selection.type === 'line') {
+			return { type: 'line', startRow: selection.startRow, endRow: selection.endRow };
+		}
+		return {
+			type: 'char',
+			start: { row: selection.start.row, col: selection.start.col },
+			end: { row: selection.end.row, col: selection.end.col }
+		};
+	}
+
+	async function loadPlayerRating() {
+		if (!browser || loadingRating) return;
+		loadingRating = true;
+		try {
+			const currentUser = get(user);
+			if (!currentUser) {
+				roundBracket = 'movement-only';
+				return;
+			}
+			const { data, error } = await supabase
+				.from('users')
+				.select('rating')
+				.eq('id', currentUser.id)
+				.single();
+			if (error) {
+				console.error('Failed to fetch user rating', error);
+				roundBracket = 'movement-only';
+				return;
+			}
+			const ratingValue = typeof data?.rating === 'number' ? data.rating : null;
+			roundBracket =
+				ratingValue != null && ratingValue >= PLATINUM_THRESHOLD
+					? 'highlight-enabled'
+					: 'movement-only';
+		} catch (error) {
+			console.error('Failed to fetch user rating', error);
+			roundBracket = 'movement-only';
+		} finally {
+			loadingRating = false;
+		}
+	}
+
+	function drawTargetOverlay() {
 		const active = matchState.active;
 		if (!active) return;
 		const target = active.target;
 		const base = viewBase();
-		const x = paddingX + 10 + target.col * 9.6328;
-		const rowTop = paddingY + (target.row - base) * lineHeight;
-		const caretH = Math.max(1, lineHeight - 1);
+		const selection = selectionForMatch();
+		if (matchState.status === 'running') {
+			match.evaluate({
+				cursor: { row: cursor.row, col: cursor.col },
+				selection: selection ?? null
+			});
+		}
+
+		if (target.kind === 'move') {
+			const x = paddingX + 10 + target.col * CARET_STEP;
+			const rowTop = paddingY + (target.row - base) * lineHeight;
+			const caretH = Math.max(1, lineHeight - 1);
+			ctx.save();
+			ctx.fillStyle = 'rgb(194, 123, 255)';
+			ctx.globalAlpha = 0.5;
+			ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
+			ctx.restore();
+			return;
+		}
+
 		ctx.save();
-		ctx.fillStyle = 'rgb(194, 123, 255)';
-		ctx.globalAlpha = 0.5;
-		ctx.lineWidth = 1.5;
-		ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
+		ctx.fillStyle = 'rgb(96, 165, 250)';
+		ctx.globalAlpha = 0.35;
+		const textStartX = paddingX + 10;
+		if (target.selection.type === 'line') {
+			const startRow = Math.max(target.selection.startRow, base);
+			const endRow = Math.min(target.selection.endRow, lines.length - 1);
+			for (let r = startRow; r <= endRow && r < base + MAX_ROWS; r++) {
+				const text = lines[r] ?? '';
+				const textW = Math.max(ctx.measureText(text).width, charWidth);
+				const rowY = paddingY + (r - base) * lineHeight;
+				ctx.fillRect(Math.floor(textStartX), Math.floor(rowY), Math.ceil(textW), lineHeight);
+			}
+		} else {
+			const startRow = target.selection.start.row;
+			const endRow = target.selection.end.row;
+			for (let r = startRow; r <= endRow; r++) {
+				if (r < base || r >= base + MAX_ROWS) continue;
+				const text = lines[r] ?? '';
+				const rowStart = r === startRow ? target.selection.start.col : 0;
+				const rowEnd = r === endRow ? target.selection.end.col : text.length;
+				const clampedStart = Math.max(0, Math.min(rowStart, text.length));
+				const clampedEnd = Math.max(clampedStart, Math.min(rowEnd, text.length));
+				if (clampedEnd <= clampedStart) continue;
+				const prefix = text.slice(0, clampedStart);
+				const segment = text.slice(clampedStart, clampedEnd);
+				const x = textStartX + ctx.measureText(prefix).width;
+				const width = Math.max(ctx.measureText(segment).width, charWidth);
+				const rowY = paddingY + (r - base) * lineHeight;
+				ctx.fillRect(Math.floor(x), Math.floor(rowY), Math.ceil(width), lineHeight);
+			}
+		}
 		ctx.restore();
 	}
 	function draw() {
 		clear();
+		ctx.font = '16px monospace';
 
 		const limit = timeLimitMs;
 		if (matchState.active) {
@@ -244,8 +498,12 @@
 		}
 		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
 
-		drawGhostMove();
+		drawTargetOverlay();
 		drawText();
+		const selection = vim.getSelection();
+		const base = viewBase();
+		const textStartX = paddingX + 10;
+
 		switch (currentMode) {
 			case 'insert':
 				ctx.fillStyle = '#B990F5';
@@ -254,33 +512,51 @@
 				ctx.fillStyle = '#333333';
 				break;
 			case 'line':
+			case 'visual':
 				ctx.fillStyle = '#B990F5';
-				break; // any highlight color
+				break;
 			default:
 				ctx.fillStyle = '#dddddd';
 		}
-		const base = viewBase();
-		const rowTop = paddingY + (cursor.row - base) * lineHeight;
-		const textStartX = paddingX + 10;
 
-		const visualLineStart = vim.getVisualLineStart();
-
-		if (currentMode === 'line' && visualLineStart !== null) {
-			const lo = Math.max(Math.min(visualLineStart, cursor.row), base);
-			const hi = Math.min(Math.max(visualLineStart, cursor.row), lines.length - 1);
-
+		if (selection) {
 			ctx.globalAlpha = 0.28;
-			for (let r = lo; r <= hi; r++) {
-				const textW = Math.max(ctx.measureText(lines[r] ?? '').width, charWidth);
-				const rowTop = paddingY + (r - base) * lineHeight;
-				ctx.fillRect(Math.floor(textStartX), Math.floor(rowTop), Math.ceil(textW), lineHeight);
+			if (selection.type === 'line') {
+				const startRow = Math.max(selection.startRow, base);
+				const endRow = Math.min(selection.endRow, lines.length - 1);
+				for (let r = startRow; r <= endRow && r < base + MAX_ROWS; r++) {
+					const text = lines[r] ?? '';
+					const textW = Math.max(ctx.measureText(text).width, charWidth);
+					const rowY = paddingY + (r - base) * lineHeight;
+					ctx.fillRect(Math.floor(textStartX), Math.floor(rowY), Math.ceil(textW), lineHeight);
+				}
+			} else if (selection.type === 'char') {
+				for (let r = selection.start.row; r <= selection.end.row; r++) {
+					if (r < base || r >= base + MAX_ROWS) continue;
+					const text = lines[r] ?? '';
+					const rowStart = r === selection.start.row ? selection.start.col : 0;
+					const rowEnd = r === selection.end.row ? selection.end.col : text.length;
+					const clampedStart = Math.max(0, Math.min(rowStart, text.length));
+					const clampedEnd = Math.max(clampedStart, Math.min(rowEnd, text.length));
+					if (clampedEnd <= clampedStart) continue;
+					const prefix = text.slice(0, clampedStart);
+					const segment = text.slice(clampedStart, clampedEnd);
+					const x = textStartX + ctx.measureText(prefix).width;
+					const width = Math.max(ctx.measureText(segment).width, charWidth);
+					const rowY = paddingY + (r - base) * lineHeight;
+					ctx.fillRect(Math.floor(x), Math.floor(rowY), Math.ceil(width), lineHeight);
+				}
 			}
 			ctx.globalAlpha = 1;
-		} else {
+		}
+
+		const shouldDrawCaret = !selection || selection.type !== 'line';
+		if (shouldDrawCaret) {
 			const { x } = caretXY();
+			const caretRowTop = paddingY + (cursor.row - base) * lineHeight;
 			const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
 			ctx.globalAlpha = 0.85;
-			ctx.fillRect(Math.floor(x), Math.floor(rowTop), 9.8, caretH);
+			ctx.fillRect(Math.floor(x), Math.floor(caretRowTop), 9.8, caretH);
 			ctx.globalAlpha = 1;
 		}
 		raf = requestAnimationFrame(draw);
@@ -295,14 +571,14 @@
 		commandBuf = uiState.commandBuffer;
 	}
 
-	onMount(async () => {
+	onMount(() => {
 		if (!browser) return;
 
 		matchState = get(match);
 		unsubscribeMatch = match.subscribe((value) => {
 			matchState = value;
 		});
-		match.setGenerator(generateSequenceTarget);
+		match.setGenerator(() => generateRoundTarget());
 		if (matchState.status === 'idle') {
 			match.start();
 		}
@@ -320,12 +596,18 @@
 		canvas.tabIndex = 0;
 		canvas.focus();
 
+		unsubscribeUser = user.subscribe(() => {
+			loadPlayerRating();
+		});
+		loadPlayerRating();
+
 		raf = requestAnimationFrame(draw);
 	});
 
 	onDestroy(() => {
 		if (!browser) return;
 		unsubscribeMatch?.();
+		unsubscribeUser?.();
 		ro?.disconnect();
 		window.removeEventListener('resize', resize);
 		cancelAnimationFrame(raf);

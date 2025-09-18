@@ -6,6 +6,25 @@ export type Cursor = {
   goalCol: number | null;
 };
 
+export type Position = {
+  row: number;
+  col: number;
+};
+
+export type LineSelection = {
+  type: 'line';
+  startRow: number;
+  endRow: number;
+};
+
+export type CharSelection = {
+  type: 'char';
+  start: Position;
+  end: Position;
+};
+
+export type Selection = LineSelection | CharSelection;
+
 export interface VimUiState {
   pendingCombo: string;
   pendingCount: number | null;
@@ -17,6 +36,7 @@ export interface VimController {
   cursor: Cursor;
   viewBase(): number;
   getVisualLineStart(): number | null;
+  getSelection(): Selection | null;
   getMode(): Mode;
   getUiState(): VimUiState;
   handleKeyDown(event: KeyboardEvent): boolean;
@@ -42,6 +62,23 @@ const IGNORED_KEYS = new Set([
   'Dead',
   'Compose'
 ]);
+
+const BRACKET_PAIRS: Record<string, [string, string]> = {
+  '(': ['(', ')'],
+  ')': ['(', ')'],
+  '[': ['[', ']'],
+  ']': ['[', ']'],
+  '{': ['{', '}'],
+  '}': ['{', '}'],
+  '<': ['<', '>'],
+  '>': ['<', '>']
+};
+
+const QUOTE_KEYS: Record<string, '"' | '\'' | '`'> = {
+  '"': '"',
+  "'": '\'',
+  '`': '`'
+};
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
@@ -83,6 +120,8 @@ export function createVimController(options: VimOptions): VimController {
 
   let currentMode: Mode = 'normal';
   let visualLineStart: number | null = null;
+  let selection: Selection | null = null;
+  let visualCharAnchor: Position | null = null;
   let pendingCount: number | null = null;
   let pendingCombo = '';
   let commandBuffer = '';
@@ -98,9 +137,18 @@ export function createVimController(options: VimOptions): VimController {
       commandBuffer
     });
 
+  function lineText(row: number) {
+    return lines[row] ?? '';
+  }
+
+  function lineLength(row: number) {
+    const text = lineText(row);
+    return text.length;
+  }
+
   function lineLen(row: number) {
-    const line = lines[row] ?? '';
-    return line.length === 0 ? 0 : line.length - 1;
+    const len = lineLength(row);
+    return len === 0 ? 0 : len - 1;
   }
 
   function viewBase() {
@@ -140,10 +188,128 @@ export function createVimController(options: VimOptions): VimController {
     if (cursor.goalCol == null) cursor.goalCol = cursor.col;
   }
 
+  const clampRow = (row: number) => clamp(row, 0, Math.max(0, lines.length - 1));
+
+  function normalizePosition(pos: Position): Position {
+    const row = clampRow(pos.row);
+    const text = lineText(row);
+    const col = clamp(pos.col, 0, text.length);
+    return { row, col };
+  }
+
+  function comparePositions(a: Position, b: Position) {
+    if (a.row !== b.row) return a.row - b.row;
+    return a.col - b.col;
+  }
+
+  function normalizeRange(start: Position, end: Position) {
+    const a = normalizePosition(start);
+    const b = normalizePosition(end);
+    return comparePositions(a, b) <= 0 ? { start: a, end: b } : { start: b, end: a };
+  }
+
+  function setCharSelectionRange(
+    start: Position,
+    end: Position,
+    options: { preserveCursor?: boolean; anchor?: Position | null } = {}
+  ) {
+    let { start: normalizedStart, end: normalizedEnd } = normalizeRange(start, end);
+    if (comparePositions(normalizedStart, normalizedEnd) === 0) {
+      const length = lineLength(normalizedStart.row);
+      if (normalizedEnd.col < length) {
+        normalizedEnd = { row: normalizedEnd.row, col: normalizedEnd.col + 1 };
+      } else if (normalizedStart.col > 0) {
+        normalizedStart = { row: normalizedStart.row, col: normalizedStart.col - 1 };
+      }
+    }
+
+    const resolvedStart = normalizePosition(normalizedStart);
+    const resolvedEnd = normalizePosition(normalizedEnd);
+
+    selection = {
+      type: 'char',
+      start: resolvedStart,
+      end: resolvedEnd
+    };
+
+    if (options.anchor !== undefined) {
+      visualCharAnchor = options.anchor ? normalizePosition(options.anchor) : null;
+    } else if (!options.preserveCursor) {
+      visualCharAnchor = resolvedStart;
+    }
+
+    visualLineStart = null;
+    setMode('visual');
+
+    if (!options.preserveCursor) {
+      cursor.row = resolvedStart.row;
+      cursor.col = resolvedStart.col;
+      cursor.goalCol = cursor.col;
+    }
+  }
+
+  function setLineSelectionRange(startRow: number, endRow: number) {
+    const minRow = clampRow(Math.min(startRow, endRow));
+    const maxRow = clampRow(Math.max(startRow, endRow));
+    selection = { type: 'line', startRow: minRow, endRow: maxRow };
+    visualCharAnchor = null;
+  }
+
+  function clearSelection() {
+    selection = null;
+    visualLineStart = null;
+    visualCharAnchor = null;
+  }
+
+  function updateLineSelection() {
+    if (visualLineStart == null) return;
+    setLineSelectionRange(visualLineStart, cursor.row);
+    setMode('line');
+  }
+
+  function ensureVisualAnchor() {
+    if (!visualCharAnchor) {
+      visualCharAnchor = normalizePosition({ row: cursor.row, col: cursor.col });
+    }
+  }
+
+  function updateVisualCharSelection() {
+    if (currentMode !== 'visual') return;
+    ensureVisualAnchor();
+    if (!visualCharAnchor) return;
+
+    const head = normalizePosition({ row: cursor.row, col: cursor.col });
+    const anchor = visualCharAnchor;
+
+    if (comparePositions(anchor, head) <= 0) {
+      setCharSelectionRange(anchor, { row: head.row, col: head.col + 1 }, {
+        preserveCursor: true,
+        anchor
+      });
+    } else {
+      setCharSelectionRange(head, { row: anchor.row, col: anchor.col + 1 }, {
+        preserveCursor: true,
+        anchor
+      });
+    }
+
+    cursor.row = head.row;
+    cursor.col = head.col;
+    cursor.goalCol = cursor.col;
+  }
+
   function normalMode() {
+    if (currentMode !== 'normal') {
+      clearSelection();
+      clearPending();
+    }
     setMode('normal');
-    const line = lines[cursor.row] ?? '';
-    if (!line) return;
+    const line = lineText(cursor.row);
+    if (line.length === 0) {
+      cursor.col = 0;
+      cursor.goalCol = cursor.col;
+      return;
+    }
     if (cursor.col > line.length - 1) {
       cursor.col = Math.max(0, line.length - 1);
     }
@@ -154,9 +320,13 @@ export function createVimController(options: VimOptions): VimController {
       setMode('line');
       visualLineStart = cursor.row;
     }
+    updateLineSelection();
   }
 
   function insertMode() {
+    if (currentMode === 'line' || currentMode === 'visual') {
+      clearSelection();
+    }
     if (currentMode !== 'insert') {
       setMode('insert');
     }
@@ -213,6 +383,7 @@ export function createVimController(options: VimOptions): VimController {
   function moveFirstCol() {
     cursor.col = 0;
     cursor.goalCol = cursor.col;
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveFirstChar() {
@@ -223,23 +394,27 @@ export function createVimController(options: VimOptions): VimController {
     }
     cursor.col = idx;
     cursor.goalCol = cursor.col;
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveLastCol() {
     cursor.col = lineLen(cursor.row);
     cursor.goalCol = cursor.col;
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveLeft(count: number | null) {
     cursor.col = clamp(cursor.col - (count ?? 1), 0, lineLen(cursor.row));
     cursor.goalCol = cursor.col;
     setPendingCount(null);
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveRight(count: number | null) {
     cursor.col = clamp(cursor.col + (count ?? 1), 0, lineLen(cursor.row));
     cursor.goalCol = cursor.col;
     setPendingCount(null);
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveUp(count: number | null) {
@@ -248,6 +423,8 @@ export function createVimController(options: VimOptions): VimController {
     cursor.row = clamp(cursor.row - (count ?? 1), base, lines.length - 1);
     cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
     setPendingCount(null);
+    if (currentMode === 'line') updateLineSelection();
+    else if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveDown(count: number | null) {
@@ -256,18 +433,24 @@ export function createVimController(options: VimOptions): VimController {
     cursor.row = clamp(cursor.row + (count ?? 1), base, lines.length - 1);
     cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
     setPendingCount(null);
+    if (currentMode === 'line') updateLineSelection();
+    else if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveFirstRow() {
     ensureGoal();
     cursor.row = 0;
     cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
+    if (currentMode === 'line') updateLineSelection();
+    else if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function moveLastRow() {
     ensureGoal();
     cursor.row = lines.length - 1;
     cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
+    if (currentMode === 'line') updateLineSelection();
+    else if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function resetGoal() {
@@ -336,6 +519,7 @@ export function createVimController(options: VimOptions): VimController {
       cursor.goalCol = cursor.col;
       cursor.row = newRow;
       setPendingCount(null);
+      if (currentMode === 'visual') updateVisualCharSelection();
       return;
     }
     return [newRow, newCol] as const;
@@ -374,9 +558,128 @@ export function createVimController(options: VimOptions): VimController {
       cursor.goalCol = cursor.col;
       cursor.row = newRow;
       setPendingCount(null);
+      if (currentMode === 'visual') updateVisualCharSelection();
       return;
     }
     return [newRow, newCol + 1] as const;
+  }
+
+  function selectInnerWord(big: boolean) {
+    const row = cursor.row;
+    const line = lineText(row);
+    if (line.length === 0) return false;
+
+    let col = cursor.col;
+    if (col >= line.length) col = Math.max(0, line.length - 1);
+
+    const isWord = big
+      ? (ch: string | undefined) => !!ch && !isSpaceChar(ch)
+      : (ch: string | undefined) => !!ch && isWordChar(ch);
+
+    if (!isWord(line[col])) {
+      let idx = col;
+      while (idx < line.length && !isWord(line[idx])) idx++;
+      if (idx >= line.length) {
+        idx = col;
+        while (idx >= 0 && !isWord(line[idx])) idx--;
+        if (idx < 0) return false;
+      }
+      col = idx;
+    }
+
+    let startCol = col;
+    while (startCol > 0 && isWord(line[startCol - 1])) startCol--;
+
+    let endCol = col + 1;
+    while (endCol < line.length && isWord(line[endCol])) endCol++;
+
+    setCharSelectionRange(
+      { row, col: startCol },
+      { row, col: endCol },
+      { anchor: { row, col: startCol } }
+    );
+    return true;
+  }
+
+  function pivotPosition() {
+    return visualCharAnchor ?? normalizePosition({ row: cursor.row, col: cursor.col });
+  }
+
+  function selectInsideQuotes(quote: '"' | '\'' | '`') {
+    const pivot = pivotPosition();
+    const row = pivot.row;
+    const line = lineText(row);
+    if (line.length === 0) return false;
+
+    let start = -1;
+    for (let i = pivot.col; i >= 0; i--) {
+      if (line[i] === quote) {
+        start = i;
+        break;
+      }
+    }
+    if (start === -1) return false;
+
+    let end = -1;
+    for (let i = start + 1; i < line.length; i++) {
+      if (line[i] === quote) {
+        end = i;
+        break;
+      }
+    }
+    if (end === -1 || end <= start + 1) return false;
+
+    setCharSelectionRange(
+      { row, col: start + 1 },
+      { row, col: end },
+      { anchor: { row, col: start + 1 } }
+    );
+    return true;
+  }
+
+  function selectInsideBrackets(openChar: string, closeChar: string) {
+    const pivot = pivotPosition();
+    const row = pivot.row;
+    const line = lineText(row);
+    if (line.length === 0) return false;
+
+    let depth = 0;
+    let start = -1;
+    for (let i = pivot.col; i >= 0; i--) {
+      const ch = line[i];
+      if (ch === closeChar) depth++;
+      else if (ch === openChar) {
+        if (depth === 0) {
+          start = i;
+          break;
+        }
+        depth--;
+      }
+    }
+    if (start === -1) return false;
+
+    depth = 0;
+    let end = -1;
+    for (let i = start + 1; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === openChar) depth++;
+      else if (ch === closeChar) {
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+        depth--;
+      }
+    }
+
+    if (end === -1 || end <= start + 1) return false;
+
+    setCharSelectionRange(
+      { row, col: start + 1 },
+      { row, col: end },
+      { anchor: { row, col: start + 1 } }
+    );
+    return true;
   }
 
   function to(char: string, reverse: boolean) {
@@ -410,6 +713,7 @@ export function createVimController(options: VimOptions): VimController {
     cursor.col = newCol + (reverse ? 1 : -1);
     cursor.goalCol = cursor.col;
     cursor.row = newRow;
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function find(char: string, reverse: boolean) {
@@ -435,6 +739,7 @@ export function createVimController(options: VimOptions): VimController {
     cursor.col = newCol;
     cursor.goalCol = cursor.col;
     cursor.row = newRow;
+    if (currentMode === 'visual') updateVisualCharSelection();
   }
 
   function newLine(mode: 'insert' | 'below' | 'above' | 'normal' = 'insert') {
@@ -638,6 +943,20 @@ export function createVimController(options: VimOptions): VimController {
           setPendingCombo(pendingCombo + 'g');
         }
         return true;
+      case 'v': {
+        event.preventDefault();
+        setPendingCount(null);
+        setPendingCombo('v');
+        const row = cursor.row;
+        const col = cursor.col;
+        setCharSelectionRange(
+          { row, col },
+          { row, col: col + 1 },
+          { preserveCursor: true, anchor: { row, col } }
+        );
+        cursor.goalCol = cursor.col;
+        return true;
+      }
       case 'V':
         visualLineMode();
         return true;
@@ -675,6 +994,57 @@ export function createVimController(options: VimOptions): VimController {
       default:
         return false;
     }
+  }
+
+  function handleVisualMode(event: KeyboardEvent) {
+    const key = event.key;
+
+    if (key === 'Escape') {
+      event.preventDefault();
+      clearPending();
+      normalMode();
+      return true;
+    }
+
+    if (key === 'v') {
+      event.preventDefault();
+      clearPending();
+      normalMode();
+      return true;
+    }
+
+    if (pendingCombo === 'vi') {
+      event.preventDefault();
+      let applied = false;
+      if (key === 'w') {
+        applied = selectInnerWord(false);
+      } else if (key === 'W') {
+        applied = selectInnerWord(true);
+      } else {
+        const quote = QUOTE_KEYS[key];
+        if (quote) {
+          applied = selectInsideQuotes(quote);
+        } else if (key in BRACKET_PAIRS) {
+          const [openChar, closeChar] = BRACKET_PAIRS[key];
+          applied = selectInsideBrackets(openChar, closeChar);
+        }
+      }
+      clearPending();
+      return true;
+    }
+
+    if (pendingCombo === 'v') {
+      if (key === 'i') {
+        event.preventDefault();
+        setPendingCombo('vi');
+        return true;
+      }
+      if (key !== 'Shift') {
+        clearPending();
+      }
+    }
+
+    return handleNormalMode(event);
   }
 
   function handleLineMode(event: KeyboardEvent) {
@@ -771,6 +1141,9 @@ export function createVimController(options: VimOptions): VimController {
       case 'line':
         handled = handleLineMode(event);
         break;
+      case 'visual':
+        handled = handleVisualMode(event);
+        break;
       case 'insert':
         handled = handleInsertMode(event);
         break;
@@ -797,6 +1170,7 @@ export function createVimController(options: VimOptions): VimController {
     cursor,
     viewBase,
     getVisualLineStart: () => visualLineStart,
+    getSelection: () => selection,
     getMode: () => currentMode,
     getUiState: () => ({ pendingCombo, pendingCount, commandBuffer }),
     handleKeyDown
