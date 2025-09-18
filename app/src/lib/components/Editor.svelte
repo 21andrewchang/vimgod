@@ -611,27 +611,103 @@
 		return { row: fallback.row, col: fallback.col, sequence: [] };
 	}
 
+	let cursorSprite: HTMLCanvasElement | null = null;
+
+	function getCursorSprite(w: number, h: number) {
+		const PAD = 12;
+
+		if (cursorSprite && cursorSprite.width === w + PAD * 2 && cursorSprite.height === h + PAD * 2)
+			return cursorSprite;
+
+		const off = document.createElement('canvas');
+		off.width = w + PAD * 2;
+		off.height = h + PAD * 2;
+		const octx = off.getContext('2d')!;
+
+		const glowColor = 'rgb(255, 255, 255)';
+
+		octx.save();
+		octx.globalCompositeOperation = 'lighter';
+		octx.shadowColor = glowColor;
+		octx.shadowBlur = 16;
+		octx.shadowOffsetX = 0;
+		octx.shadowOffsetY = 0;
+		octx.fillStyle = 'rgba(255,255,255)';
+		octx.fillRect(PAD, PAD, w, h);
+		octx.restore();
+
+		return (cursorSprite = off);
+	}
+
+	function drawCursor() {
+		const row = cursor.row;
+		const col = cursor.col;
+		const base = viewBase();
+		const x = paddingX + 10 + col * 9.6328;
+		const y = paddingY + (row - base) * lineHeight;
+		const h = Math.max(1, lineHeight - 1);
+		const w = 9.7;
+
+		const sprite = getCursorSprite(w, h);
+		ctx.save();
+		ctx.drawImage(sprite, Math.floor(x) - 12, Math.floor(y) - 12);
+		ctx.restore();
+	}
+
+	let ghostSprite: HTMLCanvasElement | null = null;
+
+	function getGhostSprite(w: number, h: number) {
+		if (ghostSprite && ghostSprite.width === w && ghostSprite.height === h) return ghostSprite;
+
+		const off = document.createElement('canvas');
+		off.width = w + 24; // room for glow
+		off.height = h + 24;
+		const octx = off.getContext('2d')!;
+
+		const glow = 'rgb(194, 123, 255)';
+		octx.save();
+		octx.globalCompositeOperation = 'lighter';
+		octx.shadowColor = glow;
+		octx.shadowBlur = 15;
+		octx.shadowOffsetX = 0;
+		octx.shadowOffsetY = 0;
+		octx.fillStyle = glow;
+
+		const pad = 12;
+		octx.fillRect(pad, pad, w, h);
+		octx.restore();
+
+		ghostSprite = off;
+		return off;
+	}
+
+	const GHOST_FREQ_HZ = 1.6; // speed of the pulse
+	const GHOST_SCALE_AMP = 0.18; // +/- size change (0.18 = ±18%)
+	const GHOST_ALPHA_MIN = 0.5; // min opacity at smallest/largest
+	const GHOST_ALPHA_MAX = 0.95; // max opacity at mid-pulse
 	function drawGhostMove() {
 		if (matchState.status === 'running') {
 			match.evaluate({ row: cursor.row, col: cursor.col });
 		}
 		const active = matchState.active;
 		if (!active) return;
-		const target = active.target;
+
+		const { row, col } = active.target;
 		const base = viewBase();
-		const x = paddingX + 10 + target.col * 9.6328;
-		const rowTop = paddingY + (target.row - base) * lineHeight;
-		const caretH = Math.max(1, lineHeight - 1);
+		const x = paddingX + 10 + col * 9.6328;
+		const y = paddingY + (row - base) * lineHeight;
+		const h = Math.max(1, lineHeight - 1);
+		const w = 9.7;
+
+		const sprite = getGhostSprite(w, h);
 		ctx.save();
-		ctx.fillStyle = 'rgb(194, 123, 255)';
-		ctx.globalAlpha = 0.5;
-		ctx.lineWidth = 1.5;
-		ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
+		ctx.globalAlpha = 0.9;
+		ctx.drawImage(sprite, Math.floor(x) - 12, Math.floor(y) - 12);
 		ctx.restore();
 	}
+
 	function draw() {
 		clear();
-
 		const limit = timeLimitMs;
 		if (matchState.active) {
 			const startedAt = matchState.active.startedAt;
@@ -641,7 +717,6 @@
 			timeRemaining = limit;
 		}
 		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
-
 		drawGhostMove();
 		if (state === 'vim') {
 			drawText();
@@ -656,7 +731,7 @@
 					ctx.fillStyle = '#B990F5';
 					break; // any highlight color
 				default:
-					ctx.fillStyle = '#dddddd';
+					ctx.fillStyle = '#FFF';
 			}
 			const base = viewBase();
 			const rowTop = paddingY + (cursor.row - base) * lineHeight;
@@ -674,11 +749,7 @@
 				}
 				ctx.globalAlpha = 1;
 			} else {
-				const { x } = caretXY();
-				const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
-				ctx.globalAlpha = 0.85;
-				ctx.fillRect(Math.floor(x), Math.floor(rowTop), 9.8, caretH);
-				ctx.globalAlpha = 1;
+				drawCursor();
 			}
 		}
 		raf = requestAnimationFrame(draw);
