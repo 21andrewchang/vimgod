@@ -73,3 +73,9 @@
 	{/if}
 	<Footer />
 </main>
+
+<style>
+	::selection {
+		background: transparent;
+	}
+</style>

@@ -1,8 +1,9 @@
 <script lang="ts">
 	// You can customize these links
-	const cap = `inline-flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-800 border border-[#313131]
-       font-mono text-[10px] leading-none text-neutral-500
-       shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)]`;
+	const cap =
+		'inline-flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-800 border border-[#313131] ' +
+		'font-mono text-[10px] leading-none text-neutral-500 ' +
+		'shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)] ';
 	const links = [
 		{
 			name: 'github',
@@ -167,25 +168,28 @@
 
 			<div class="absolute bottom-16 left-1/2 -translate-x-1/2">
 				<div class="flex items-center gap-16 text-[10px]">
-					<div class="flex gap-2">
-						<kbd class={cap}>h</kbd><span class="text-neutral-700">–</span><span
-							class="font-mono text-neutral-700">left</span
-						>
+					<div class="group flex gap-2">
+						<kbd class={cap}>h</kbd>
+						<span class="text-neutral-700">–</span>
+						<span class="font-mono text-neutral-700">left</span>
 					</div>
-					<div class="flex gap-2">
-						<kbd class="{cap} pb-[2px]">j</kbd><span class="text-neutral-700">–</span><span
-							class="font-mono text-neutral-700">down</span
-						>
+
+					<div class="group flex gap-2">
+						<kbd class={cap}>k</kbd>
+						<span class="text-neutral-700">–</span>
+						<span class="font-mono text-neutral-700">down</span>
 					</div>
-					<div class="flex gap-2">
-						<kbd class={cap}>k</kbd><span class="text-neutral-700">–</span><span
-							class="font-mono text-neutral-700">up</span
-						>
+
+					<div class="group flex gap-2">
+						<kbd class={cap}>k</kbd>
+						<span class="text-neutral-700">–</span>
+						<span class="font-mono text-neutral-700">up</span>
 					</div>
-					<div class="flex gap-2">
-						<kbd class={cap}>l</kbd><span class="text-neutral-700">–</span><span
-							class="font-mono text-neutral-700">right</span
-						>
+
+					<div class="group flex gap-2">
+						<kbd class={cap}>l</kbd>
+						<span class="text-neutral-700">–</span>
+						<span class="font-mono text-neutral-700">right</span>
 					</div>
 				</div>
 			</div>
