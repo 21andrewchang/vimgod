@@ -175,7 +175,7 @@
 					</div>
 
 					<div class="group flex gap-2">
-						<kbd class={cap}>k</kbd>
+						<kbd class={cap}>j</kbd>
 						<span class="text-neutral-700">–</span>
 						<span class="font-mono text-neutral-700">down</span>
 					</div>

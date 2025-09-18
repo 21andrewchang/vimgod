@@ -5,7 +5,7 @@
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import type { MatchController, MatchState } from '$lib/match/match';
-	import { user, signInWithGoogle, createUser } from '$lib/stores/auth';
+	import { user, signInWithGoogle, setInitialRank } from '$lib/stores/auth';
 
 	export let match: MatchController;
 	
@@ -129,20 +129,22 @@
 			placementRankValue
 		});
 
-	// Create user with rating when match is completed and user is signed in
-	$: if (state.status === 'complete' && $user && projectedRankValue !== null && placementRankValue !== null) {
-		createUserWithRating(projectedRankValue, placementRankValue);
-	}
+    let triedInitialRank = false;
 
-	// Function to create user with rating in database
-	const createUserWithRating = async (hiddenMmr: number, rating: number) => {
-		try {
-			await createUser($user!, hiddenMmr, rating);
-			console.log('User created with rating:', { hiddenMmr, rating });
-		} catch (error) {
-			console.error('Failed to create user with rating:', error);
-		}
-	};
+    $: if (!triedInitialRank && state.status === 'complete' && $user && projectedRankValue !== null && placementRankValue !== null) {
+        triedInitialRank = true;
+        setInitialRank(placementRankValue, projectedRankValue)
+            .then(({ updated }) => {
+                if (updated) {
+                    console.log('Initial rank set successfully', {hiddenMmr: placementRankValue, rating: projectedRankValue});
+                } else {
+                    console.log('Initial rank already set');
+                }
+            })
+            .catch((error) => {
+                console.error('Failed to set initial rank', error);
+            });
+    }
 
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
@@ -164,6 +166,7 @@
 	const playAgain = () => {
 		match.reset();
 		match.start();
+        triedInitialRank = false;
 	};
 
 	const graphHeight = 200;
