@@ -464,6 +464,52 @@ export function createVimController(options: VimOptions): VimController {
     if (big) return 'word';
     return isWordChar(ch) ? 'word' : 'punct';
   }
+
+  function clampColForRow(row: number, col: number) {
+    const text = lines[row] ?? '';
+    if (text.length === 0) return 0;
+    return clamp(col, 0, text.length - 1);
+  }
+
+  function findNextNonSpaceForward(row: number, col: number): Position | null {
+    let currRow = clampRow(row);
+    let currCol = Math.max(0, col);
+
+    while (currRow < lines.length) {
+      const text = lines[currRow] ?? '';
+      if (text.length === 0) {
+        if (currRow >= lines.length - 1) return null;
+        currRow += 1;
+        currCol = 0;
+        continue;
+      }
+
+      if (currCol >= text.length) {
+        if (currRow >= lines.length - 1) return null;
+        currRow += 1;
+        currCol = 0;
+        continue;
+      }
+
+      if (!isSpaceChar(text[currCol])) {
+        return { row: currRow, col: currCol };
+      }
+
+      currCol += 1;
+    }
+
+    return null;
+  }
+
+  function isWordEnd(row: number, col: number, big: boolean) {
+    const text = lines[row] ?? '';
+    if (text.length === 0) return false;
+    const currClass = classOf(row, col, big);
+    if (currClass === 'space') return false;
+    if (col >= text.length - 1) return true;
+    const nextClass = classOf(row, col + 1, big);
+    return currClass !== nextClass;
+  }
   function skipSpaces(row: number, col: number, reverse: boolean) {
     let currRow = row;
     let currCol = col;
@@ -561,6 +607,105 @@ export function createVimController(options: VimOptions): VimController {
       return;
     }
     return [newRow, newCol + 1] as const;
+  }
+
+  function moveEndWord(count: number | null, big: boolean, ghost: boolean) {
+    let remaining = count ?? 1;
+    let nextRow = clampRow(cursor.row);
+    let nextCol = clampColForRow(nextRow, cursor.col);
+
+    const initialText = lines[nextRow] ?? '';
+    if (
+      initialText.length > 0 &&
+      !isSpaceChar(initialText[nextCol]) &&
+      isWordEnd(nextRow, nextCol, big)
+    ) {
+      const target = findNextNonSpaceForward(nextRow, nextCol + 1);
+      if (target) {
+        nextRow = target.row;
+        nextCol = target.col;
+      }
+    }
+
+    let lastRow = nextRow;
+    let lastCol = nextCol;
+
+    while (remaining > 0) {
+      if (nextRow >= lines.length) break;
+
+      let text = lines[nextRow] ?? '';
+
+      if (text.length === 0 || nextCol >= text.length || isSpaceChar(text[nextCol])) {
+        const target = findNextNonSpaceForward(nextRow, nextCol);
+        if (!target) break;
+        nextRow = target.row;
+        nextCol = target.col;
+        text = lines[nextRow] ?? '';
+        if (text.length === 0) break;
+      }
+
+      if (nextCol >= (lines[nextRow]?.length ?? 0)) {
+        nextCol = clampColForRow(nextRow, nextCol);
+      }
+
+      const wordClass = classOf(nextRow, nextCol, big);
+      let endRow = nextRow;
+      let endCol = nextCol;
+
+      while (true) {
+        const lineText = lines[endRow] ?? '';
+        if (lineText.length === 0) break;
+        if (endCol >= lineText.length - 1) break;
+        const candidateCol = endCol + 1;
+        if (classOf(endRow, candidateCol, big) !== wordClass) break;
+        endCol = candidateCol;
+      }
+
+      lastRow = endRow;
+      lastCol = endCol;
+      remaining -= 1;
+
+      if (remaining <= 0) {
+        nextRow = endRow;
+        nextCol = endCol;
+        break;
+      }
+
+      const lineText = lines[endRow] ?? '';
+      if (lineText.length === 0) {
+        if (endRow >= lines.length - 1) {
+          nextRow = endRow;
+          nextCol = endCol;
+          break;
+        }
+        nextRow = endRow + 1;
+        nextCol = 0;
+        continue;
+      }
+
+      if (endCol < lineText.length - 1) {
+        nextRow = endRow;
+        nextCol = endCol + 1;
+      } else if (endRow < lines.length - 1) {
+        nextRow = endRow + 1;
+        nextCol = 0;
+      } else {
+        nextRow = endRow;
+        nextCol = endCol;
+        break;
+      }
+    }
+
+    if (!ghost) {
+      cursor.row = lastRow;
+      cursor.col = lastCol;
+      cursor.goalCol = cursor.col;
+      setPendingCount(null);
+      if (currentMode === 'visual') updateVisualCharSelection();
+      return;
+    }
+
+    return [lastRow, lastCol] as const;
   }
 
   function selectInnerWord(big: boolean) {
@@ -1004,6 +1149,15 @@ export function createVimController(options: VimOptions): VimController {
         return true;
       case 'w':
         moveNextWord(pendingCount, false, false);
+        return true;
+      case 'E':
+        moveEndWord(pendingCount, true, false);
+        return true;
+      case 'e':
+        moveEndWord(pendingCount, false, false);
+        return true;
+      case 'B':
+        moveBackWord(pendingCount, true, false);
         return true;
       case 'b':
         moveBackWord(pendingCount, false, false);
