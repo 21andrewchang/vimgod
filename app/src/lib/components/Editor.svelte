@@ -30,6 +30,14 @@
 	const DIAMOND_THRESHOLD = 1600;
 	const HIGHLIGHT_CHANCE = 0.4;
 	const MANIPULATION_CHANCE = 0.35;
+
+	const RATING_TIMER_RULES: Array<{ max: number; ms: number }> = [
+		{ max: 399, ms: 5000 },
+		{ max: 799, ms: 4000 },
+		{ max: 1199, ms: 3000 },
+		{ max: 1599, ms: 2000 },
+		{ max: Infinity, ms: 1500 }
+	];
 	const CARET_STEP = 9.6328;
 
 	const MOVEMENT_GLOW_CONFIG = {
@@ -100,6 +108,9 @@
 	let glowBoxShadow = 'none';
 	let glowBorderColor = DEFAULT_BORDER_COLOR;
 	let editorStyle = '';
+	let currentRating: number | null = null;
+	let lastActiveRoundIndex: number | null = null;
+	let manipulationRestored = false;
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
@@ -113,17 +124,17 @@
 		if (!matchState.active || strength <= 0.002) {
 			glowBoxShadow = 'none';
 			glowBorderColor = DEFAULT_BORDER_COLOR;
-	} else if (activeTargetKind === 'highlight') {
-		glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
-		glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
-	} else if (activeTargetKind === 'manipulate') {
-		glowBoxShadow = buildGlow(MANIPULATION_GLOW_CONFIG, strength);
-		glowBorderColor = buildBorderStyle(MANIPULATION_GLOW_CONFIG, strength);
-	} else {
-		glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
-		glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		} else if (activeTargetKind === 'highlight') {
+			glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
+		} else if (activeTargetKind === 'manipulate') {
+			glowBoxShadow = buildGlow(MANIPULATION_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MANIPULATION_GLOW_CONFIG, strength);
+		} else {
+			glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		}
 	}
-}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 
 	function recomputeLayout() {
@@ -592,6 +603,19 @@
 		return generateMovementTarget();
 	}
 
+	function timerForRating(rating: number | null) {
+		const value = rating ?? 0;
+		for (const rule of RATING_TIMER_RULES) {
+			if (value < rule.max) return rule.ms;
+		}
+		return 5000;
+	}
+
+	function applyTimerForRating(rating: number | null) {
+		const ms = timerForRating(rating);
+		match?.setTimeLimit?.(ms);
+	}
+
 	function selectionForMatch(): PlayerSelection | null {
 		const selection = vim.getSelection();
 		if (!selection) return null;
@@ -605,13 +629,23 @@
 		};
 	}
 
+	$: {
+		const activeIndex = matchState.active?.index ?? null;
+		if (activeIndex !== lastActiveRoundIndex) {
+			lastActiveRoundIndex = activeIndex;
+			manipulationRestored = false;
+		}
+	}
+
 	async function loadPlayerRating() {
 		if (!browser || loadingRating) return;
 		loadingRating = true;
 		try {
 			const currentUser = get(user);
 			if (!currentUser) {
+				currentRating = null;
 				roundBracket = 'movement-only';
+				applyTimerForRating(currentRating);
 				return;
 			}
 			const { data, error } = await supabase
@@ -621,10 +655,13 @@
 				.single();
 			if (error) {
 				console.error('Failed to fetch user rating', error);
+				currentRating = null;
 				roundBracket = 'movement-only';
+				applyTimerForRating(currentRating);
 				return;
 			}
 			const ratingValue = typeof data?.rating === 'number' ? data.rating : null;
+			currentRating = ratingValue;
 			if (ratingValue != null && ratingValue >= DIAMOND_THRESHOLD) {
 				roundBracket = 'manipulation-enabled';
 			} else if (ratingValue != null && ratingValue >= PLATINUM_THRESHOLD) {
@@ -632,9 +669,12 @@
 			} else {
 				roundBracket = 'movement-only';
 			}
+			applyTimerForRating(currentRating);
 		} catch (error) {
 			console.error('Failed to fetch user rating', error);
 			roundBracket = 'movement-only';
+			currentRating = null;
+			applyTimerForRating(currentRating);
 		} finally {
 			loadingRating = false;
 		}
@@ -646,10 +686,15 @@
 		const target = active.target;
 		const base = viewBase();
 		const playerSelection = selectionForMatch();
-		const manipulationCleared =
-			target.kind === 'manipulate'
-				? serializeDocument() === target.expectedDocument
-				: false;
+		const isManipulation = target.kind === 'manipulate';
+		const manipulationCleared = isManipulation
+			? serializeDocument() === target.expectedDocument
+			: false;
+		if (isManipulation && manipulationCleared && !manipulationRestored) {
+			vim.resetDocument(target.restoreDocument, { row: cursor.row, col: cursor.col });
+			recomputeLayout();
+			manipulationRestored = true;
+		}
 		let roundCompleted = false;
 		if (matchState.status === 'running') {
 			roundCompleted = match.evaluate({
@@ -659,9 +704,7 @@
 			});
 		}
 
-		if (roundCompleted && target.kind === 'manipulate') {
-			vim.resetDocument(target.restoreDocument);
-			recomputeLayout();
+		if (roundCompleted && isManipulation) {
 			return;
 		}
 
@@ -818,6 +861,7 @@
 
 	onMount(() => {
 		if (!browser) return;
+		applyTimerForRating(currentRating);
 
 		matchState = get(match);
 		unsubscribeMatch = match.subscribe((value) => {

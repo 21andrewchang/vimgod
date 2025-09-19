@@ -19,7 +19,7 @@
 	export let yMax: number | null = null;
 	export let eMax: number | null = null; // right axis (errors)
 	export let gridH = 4; // horizontal grid lines
-	export let color = 'rgb(194, 123, 255)'; // main line
+	export let color = 'rgb(160, 160, 160)'; // main line
 	export let colorTarget = 'rgba(244,63,94,0.3)'; // dashed target
 	export let bgGrid = 'rgba(148,163,184,0.18)';
 	export let area = 0.12; // fill under main (0 disables)
@@ -195,7 +195,7 @@
 				d={dMain}
 				fill="none"
 				stroke={color}
-				stroke-width="2"
+				stroke-width="1"
 				vector-effect="non-scaling-stroke"
 			/>
 		{/if}

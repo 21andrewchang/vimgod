@@ -40,7 +40,7 @@ export interface VimController {
   getMode(): Mode;
   getUiState(): VimUiState;
   handleKeyDown(event: KeyboardEvent): boolean;
-  resetDocument(text: string): void;
+  resetDocument(text: string, position?: Position | null): void;
 }
 
 interface VimOptions {
@@ -1243,16 +1243,23 @@ export function createVimController(options: VimOptions): VimController {
     visualLineStart = null;
   }
 
-  function resetDocument(text: string) {
+  function resetDocument(text: string, position?: Position | null) {
     const normalized = normalizeText(text);
     const nextLines = normalized.length ? normalized.split('\n') : [''];
     lines.length = 0;
     for (const line of nextLines) lines.push(line);
 
     clearSelection();
-    cursor.row = 0;
-    cursor.col = 0;
-    cursor.goalCol = 0;
+    if (position) {
+      const resolved = normalizePosition(position);
+      const lineTextValue = lineText(resolved.row);
+      cursor.row = resolved.row;
+      cursor.col = Math.min(resolved.col, Math.max(0, lineTextValue.length ? lineTextValue.length - 1 : 0));
+    } else {
+      cursor.row = 0;
+      cursor.col = 0;
+    }
+    cursor.goalCol = cursor.col;
     setPendingCombo('');
     setPendingCount(null);
     pendingOperatorCount = null;

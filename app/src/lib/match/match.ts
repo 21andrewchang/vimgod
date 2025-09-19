@@ -128,7 +128,7 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
   const rawScoringRounds = options.totalRounds ?? 20;
   const scoringRounds = Math.max(1, rawScoringRounds);
   const totalRounds = scoringRounds + 1;
-  const timeLimitMs = options.timeLimitMs ?? 5000;
+  let timeLimitMs = options.timeLimitMs ?? 5000;
   const maxPoints = options.maxPoints ?? 20;
   const pointsPerRound = maxPoints / scoringRounds;
   const now = options.now ?? defaultNow;
@@ -174,6 +174,11 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
 
   const setGenerator = (fn: MatchTargetGenerator) => {
     generator = fn;
+  };
+
+  const setTimeLimit = (ms: number) => {
+    timeLimitMs = Math.max(300, Math.floor(ms));
+    store.update((state) => ({ ...state, timeLimitMs }));
   };
 
   const recordKey = (key: string, at = now()) => {
@@ -358,7 +363,8 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     setGenerator,
     recordKey,
     evaluate,
-    reset
+    reset,
+    setTimeLimit
   };
 };
 
