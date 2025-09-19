@@ -18,8 +18,8 @@
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Refs for safe-zone math
-	let iconRef: HTMLDivElement;
-	let menuRef: HTMLDivElement | null = null;
+	let iconRef = $state<HTMLDivElement | null>(null);
+    let menuRef = $state<HTMLDivElement | null>(null);
 
 	const SAFE_MARGIN = 4;     // px around the bridge area
 	const HIDE_DELAY = 0;    // ms grace to allow travel outside both
@@ -32,7 +32,9 @@
 	}
 
 	function handleUserIconClick() {
-		if (!$user) console.log('User not logged in');
+		if (!$user) {
+			window.location.href = '/login';
+		}
 	}
 
 	function handleUserIconMouseEnter() {
@@ -70,7 +72,11 @@
 		switch (action) {
 			case 'profile':  window.location.href = '/profile'; break;
 			case 'settings': console.log('Settings clicked'); break;
-			case 'signout':  signOut(); break;
+			case 'signout':  
+				signOut().then(() => {
+					window.location.href = '/';
+				});
+				break;
 		}
 	}
 
@@ -224,20 +230,20 @@
 		}}
 		aria-label="Go to home page"
 	>
-		<span
-			class={greaterThanClass}
+		<span 
+			class={`${greaterThanClass} logo-mark`} 
 			style="color:#bc93f9; font-family: 'Sono', sans-serif; font-weight: 400; transform: translateY(-1px);"
 		>
 			{`>`}
 		</span>
-		<span
-			class={vimgodClass}
+		<span 
+			class={`${vimgodClass} logo-word`} 
 			style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500;"
 		>
 			vimgod
 		</span>
-		<span
-			class={underscoreClass}
+		<span 
+			class={`${underscoreClass} logo-cursor`} 
 			style="color:#e8e8e8; font-family: 'DM Mono', sans-serif; font-weight: 500; transform: translateX(-8px); animation: {isHeaderHovered ? 'blink 1s infinite' : 'none'};"
 		>
 			_
@@ -287,23 +293,23 @@
 					onmouseenter={handleDropdownMouseEnter}
 					onmouseleave={handleDropdownMouseLeave}
 				>
-					<div class="py-0.5">
+					<div>
 						<div
 							role="menuitem" tabindex="0"
-							class="w-full px-2 py-1 text-left text-[12px] text-neutral-200 hover:text-white transition-colors duration-200 focus:outline-none focus:bg-neutral-700/40"
+							class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
 							onclick={() => handleDropdownAction('profile')}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleDropdownAction('profile'))}
 						>profile</div>
 						<div
 							role="menuitem" tabindex="0"
-							class="w-full px-2 py-1 text-left text-[12px] text-neutral-200 hover:text-white transition-colors duration-200 focus:outline-none focus:bg-neutral-700/40"
+							class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
 							onclick={() => handleDropdownAction('settings')}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleDropdownAction('settings'))}
 						>settings</div>
-						<hr class="border-neutral-700 my-0.5">
+						<hr class="border-neutral-700">
 						<div
 							role="menuitem" tabindex="0"
-							class="w-full px-2 py-1 text-left text-[12px] text-neutral-200 hover:text-white transition-colors duration-200 focus:outline-none focus:bg-neutral-700/40"
+							class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
 							onclick={() => handleDropdownAction('signout')}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleDropdownAction('signout'))}
 						>sign out</div>

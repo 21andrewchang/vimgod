@@ -304,7 +304,12 @@
 		background-color: currentColor;
 		transition: width 0.2s ease-out;
 	}
-	/* Underline when active (white text) */
+	/* Remove default text underline and show animated underline */
+	.animated-underline:hover,
+	.animated-underline.twitter-hovered {
+		text-decoration: none;
+	}
+	.animated-underline:hover::after,
 	.animated-underline.twitter-hovered::after { width: 100%; }
 
 	.twitter-bubble {
