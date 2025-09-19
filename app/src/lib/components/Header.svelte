@@ -115,9 +115,11 @@
 		}
 	}
 
-	// Attach pointer tracking while the dropdown could be visible
-	document.addEventListener('pointermove', onPointerMove, { passive: true });
-	onDestroy(() => document.removeEventListener('pointermove', onPointerMove));
+	// Attach pointer tracking while the dropdown could be visible (client-side only)
+	if (typeof document !== 'undefined') {
+		document.addEventListener('pointermove', onPointerMove, { passive: true });
+		onDestroy(() => document.removeEventListener('pointermove', onPointerMove));
+	}
 
 	// --- Geometry helpers ----------------------------------------------------
 
