@@ -30,7 +30,7 @@
 	const DIAMOND_THRESHOLD = 1600;
 	const HIGHLIGHT_CHANCE = 0.4;
 	const MANIPULATION_CHANCE = 0.35;
-	const MAX_MANIPULATION_LINES = 3;
+	const MAX_MANIPULATION_LINES = 2;
 	const MAX_MANIPULATION_ROUNDS = 4;
 	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
 	const MAX_UNDO_ENTRIES = 50;
@@ -68,6 +68,14 @@
 		borderAlpha: [0.12, 0.32] as [number, number]
 	};
 
+	const FORCE_UNDO_GLOW_CONFIG = {
+		rgb: '150, 130, 22',
+		blur: [100, 420] as [number, number],
+		spread: [10, 44] as [number, number],
+		alpha: [0.16, 0.38] as [number, number],
+		borderAlpha: [0.18, 0.4] as [number, number]
+	};
+
 	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
 
 	type RoundBracket = 'movement-only' | 'highlight-enabled' | 'manipulation-enabled';
@@ -79,6 +87,7 @@
 	let undoStack: UndoSnapshot[] = [];
 	let roundBaselineSnapshot: UndoSnapshot | null = null;
 	let lastActiveRoundIndex: number | null = null;
+	let forceUndoRequired = false;
 	let unsubscribeUser: (() => void) | undefined;
 
 	export let match: MatchController;
@@ -131,6 +140,10 @@
 		if (!matchState.active || strength <= 0.002) {
 			glowBoxShadow = 'none';
 			glowBorderColor = DEFAULT_BORDER_COLOR;
+		} else if (forceUndoRequired) {
+			const forcedStrength = Math.max(strength, 0.65);
+			glowBoxShadow = buildGlow(FORCE_UNDO_GLOW_CONFIG, forcedStrength);
+			glowBorderColor = buildBorderStyle(FORCE_UNDO_GLOW_CONFIG, forcedStrength);
 		} else if (activeTargetKind === 'highlight') {
 			glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
 			glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
@@ -148,6 +161,7 @@
 		undoStack = [];
 		roundBaselineSnapshot = null;
 		lastActiveRoundIndex = null;
+		forceUndoRequired = false;
 	}
 
 	function recomputeLayout() {
@@ -557,24 +571,59 @@
 		}
 	}
 
+	function resetForceUndoIfCleared(nextDocument: string) {
+		const baselineDocument = roundBaselineSnapshot?.document ?? null;
+		if (baselineDocument && nextDocument === baselineDocument) {
+			forceUndoRequired = false;
+			undoStack = [];
+			return true;
+		}
+		const target = matchState.active?.target;
+		if (target?.kind === 'manipulate' && nextDocument === target.expectedDocument) {
+			forceUndoRequired = false;
+			return true;
+		}
+		return false;
+	}
+
+	function handleDocumentChange(previousDocument: string, nextDocument: string) {
+		if (!matchState.active) return;
+		if (resetForceUndoIfCleared(nextDocument)) return;
+		const target = matchState.active.target;
+		if (target.kind === 'manipulate') {
+			forceUndoRequired = true;
+			return;
+		}
+		const deletionOccurred = nextDocument.length < previousDocument.length;
+		if (deletionOccurred) {
+			forceUndoRequired = true;
+		}
+	}
+
 	function handleUndo() {
 		const snapshot = undoStack.pop();
 		if (snapshot) {
 			vim.resetDocument(snapshot.document, snapshot.cursor);
 			recomputeLayout();
+			resetForceUndoIfCleared(serializeDocument());
 			return;
 		}
 		if (!roundBaselineSnapshot) return;
-		const currentDocument = serializeDocument();
-		const cursorMatchesBaseline =
-			cursor.row === roundBaselineSnapshot.cursor.row && cursor.col === roundBaselineSnapshot.cursor.col;
-		if (currentDocument === roundBaselineSnapshot.document && cursorMatchesBaseline) return;
 		vim.resetDocument(roundBaselineSnapshot.document, roundBaselineSnapshot.cursor);
 		recomputeLayout();
+		resetForceUndoIfCleared(serializeDocument());
 	}
 
 	function isUndoKey(event: KeyboardEvent) {
-		return currentMode === 'normal' && event.key === 'u' && !event.metaKey && !event.ctrlKey && !event.altKey;
+		const hasPendingCombo = pendingCombo.length > 0;
+		return (
+			currentMode === 'normal' &&
+			!hasPendingCombo &&
+			event.key === 'u' &&
+			!event.metaKey &&
+			!event.ctrlKey &&
+			!event.altKey
+		);
 	}
 
 	function applyDeletionToClone(clone: string[], selection: HighlightSelection) {
@@ -686,6 +735,7 @@
 			} else {
 				roundBaselineSnapshot = null;
 			}
+			forceUndoRequired = false;
 		}
 	}
 
@@ -769,7 +819,7 @@
 			? serializeDocument() === target.expectedDocument
 			: false;
 		let roundCompleted = false;
-		if (matchState.status === 'running') {
+		if (matchState.status === 'running' && !forceUndoRequired) {
 			roundCompleted = match.evaluate({
 				cursor: { row: cursor.row, col: cursor.col },
 				selection: playerSelection ?? null,
@@ -784,15 +834,18 @@
 			const rowTop = paddingY + (target.row - base) * lineHeight;
 			const caretH = Math.max(1, lineHeight - 1);
 			ctx.save();
-			ctx.fillStyle = 'rgb(194, 123, 255)';
-			ctx.globalAlpha = 0.5;
+			ctx.fillStyle = forceUndoRequired ? 'rgb(156, 163, 175)' : 'rgb(194, 123, 255)';
+			ctx.globalAlpha = forceUndoRequired ? 0.15 : 0.5;
 			ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
 			ctx.restore();
 			return;
 		}
 
 		ctx.save();
-		if (target.kind === 'manipulate') {
+		if (forceUndoRequired) {
+			ctx.fillStyle = 'rgb(148, 163, 184)';
+			ctx.globalAlpha = 0.18;
+		} else if (target.kind === 'manipulate') {
 			ctx.fillStyle = 'rgb(248, 113, 113)';
 			ctx.globalAlpha = 0.38;
 		} else {
@@ -833,12 +886,13 @@
 	}
 	function draw() {
 		clear();
+		const nowMs = performance.now();
 		ctx.font = '16px monospace';
 
 		const limit = timeLimitMs;
 		if (matchState.active) {
 			const startedAt = matchState.active.startedAt;
-			const elapsed = startedAt == null ? 0 : performance.now() - startedAt;
+			const elapsed = startedAt == null ? 0 : nowMs - startedAt;
 			timeRemaining = Math.max(0, limit - elapsed);
 		} else {
 			timeRemaining = limit;
@@ -846,7 +900,6 @@
 		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
 
 		if (matchState.active) {
-			const nowMs = performance.now();
 			const breath = (Math.sin(nowMs / 420) + 1) / 2; // 0..1
 			const fade = Math.pow(timerProgress, 0.65);
 			const base = fade * (0.6 + 0.4 * breath);
@@ -856,6 +909,7 @@
 		} else {
 			glowStrength = 0;
 		}
+		const undoBlink = forceUndoRequired ? (Math.sin(nowMs / 50) + 1) / 2 : 1;
 
 		drawTargetOverlay();
 		drawText();
@@ -914,7 +968,10 @@
 			const { x } = caretXY();
 			const caretRowTop = paddingY + (cursor.row - base) * lineHeight;
 			const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
-			ctx.globalAlpha = 0.85;
+			const caretColor = forceUndoRequired ? '#9CA3AF' : '#dddddd';
+			const caretAlpha = forceUndoRequired ? 0.12 + 0.4 * undoBlink : 0.85;
+			ctx.fillStyle = caretColor;
+			ctx.globalAlpha = caretAlpha;
 			ctx.fillRect(Math.floor(x), Math.floor(caretRowTop), 9.8, caretH);
 			ctx.globalAlpha = 1;
 		}
@@ -923,7 +980,12 @@
 
 	function onKeyDown(e: KeyboardEvent) {
 		match.recordKey(e.key, now());
-		if (isUndoKey(e)) {
+		const undoKeyPressed = isUndoKey(e);
+		if (forceUndoRequired && !undoKeyPressed) {
+			e.preventDefault();
+			return;
+		}
+		if (undoKeyPressed) {
 			e.preventDefault();
 			handleUndo();
 			return;
@@ -931,8 +993,10 @@
 		const previousDocument = serializeDocument();
 		const previousCursor = { row: cursor.row, col: cursor.col };
 		vim.handleKeyDown(e);
-		if (serializeDocument() !== previousDocument) {
+		const nextDocument = serializeDocument();
+		if (nextDocument !== previousDocument) {
 			pushUndoSnapshot({ document: previousDocument, cursor: previousCursor });
+			handleDocumentChange(previousDocument, nextDocument);
 		}
 		const uiState = vim.getUiState();
 		pendingCombo = uiState.pendingCombo;
