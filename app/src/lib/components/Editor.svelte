@@ -231,25 +231,53 @@ const CARET_STEP = 9.6328;
 		return randInt(top, bottom);
 	}
 
+	function visibleRowRange() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const rows: number[] = [];
+		for (let r = top; r <= bottom; r++) rows.push(r);
+		return rows;
+	}
+
+	function lineHasMeaningfulContent(row: number) {
+		const text = lines[row] ?? '';
+		return text.trim().length >= 2;
+	}
+
 	function generateLineHighlightSelection(): HighlightSelection | null {
-		const row = randomVisibleRow();
-		if (row == null) return null;
+		const candidates = visibleRowRange().filter((row) => lineHasMeaningfulContent(row));
+		if (!candidates.length) return null;
+		const row = candidates[randInt(0, candidates.length - 1)];
 		return { type: 'line', startRow: row, endRow: row };
 	}
 
 	function generateMultiLineHighlightSelection(): HighlightSelection | null {
-		const startRow = randomVisibleRow();
-		if (startRow == null) return null;
-		if (lines.length < 2) return null;
-		const available = Math.min(lines.length - 1 - startRow, MAX_ROWS - 1);
-		if (available < 1) return null;
-		const span = randInt(1, Math.min(3, available));
-		const endRow = startRow + span;
-		return {
-			type: 'line',
-			startRow: Math.min(startRow, endRow),
-			endRow: Math.max(startRow, endRow)
-		};
+		const rows = visibleRowRange();
+		if (!rows.length || lines.length < 2) return null;
+		for (let attempt = 0; attempt < 10; attempt++) {
+			const startRow = rows[randInt(0, rows.length - 1)];
+			const available = Math.min(lines.length - 1 - startRow, MAX_ROWS - 1);
+			if (available < 1) continue;
+			const span = randInt(1, Math.min(3, available));
+			const endRow = startRow + span;
+			const lo = Math.min(startRow, endRow);
+			const hi = Math.max(startRow, endRow);
+			let valid = true;
+			for (let r = lo; r <= hi; r++) {
+				if (!lineHasMeaningfulContent(r)) {
+					valid = false;
+					break;
+				}
+			}
+			if (!valid) continue;
+			return {
+				type: 'line',
+				startRow: lo,
+				endRow: hi
+			};
+		}
+		return null;
 	}
 
 	function collectWordCandidates() {

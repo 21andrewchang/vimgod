@@ -243,7 +243,7 @@ export function createVimController(options: VimOptions): VimController {
 
     if (!options.preserveCursor) {
       cursor.row = resolvedStart.row;
-      cursor.col = resolvedStart.col;
+      cursor.col = resolvedEnd.col - 1;
       cursor.goalCol = cursor.col;
     }
   }
@@ -464,7 +464,6 @@ export function createVimController(options: VimOptions): VimController {
     if (big) return 'word';
     return isWordChar(ch) ? 'word' : 'punct';
   }
-
   function skipSpaces(row: number, col: number, reverse: boolean) {
     let currRow = row;
     let currCol = col;
@@ -618,7 +617,12 @@ export function createVimController(options: VimOptions): VimController {
         break;
       }
     }
-    if (start === -1) return false;
+    if (start === -1) {
+      const forward = findNextQuoteRange(quote);
+      if (!forward) return false;
+      setCharSelectionRange(forward.start, forward.end, { anchor: forward.start });
+      return true;
+    }
 
     let end = -1;
     for (let i = start + 1; i < line.length; i++) {
@@ -627,14 +631,48 @@ export function createVimController(options: VimOptions): VimController {
         break;
       }
     }
-    if (end === -1 || end <= start + 1) return false;
+    if (end === -1 || end <= start + 1) {
+      const forward = findNextQuoteRange(quote);
+      if (!forward) return false;
+      setCharSelectionRange(forward.start, forward.end, { anchor: forward.start });
+      return true;
+    }
 
-    setCharSelectionRange(
-      { row, col: start + 1 },
-      { row, col: end },
-      { anchor: { row, col: start + 1 } }
-    );
+    const startPos = { row, col: start + 1 };
+    const endPos = { row, col: end };
+    setCharSelectionRange(startPos, endPos, { anchor: startPos });
     return true;
+  }
+
+  function findNextQuoteRange(quote: '"' | '\'' | '`') {
+    const pivot = pivotPosition();
+    for (let r = pivot.row; r < lines.length; r++) {
+      const text = lines[r] ?? '';
+      let startIndex = r === pivot.row ? text.indexOf(quote, pivot.col) : text.indexOf(quote);
+      while (startIndex !== -1) {
+        const endIndex = text.indexOf(quote, startIndex + 1);
+        if (endIndex !== -1 && endIndex > startIndex + 1) {
+          return {
+            start: { row: r, col: startIndex + 1 },
+            end: { row: r, col: endIndex }
+          };
+        }
+        if (endIndex === -1) {
+          for (let rr = r + 1; rr < lines.length; rr++) {
+            const nextText = lines[rr] ?? '';
+            const nextIndex = nextText.indexOf(quote);
+            if (nextIndex !== -1) {
+              return {
+                start: { row: r, col: startIndex + 1 },
+                end: { row: rr, col: nextIndex }
+              };
+            }
+          }
+        }
+        startIndex = text.indexOf(quote, startIndex + 1);
+      }
+    }
+    return null;
   }
 
   function selectInsideBrackets(openChar: string, closeChar: string) {
@@ -656,7 +694,12 @@ export function createVimController(options: VimOptions): VimController {
         depth--;
       }
     }
-    if (start === -1) return false;
+    if (start === -1) {
+      const forward = findNextBracketRange(openChar, closeChar);
+      if (!forward) return false;
+      setCharSelectionRange(forward.start, forward.end, { anchor: forward.start });
+      return true;
+    }
 
     depth = 0;
     let end = -1;
@@ -672,14 +715,50 @@ export function createVimController(options: VimOptions): VimController {
       }
     }
 
-    if (end === -1 || end <= start + 1) return false;
+    if (end === -1 || end <= start + 1) {
+      const forward = findNextBracketRange(openChar, closeChar);
+      if (!forward) return false;
+      setCharSelectionRange(forward.start, forward.end, { anchor: forward.start });
+      return true;
+    }
 
-    setCharSelectionRange(
-      { row, col: start + 1 },
-      { row, col: end },
-      { anchor: { row, col: start + 1 } }
-    );
+    const startPos = { row, col: start + 1 };
+    const endPos = { row, col: end };
+    setCharSelectionRange(startPos, endPos, { anchor: startPos });
     return true;
+  }
+
+  function findNextBracketRange(openChar: string, closeChar: string) {
+    let depth = 0;
+    let startPos: Position | null = null;
+    for (let r = pivotPosition().row; r < lines.length; r++) {
+      const text = lines[r] ?? '';
+      let c = r === pivotPosition().row ? Math.max(pivotPosition().col, 0) : 0;
+      for (; c < text.length; c++) {
+        const ch = text[c];
+        if (ch === openChar) {
+          if (!startPos) {
+            startPos = { row: r, col: c };
+            depth = 1;
+          } else {
+            depth += 1;
+          }
+        } else if (ch === closeChar && startPos) {
+          depth -= 1;
+          if (depth === 0) {
+            if (r === startPos.row && c <= startPos.col + 1) {
+              startPos = null;
+              continue;
+            }
+            return {
+              start: { row: startPos.row, col: startPos.col + 1 },
+              end: { row: r, col: c }
+            };
+          }
+        }
+      }
+    }
+    return null;
   }
 
   function to(char: string, reverse: boolean) {
@@ -1014,6 +1093,8 @@ export function createVimController(options: VimOptions): VimController {
     }
 
     if (pendingCombo === 'vi') {
+      if (key === 'Shift') return true;
+
       event.preventDefault();
       let applied = false;
       if (key === 'w') {
