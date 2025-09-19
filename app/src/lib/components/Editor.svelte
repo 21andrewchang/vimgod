@@ -96,10 +96,6 @@
 	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
 	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timerExpired = timeRemaining <= 0;
-	$: {
-		timerFill = timerExpired ? 'rgba(248, 113, 113, 0.24)' : 'rgb(232, 232, 232, 0.9)';
-		timerBorder = timerExpired ? 'rgba(248, 113, 113, 0.68)' : 'rgba(226, 232, 240, 0.45)';
-	}
 	$: displaySeconds = timeLimitMs > 0 ? Math.max(0, Math.ceil(timeRemaining / 1000)) : 0;
 	$: activeTargetKind = matchState.active?.target.kind ?? null;
 	$: {
