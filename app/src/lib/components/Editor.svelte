@@ -555,8 +555,16 @@
 		const selection = generateHighlightSelection();
 		if (!selection) return null;
 		const snapshot = selectionText(selection);
+		const restoreDocument = serializeDocument();
 		const expectedDocument = expectedDocumentAfterDeletion(selection);
-		return { kind: 'manipulate', selection, action: 'delete', snapshot, expectedDocument };
+		return {
+			kind: 'manipulate',
+			selection,
+			action: 'delete',
+			snapshot,
+			expectedDocument,
+			restoreDocument
+		};
 	}
 
 	function generateMovementTarget(): MatchTarget {
@@ -642,12 +650,19 @@
 			target.kind === 'manipulate'
 				? serializeDocument() === target.expectedDocument
 				: false;
+		let roundCompleted = false;
 		if (matchState.status === 'running') {
-			match.evaluate({
+			roundCompleted = match.evaluate({
 				cursor: { row: cursor.row, col: cursor.col },
 				selection: playerSelection ?? null,
 				manipulated: manipulationCleared
 			});
+		}
+
+		if (roundCompleted && target.kind === 'manipulate') {
+			vim.resetDocument(target.restoreDocument);
+			recomputeLayout();
+			return;
 		}
 
 		if (target.kind === 'move') {

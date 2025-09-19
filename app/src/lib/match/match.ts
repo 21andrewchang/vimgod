@@ -39,6 +39,7 @@ export type MatchTarget =
       action: 'delete';
       snapshot: string;
       expectedDocument: string;
+      restoreDocument: string;
     };
 
 export type PlayerSelection = HighlightSelection;

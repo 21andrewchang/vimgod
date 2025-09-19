@@ -40,6 +40,7 @@ export interface VimController {
   getMode(): Mode;
   getUiState(): VimUiState;
   handleKeyDown(event: KeyboardEvent): boolean;
+  resetDocument(text: string): void;
 }
 
 interface VimOptions {
@@ -1242,6 +1243,23 @@ export function createVimController(options: VimOptions): VimController {
     visualLineStart = null;
   }
 
+  function resetDocument(text: string) {
+    const normalized = normalizeText(text);
+    const nextLines = normalized.length ? normalized.split('\n') : [''];
+    lines.length = 0;
+    for (const line of nextLines) lines.push(line);
+
+    clearSelection();
+    cursor.row = 0;
+    cursor.col = 0;
+    cursor.goalCol = 0;
+    setPendingCombo('');
+    setPendingCount(null);
+    pendingOperatorCount = null;
+    normalMode();
+    emitUiState();
+  }
+
   function clearPending() {
     setPendingCombo('');
     setPendingCount(null);
@@ -1719,7 +1737,8 @@ export function createVimController(options: VimOptions): VimController {
     getSelection: () => selection,
     getMode: () => currentMode,
     getUiState: () => ({ pendingCombo, pendingCount, commandBuffer }),
-    handleKeyDown
+    handleKeyDown,
+    resetDocument
   };
 }
 
