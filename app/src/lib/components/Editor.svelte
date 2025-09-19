@@ -69,11 +69,11 @@
 	};
 
 	const FORCE_UNDO_GLOW_CONFIG = {
-		rgb: '150, 130, 22',
-		blur: [100, 420] as [number, number],
-		spread: [10, 44] as [number, number],
+		rgb: '252, 223, 73',
+		blur: [100, 300] as [number, number],
+		spread: [0, 1] as [number, number],
 		alpha: [0.16, 0.38] as [number, number],
-		borderAlpha: [0.18, 0.4] as [number, number]
+		borderAlpha: [0.1, 0.5] as [number, number]
 	};
 
 	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
@@ -926,7 +926,7 @@
 				break;
 			case 'line':
 			case 'visual':
-				ctx.fillStyle = '#B990F5';
+				ctx.fillStyle = '#dddddd';
 				break;
 			default:
 				ctx.fillStyle = '#dddddd';
