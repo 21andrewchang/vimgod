@@ -29,8 +29,24 @@
 	const PLATINUM_THRESHOLD = 1200;
 	const HIGHLIGHT_CHANCE = 0.4;
 	const CARET_STEP = 9.6328;
-	const MOVEMENT_GLOW = '0 0 500px 0px rgba(194, 123, 255, 0.38)';
-	const HIGHLIGHT_GLOW = '0 0 500px 0px rgba(96, 165, 250, 0.48)';
+
+	const MOVEMENT_GLOW_CONFIG = {
+		rgb: '194, 123, 255',
+		blur: [90, 400] as [number, number],
+		spread: [10, 40] as [number, number],
+		alpha: [0.12, 0.2] as [number, number],
+		borderAlpha: [0.07, 0.22] as [number, number]
+	};
+
+	const HIGHLIGHT_GLOW_CONFIG = {
+		rgb: '96, 165, 250',
+		blur: [100, 400] as [number, number],
+		spread: [10, 40] as [number, number],
+		alpha: [0.14, 0.34] as [number, number],
+		borderAlpha: [0.1, 0.26] as [number, number]
+	};
+
+	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
 
 	type RoundBracket = 'movement-only' | 'highlight-enabled';
 
@@ -69,6 +85,9 @@
 	let pointsLabel = '+0';
 	let timerColor = '#DDDDDD';
 	let timerProgress = 1; // remaining / limit
+	let glowBoxShadow = 'none';
+	let glowBorderColor = DEFAULT_BORDER_COLOR;
+	let editorStyle = '';
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
@@ -78,16 +97,19 @@
 	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
 	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
 	$: activeTargetKind = matchState.active?.target.kind ?? null;
-	$: glowBoxShadow = !matchState.active
-		? 'none'
-		: activeTargetKind === 'highlight'
-			? HIGHLIGHT_GLOW
-			: MOVEMENT_GLOW;
-	$: glowBorderColor = !matchState.active
-		? ''
-		: activeTargetKind === 'highlight'
-			? 'border-color: rgba(96, 165, 250, 0.2);'
-			: 'border-color: rgba(194, 123, 255, 0.2);';
+	$: {
+		const strength = matchState.active ? glowStrength : 0;
+		if (!matchState.active || strength <= 0.002) {
+			glowBoxShadow = 'none';
+			glowBorderColor = DEFAULT_BORDER_COLOR;
+		} else if (activeTargetKind === 'highlight') {
+			glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
+		} else {
+			glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		}
+	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 
 	function recomputeLayout() {
@@ -100,6 +122,7 @@
 	let pendingCount: number | null = null;
 	let pendingCombo = '';
 	let commandBuf = '';
+	let glowStrength = 0;
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	let raf = 0;
@@ -210,6 +233,36 @@
 
 	function randInt(min: number, max: number) {
 		return Math.floor(Math.random() * (max - min + 1)) + min;
+	}
+
+	function lerp(a: number, b: number, t: number) {
+		return a + (b - a) * Math.min(Math.max(t, 0), 1);
+	}
+
+	function buildGlow(
+		config: {
+			rgb: string;
+			blur: [number, number];
+			spread: [number, number];
+			alpha: [number, number];
+		},
+		strength: number
+	) {
+		const blur = lerp(config.blur[0], config.blur[1], strength);
+		const spread = lerp(config.spread[0], config.spread[1], strength);
+		const alpha = lerp(config.alpha[0], config.alpha[1], strength);
+		return `0 0 ${blur.toFixed(1)}px ${spread.toFixed(1)}px rgba(${config.rgb}, ${alpha.toFixed(3)})`;
+	}
+
+	function buildBorderStyle(
+		config: {
+			rgb: string;
+			borderAlpha: [number, number];
+		},
+		strength: number
+	) {
+		const alpha = lerp(config.borderAlpha[0], config.borderAlpha[1], strength);
+		return `border-color: rgba(${config.rgb}, ${alpha.toFixed(3)});`;
 	}
 
 	function randomTargetInViewport(): { row: number; col: number } {
@@ -542,6 +595,18 @@
 		}
 		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
 
+		if (matchState.active) {
+			const nowMs = performance.now();
+			const breath = (Math.sin(nowMs / 420) + 1) / 2; // 0..1
+			const fade = Math.pow(timerProgress, 0.65);
+			const base = fade * (0.6 + 0.4 * breath);
+			const flickerWindow = Math.max(0, 1 - timerProgress / 0.22);
+			const flicker = flickerWindow ? (Math.sin(nowMs / 75) * 0.5 + 0.5) * flickerWindow * 0.35 : 0;
+			glowStrength = Math.max(0, Math.min(1, base + flicker));
+		} else {
+			glowStrength = 0;
+		}
+
 		drawTargetOverlay();
 		drawText();
 		const selection = vim.getSelection();
@@ -664,7 +729,7 @@
 			{#if matchState.active}
 				<div class="pointer-events-none flex gap-2">
 					<span
-						class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
+						class="rounded-xl border border-neutral-400/40 bg-neutral-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-neutral-100"
 					>
 						{matchState.active.isWarmup
 							? `0/${totalRoundsDisplay}`
