@@ -124,6 +124,7 @@ export function createVimController(options: VimOptions): VimController {
   let visualCharAnchor: Position | null = null;
   let pendingCount: number | null = null;
   let pendingCombo = '';
+  let pendingOperatorCount: number | null = null;
   let commandBuffer = '';
   let lastSearch = '';
   let lastSearchDirection = false;
@@ -609,6 +610,239 @@ export function createVimController(options: VimOptions): VimController {
     return [newRow, newCol + 1] as const;
   }
 
+  function deleteRange(start: Position, end: Position) {
+    const { start: s, end: e } = normalizeRange(start, end);
+    if (comparePositions(s, e) >= 0) return false;
+
+    if (s.row === e.row) {
+      const text = lines[s.row] ?? '';
+      const next = text.slice(0, s.col) + text.slice(e.col);
+      lines[s.row] = next;
+      cursor.row = s.row;
+      cursor.col = next.length === 0 ? 0 : Math.max(0, Math.min(s.col, next.length - 1));
+    } else {
+      const startText = lines[s.row] ?? '';
+      const endText = lines[e.row] ?? '';
+      const merged = startText.slice(0, s.col) + endText.slice(e.col);
+      lines.splice(s.row, e.row - s.row + 1, merged);
+      cursor.row = s.row;
+      cursor.col = merged.length === 0 ? 0 : Math.max(0, Math.min(s.col, merged.length - 1));
+    }
+
+    if (!lines.length) {
+      lines.push('');
+      cursor.row = 0;
+      cursor.col = 0;
+    }
+
+    cursor.goalCol = cursor.col;
+    normalMode();
+    return true;
+  }
+
+  function deleteCurrentLines(count: number) {
+    const total = Math.max(1, count);
+    const startRow = clampRow(cursor.row);
+    lines.splice(startRow, total);
+    if (!lines.length) {
+      lines.push('');
+    }
+    cursor.row = Math.min(startRow, lines.length - 1);
+    cursor.col = 0;
+    cursor.goalCol = 0;
+    normalMode();
+  }
+
+  function innerWordRange(big: boolean): { start: Position; end: Position } | null {
+    const row = cursor.row;
+    const text = lineText(row);
+    if (text.length === 0) return null;
+
+    let col = clampColForRow(row, cursor.col);
+    if (col >= text.length) col = Math.max(0, text.length - 1);
+
+    const isWord = big
+      ? (ch: string | undefined) => !!ch && !isSpaceChar(ch)
+      : (ch: string | undefined) => !!ch && isWordChar(ch);
+
+    if (!isWord(text[col])) {
+      const currentChar = text[col];
+      if (currentChar && !isSpaceChar(currentChar)) {
+        return {
+          start: { row, col },
+          end: { row, col: col + 1 }
+        };
+      }
+      let idx = col;
+      while (idx < text.length && !isWord(text[idx])) idx++;
+      if (idx >= text.length) {
+        idx = col;
+        while (idx >= 0 && !isWord(text[idx])) idx--;
+        if (idx < 0) return null;
+      }
+      col = idx;
+    }
+
+    let startCol = col;
+    while (startCol > 0 && isWord(text[startCol - 1])) startCol--;
+
+    let endCol = col + 1;
+    while (endCol < text.length && isWord(text[endCol])) endCol++;
+
+    return {
+      start: { row, col: startCol },
+      end: { row, col: endCol }
+    };
+  }
+
+  function innerQuoteRange(quote: '"' | '\'' | '`'): { start: Position; end: Position } | null {
+    const pivot = pivotPosition();
+    const row = pivot.row;
+    const text = lineText(row);
+    if (text.length === 0) return null;
+
+    let start = -1;
+    for (let i = pivot.col; i >= 0; i--) {
+      if (text[i] === quote) {
+        start = i;
+        break;
+      }
+    }
+    if (start === -1) {
+      const forward = findNextQuoteRange(quote);
+      return forward ?? null;
+    }
+
+    let end = -1;
+    for (let i = start + 1; i < text.length; i++) {
+      if (text[i] === quote) {
+        end = i;
+        break;
+      }
+    }
+    if (end === -1 || end <= start + 1) {
+      const forward = findNextQuoteRange(quote);
+      return forward ?? null;
+    }
+
+    return {
+      start: { row, col: start + 1 },
+      end: { row, col: end }
+    };
+  }
+
+  const INNER_BRACKETS: Record<string, [string, string]> = {
+    '(': ['(', ')'],
+    ')': ['(', ')'],
+    '[': ['[', ']'],
+    ']': ['[', ']'],
+    '{': ['{', '}'],
+    '}': ['{', '}'],
+    '<': ['<', '>'],
+    '>': ['<', '>'],
+    b: ['(', ')'],
+    B: ['{', '}']
+  };
+
+  function innerBracketRange(openChar: string, closeChar: string): { start: Position; end: Position } | null {
+    const pivot = pivotPosition();
+    const row = pivot.row;
+    const line = lineText(row);
+    if (line.length === 0) return null;
+
+    let depth = 0;
+    let start = -1;
+    for (let i = pivot.col; i >= 0; i--) {
+      const ch = line[i];
+      if (ch === closeChar) depth++;
+      else if (ch === openChar) {
+        if (depth === 0) {
+          start = i;
+          break;
+        }
+        depth--;
+      }
+    }
+    if (start === -1) {
+      const forward = findNextBracketRange(openChar, closeChar);
+      return forward ?? null;
+    }
+
+    depth = 0;
+    let end = -1;
+    for (let i = start + 1; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === openChar) depth++;
+      else if (ch === closeChar) {
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+        depth--;
+      }
+    }
+
+    if (end === -1 || end <= start + 1) {
+      const forward = findNextBracketRange(openChar, closeChar);
+      return forward ?? null;
+    }
+
+    return {
+      start: { row, col: start + 1 },
+      end: { row, col: end }
+    };
+  }
+
+  function rangeForInnerTextObject(key: string): { start: Position; end: Position } | null {
+    if (key === 'w') return innerWordRange(false);
+    if (key === 'W') return innerWordRange(true);
+    if (key === '"' || key === '\'' || key === '`') {
+      return innerQuoteRange(key as '"' | '\'' | '`');
+    }
+    const bracket = INNER_BRACKETS[key];
+    if (bracket) return innerBracketRange(bracket[0], bracket[1]);
+    return null;
+  }
+
+  function deleteToLineStart() {
+    const row = cursor.row;
+    const col = clamp(cursor.col, 0, lineLength(row));
+    if (col <= 0) return false;
+    return deleteRange({ row, col: 0 }, { row, col: col + 1 });
+  }
+
+  function deleteToLineEnd() {
+    const row = cursor.row;
+    const line = lineText(row);
+    if (!line.length) return false;
+    const startCol = clamp(cursor.col, 0, line.length - 1);
+    return deleteRange({ row, col: startCol }, { row, col: line.length });
+  }
+
+  function deleteToCharForward(char: string, inclusive: boolean) {
+    const row = cursor.row;
+    const line = lineText(row);
+    if (!line.length) return false;
+    const from = clamp(cursor.col, 0, line.length - 1);
+    const target = line.indexOf(char, from + 1);
+    if (target === -1) return false;
+    const endCol = inclusive ? target + 1 : target;
+    if (endCol <= from) return false;
+    return deleteRange({ row, col: from }, { row, col: endCol });
+  }
+
+  function deleteToCharBackward(char: string, inclusive: boolean) {
+    const row = cursor.row;
+    const line = lineText(row);
+    if (!line.length) return false;
+    const from = clamp(cursor.col, 0, line.length - 1);
+    const target = line.lastIndexOf(char, from - 1);
+    if (target === -1) return false;
+    const startCol = inclusive ? target : target + 1;
+    if (startCol > from) return false;
+    return deleteRange({ row, col: startCol }, { row, col: from + 1 });
+  }
+
   function moveEndWord(count: number | null, big: boolean, ghost: boolean) {
     let remaining = count ?? 1;
     let nextRow = clampRow(cursor.row);
@@ -1011,10 +1245,81 @@ export function createVimController(options: VimOptions): VimController {
   function clearPending() {
     setPendingCombo('');
     setPendingCount(null);
+    pendingOperatorCount = null;
   }
 
   function handleNormalMode(event: KeyboardEvent) {
     const key = event.key;
+
+    if (pendingCombo === 'di') {
+      event.preventDefault();
+      if (key === 'Escape') {
+        clearPending();
+        return true;
+      }
+      if (key === 'Shift') return true;
+      const range = rangeForInnerTextObject(key);
+      if (range) deleteRange(range.start, range.end);
+      clearPending();
+      return true;
+    }
+
+    if (pendingCombo === 'df' || pendingCombo === 'dF' || pendingCombo === 'dt' || pendingCombo === 'dT') {
+      if (key === 'Escape') {
+        event.preventDefault();
+        clearPending();
+        return true;
+      }
+      if (isPrintable(event) && key.length === 1) {
+        event.preventDefault();
+        const combo = pendingCombo;
+        let success = false;
+        if (combo === 'df') success = deleteToCharForward(key, true);
+        else if (combo === 'dt') success = deleteToCharForward(key, false);
+        else if (combo === 'dF') success = deleteToCharBackward(key, true);
+        else if (combo === 'dT') success = deleteToCharBackward(key, false);
+        if (success) {
+          clearPending();
+        } else {
+          clearPending();
+        }
+        return true;
+      }
+      return true;
+    }
+
+    if (pendingCombo === 'd') {
+      event.preventDefault();
+      if (key === 'Escape') {
+        clearPending();
+        return true;
+      }
+      if (key === 'i') {
+        setPendingCombo('di');
+        return true;
+      }
+      if (key === 'f' || key === 'F' || key === 't' || key === 'T') {
+        setPendingCombo(`d${key}`);
+        return true;
+      }
+      if (key === '0') {
+        deleteToLineStart();
+        clearPending();
+        return true;
+      }
+      if (key === '$') {
+        deleteToLineEnd();
+        clearPending();
+        return true;
+      }
+      if (key === 'd') {
+        deleteCurrentLines(Math.max(1, pendingOperatorCount ?? 1));
+        clearPending();
+        return true;
+      }
+      clearPending();
+      return true;
+    }
 
     if (pendingCombo === 'T') {
       if (key === 'Escape') {
@@ -1167,6 +1472,12 @@ export function createVimController(options: VimOptions): VimController {
       case 'F':
       case 'f':
         setPendingCombo(key);
+        return true;
+      case 'd':
+        event.preventDefault();
+        pendingOperatorCount = pendingCount ?? 1;
+        setPendingCount(null);
+        setPendingCombo('d');
         return true;
       case 'g':
         if (pendingCombo === 'g') {

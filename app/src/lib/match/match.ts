@@ -32,6 +32,13 @@ export type MatchTarget =
   | {
       kind: 'highlight';
       selection: HighlightSelection;
+    }
+  | {
+      kind: 'manipulate';
+      selection: HighlightSelection;
+      action: 'delete';
+      snapshot: string;
+      expectedDocument: string;
     };
 
 export type PlayerSelection = HighlightSelection;
@@ -191,6 +198,7 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
   interface PlayerState {
     cursor: Position;
     selection: PlayerSelection | null;
+    manipulated?: boolean;
   }
 
   const positionsEqual = (a: Position, b: Position) => a.row === b.row && a.col === b.col;
@@ -213,7 +221,10 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     if (target.kind === 'move') {
       return target.row === player.cursor.row && target.col === player.cursor.col;
     }
-    return selectionMatches(target.selection, player.selection);
+    if (target.kind === 'highlight') {
+      return selectionMatches(target.selection, player.selection);
+    }
+    return player.manipulated === true;
   };
 
   const evaluate = (player: PlayerState, at = now()) => {

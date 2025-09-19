@@ -27,7 +27,9 @@
 	const TEXT_TOP = 38;
 
 	const PLATINUM_THRESHOLD = 1200;
+	const DIAMOND_THRESHOLD = 1600;
 	const HIGHLIGHT_CHANCE = 0.4;
+	const MANIPULATION_CHANCE = 0.35;
 	const CARET_STEP = 9.6328;
 
 	const MOVEMENT_GLOW_CONFIG = {
@@ -46,9 +48,17 @@
 		borderAlpha: [0.1, 0.26] as [number, number]
 	};
 
+	const MANIPULATION_GLOW_CONFIG = {
+		rgb: '239, 68, 68',
+		blur: [100, 420] as [number, number],
+		spread: [10, 44] as [number, number],
+		alpha: [0.16, 0.38] as [number, number],
+		borderAlpha: [0.12, 0.32] as [number, number]
+	};
+
 	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
 
-	type RoundBracket = 'movement-only' | 'highlight-enabled';
+	type RoundBracket = 'movement-only' | 'highlight-enabled' | 'manipulation-enabled';
 
 	let roundBracket: RoundBracket = 'movement-only';
 	let loadingRating = false;
@@ -103,14 +113,17 @@
 		if (!matchState.active || strength <= 0.002) {
 			glowBoxShadow = 'none';
 			glowBorderColor = DEFAULT_BORDER_COLOR;
-		} else if (activeTargetKind === 'highlight') {
-			glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
-			glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
-		} else {
-			glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
-			glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
-		}
+	} else if (activeTargetKind === 'highlight') {
+		glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
+		glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
+	} else if (activeTargetKind === 'manipulate') {
+		glowBoxShadow = buildGlow(MANIPULATION_GLOW_CONFIG, strength);
+		glowBorderColor = buildBorderStyle(MANIPULATION_GLOW_CONFIG, strength);
+	} else {
+		glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
+		glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
 	}
+}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 
 	function recomputeLayout() {
@@ -458,9 +471,92 @@
 		return null;
 	}
 
+	function selectionText(selection: HighlightSelection): string {
+		if (selection.type === 'line') {
+			const rows: string[] = [];
+			for (let r = selection.startRow; r <= selection.endRow; r++) {
+				if (r < 0 || r >= lines.length) {
+					rows.push('');
+					continue;
+				}
+				rows.push(lines[r] ?? '');
+			}
+			return rows.join('\n');
+		}
+
+		const startRow = selection.start.row;
+		const endRow = selection.end.row;
+		if (startRow < 0 || startRow >= lines.length) return '';
+		const parts: string[] = [];
+		for (let r = startRow; r <= endRow; r++) {
+			if (r < 0 || r >= lines.length) {
+				parts.push('');
+				continue;
+			}
+			const text = lines[r] ?? '';
+			const rowStart = r === startRow ? Math.min(selection.start.col, text.length) : 0;
+			const rowEnd = r === endRow ? Math.min(selection.end.col, text.length) : text.length;
+			parts.push(text.slice(rowStart, rowEnd));
+		}
+		return parts.join('\n');
+	}
+
+	function serializeDocument(source: string[] = lines) {
+		return source.join('\n');
+	}
+
+	function cloneLines() {
+		return lines.map((line) => line.slice());
+	}
+
+	function applyDeletionToClone(clone: string[], selection: HighlightSelection) {
+		if (!clone.length) {
+			clone.push('');
+		}
+		if (selection.type === 'line') {
+			const startRow = Math.max(0, Math.min(selection.startRow, clone.length - 1));
+			const endRow = Math.max(0, Math.min(selection.endRow, clone.length - 1));
+			clone.splice(startRow, endRow - startRow + 1);
+			if (!clone.length) clone.push('');
+			return clone;
+		}
+
+		const startRow = Math.max(0, Math.min(selection.start.row, clone.length - 1));
+		const endRow = Math.max(0, Math.min(selection.end.row, clone.length - 1));
+		const startLine = clone[startRow] ?? '';
+		const endLine = clone[endRow] ?? '';
+		const startCol = Math.max(0, Math.min(selection.start.col, startLine.length));
+		const endCol = Math.max(0, Math.min(selection.end.col, endLine.length));
+
+		if (startRow === endRow) {
+			const line = clone[startRow] ?? '';
+			clone[startRow] = line.slice(0, startCol) + line.slice(endCol);
+		} else {
+			const before = startLine.slice(0, startCol);
+			const after = endLine.slice(endCol);
+			clone.splice(startRow, endRow - startRow + 1, before + after);
+		}
+
+		if (!clone.length) clone.push('');
+		return clone;
+	}
+
+	function expectedDocumentAfterDeletion(selection: HighlightSelection) {
+		const clone = applyDeletionToClone(cloneLines(), selection);
+		return serializeDocument(clone);
+	}
+
 	function generateHighlightTarget(): MatchTarget | null {
 		const selection = generateHighlightSelection();
 		return selection ? { kind: 'highlight', selection } : null;
+	}
+
+	function generateManipulationTarget(): MatchTarget | null {
+		const selection = generateHighlightSelection();
+		if (!selection) return null;
+		const snapshot = selectionText(selection);
+		const expectedDocument = expectedDocumentAfterDeletion(selection);
+		return { kind: 'manipulate', selection, action: 'delete', snapshot, expectedDocument };
 	}
 
 	function generateMovementTarget(): MatchTarget {
@@ -469,6 +565,16 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
+		if (roundBracket === 'manipulation-enabled') {
+			if (Math.random() < MANIPULATION_CHANCE) {
+				const manipulation = generateManipulationTarget();
+				if (manipulation) return manipulation;
+			}
+			if (Math.random() < HIGHLIGHT_CHANCE) {
+				const highlight = generateHighlightTarget();
+				if (highlight) return highlight;
+			}
+		}
 		if (roundBracket === 'highlight-enabled') {
 			if (Math.random() < HIGHLIGHT_CHANCE) {
 				const highlight = generateHighlightTarget();
@@ -511,10 +617,13 @@
 				return;
 			}
 			const ratingValue = typeof data?.rating === 'number' ? data.rating : null;
-			roundBracket =
-				ratingValue != null && ratingValue >= PLATINUM_THRESHOLD
-					? 'highlight-enabled'
-					: 'movement-only';
+			if (ratingValue != null && ratingValue >= DIAMOND_THRESHOLD) {
+				roundBracket = 'manipulation-enabled';
+			} else if (ratingValue != null && ratingValue >= PLATINUM_THRESHOLD) {
+				roundBracket = 'highlight-enabled';
+			} else {
+				roundBracket = 'movement-only';
+			}
 		} catch (error) {
 			console.error('Failed to fetch user rating', error);
 			roundBracket = 'movement-only';
@@ -528,11 +637,16 @@
 		if (!active) return;
 		const target = active.target;
 		const base = viewBase();
-		const selection = selectionForMatch();
+		const playerSelection = selectionForMatch();
+		const manipulationCleared =
+			target.kind === 'manipulate'
+				? serializeDocument() === target.expectedDocument
+				: false;
 		if (matchState.status === 'running') {
 			match.evaluate({
 				cursor: { row: cursor.row, col: cursor.col },
-				selection: selection ?? null
+				selection: playerSelection ?? null,
+				manipulated: manipulationCleared
 			});
 		}
 
@@ -549,12 +663,18 @@
 		}
 
 		ctx.save();
-		ctx.fillStyle = 'rgb(96, 165, 250)';
-		ctx.globalAlpha = 0.35;
+		if (target.kind === 'manipulate') {
+			ctx.fillStyle = 'rgb(248, 113, 113)';
+			ctx.globalAlpha = 0.38;
+		} else {
+			ctx.fillStyle = 'rgb(96, 165, 250)';
+			ctx.globalAlpha = 0.35;
+		}
 		const textStartX = paddingX + 10;
-		if (target.selection.type === 'line') {
-			const startRow = Math.max(target.selection.startRow, base);
-			const endRow = Math.min(target.selection.endRow, lines.length - 1);
+		const targetSelection = target.selection;
+		if (targetSelection.type === 'line') {
+			const startRow = Math.max(targetSelection.startRow, base);
+			const endRow = Math.min(targetSelection.endRow, lines.length - 1);
 			for (let r = startRow; r <= endRow && r < base + MAX_ROWS; r++) {
 				const text = lines[r] ?? '';
 				const textW = Math.max(ctx.measureText(text).width, charWidth);
@@ -562,13 +682,13 @@
 				ctx.fillRect(Math.floor(textStartX), Math.floor(rowY), Math.ceil(textW), lineHeight);
 			}
 		} else {
-			const startRow = target.selection.start.row;
-			const endRow = target.selection.end.row;
+			const startRow = targetSelection.start.row;
+			const endRow = targetSelection.end.row;
 			for (let r = startRow; r <= endRow; r++) {
 				if (r < base || r >= base + MAX_ROWS) continue;
 				const text = lines[r] ?? '';
-				const rowStart = r === startRow ? target.selection.start.col : 0;
-				const rowEnd = r === endRow ? target.selection.end.col : text.length;
+				const rowStart = r === startRow ? targetSelection.start.col : 0;
+				const rowEnd = r === endRow ? targetSelection.end.col : text.length;
 				const clampedStart = Math.max(0, Math.min(rowStart, text.length));
 				const clampedEnd = Math.max(clampedStart, Math.min(rowEnd, text.length));
 				if (clampedEnd <= clampedStart) continue;
