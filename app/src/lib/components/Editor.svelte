@@ -26,9 +26,11 @@
 	const MAX_ROWS = ROWS; // keep these in lockstep
 	const TEXT_TOP = 38;
 
-const PLATINUM_THRESHOLD = 1200;
-const HIGHLIGHT_CHANCE = 0.4;
-const CARET_STEP = 9.6328;
+	const PLATINUM_THRESHOLD = 1200;
+	const HIGHLIGHT_CHANCE = 0.4;
+	const CARET_STEP = 9.6328;
+	const MOVEMENT_GLOW = '0 0 500px 0px rgba(194, 123, 255, 0.38)';
+	const HIGHLIGHT_GLOW = '0 0 500px 0px rgba(96, 165, 250, 0.48)';
 
 	type RoundBracket = 'movement-only' | 'highlight-enabled';
 
@@ -75,6 +77,18 @@ const CARET_STEP = 9.6328;
 	$: timerExpired = timeRemaining <= 0;
 	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
 	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
+	$: activeTargetKind = matchState.active?.target.kind ?? null;
+	$: glowBoxShadow = !matchState.active
+		? 'none'
+		: activeTargetKind === 'highlight'
+			? HIGHLIGHT_GLOW
+			: MOVEMENT_GLOW;
+	$: glowBorderColor = !matchState.active
+		? ''
+		: activeTargetKind === 'highlight'
+			? 'border-color: rgba(96, 165, 250, 0.2);'
+			: 'border-color: rgba(194, 123, 255, 0.2);';
+	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -301,7 +315,9 @@ const CARET_STEP = 9.6328;
 	}
 
 	function generateWordHighlightSelection(): HighlightSelection | null {
-		const candidates = collectWordCandidates().filter((candidate) => candidate.endCol - candidate.startCol >= 2);
+		const candidates = collectWordCandidates().filter(
+			(candidate) => candidate.endCol - candidate.startCol >= 2
+		);
 		if (!candidates.length) return null;
 		const candidate = candidates[randInt(0, candidates.length - 1)];
 		return {
@@ -665,9 +681,10 @@ const CARET_STEP = 9.6328;
 		<div class="relative mb-10">
 			<div
 				data-mode={currentMode}
+				data-glow-kind={activeTargetKind ?? 'none'}
 				class=" data-[mode=command]:border-white/7 overflow-hidden rounded-xl border
-         border-white/10 shadow-lg transition-colors"
-				style={`width:${targetW}px; height:${targetH}px`}
+         border-white/10 shadow-lg transition-all"
+				style={editorStyle}
 			>
 				<canvas
 					bind:this={canvas}
@@ -701,3 +718,11 @@ const CARET_STEP = 9.6328;
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
+
+<style>
+	[data-glow-kind] {
+		transition:
+			box-shadow 250ms ease,
+			border-color 250ms ease;
+	}
+</style>
