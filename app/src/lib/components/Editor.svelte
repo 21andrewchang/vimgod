@@ -84,8 +84,9 @@
 	let pointsLabel = '+0';
 	let timerValue = 0;
 	let timerProgress = 1; // remaining / limit
-	let timerFill = 'rgba(226, 232, 240, 0.14)';
-	let timerBorder = 'rgba(226, 232, 240, 0.45)';
+	let timerFill = 'rgba(226, 232, 240, 1)';
+	let timerBorder = 'rgba(226, 232, 240, 1)';
+	let displaySeconds = 0;
 	let glowBoxShadow = 'none';
 	let glowBorderColor = DEFAULT_BORDER_COLOR;
 	let editorStyle = '';
@@ -96,9 +97,10 @@
 	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timerExpired = timeRemaining <= 0;
 	$: {
-		timerFill = timerExpired ? 'rgba(248, 113, 113, 0.24)' : 'rgba(226, 232, 240, 0.14)';
+		timerFill = timerExpired ? 'rgba(248, 113, 113, 0.24)' : 'rgb(232, 232, 232, 0.9)';
 		timerBorder = timerExpired ? 'rgba(248, 113, 113, 0.68)' : 'rgba(226, 232, 240, 0.45)';
 	}
+	$: displaySeconds = timeLimitMs > 0 ? Math.max(0, Math.ceil(timeRemaining / 1000)) : 0;
 	$: activeTargetKind = matchState.active?.target.kind ?? null;
 	$: {
 		const strength = matchState.active ? glowStrength : 0;
@@ -730,10 +732,21 @@
 	<div class="flex flex-col gap-2">
 		<div class="flex flex-row items-center">
 			{#if matchState.active}
-				<div class="pointer-events-none flex">
+				<div class="pointer-events-none flex gap-2">
 					<div
-						class="relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/40 bg-neutral-400/10 px-3 py-1 font-mono uppercase tracking-wide text-neutral-100"
+						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
 					>
+						{#if matchState.status !== 'complete'}
+							<div class="relative flex items-center justify-center">
+								<CircularProgress
+									value={timerValue}
+									size={14}
+									stroke={1}
+									fill={timerFill}
+									border={timerBorder}
+								/>
+							</div>
+						{/if}
 						<span class="text-md leading-none">
 							{matchState.active.isWarmup
 								? `0/${totalRoundsDisplay}`
