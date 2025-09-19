@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import { supabase } from '$lib/supabaseClient';
 import type { User } from '@supabase/supabase-js';
+import { browser } from '$app/environment';
 
 export const user = writable<User | null>(null);
 export const loading = writable(true);
@@ -38,11 +39,10 @@ export const setInitialRank = async (hiddenMmr: number, rating: number) => {
 
 // Google sign in function
 export const signInWithGoogle = async () => {
+    const redirectTo = browser ? `${window.location.origin}/auth/callback?next=/profile` : undefined;
 	const { error } = await supabase.auth.signInWithOAuth({
 		provider: 'google',
-		options: {
-			redirectTo: `${window.location.origin}/profile`
-		}
+		options: { redirectTo }
 	});
 	
 	if (error) {

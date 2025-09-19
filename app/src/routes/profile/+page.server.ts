@@ -1,4 +1,5 @@
-import type { PageLoad } from './$types';
+import type { PageServerLoad } from './$types';
+import { redirect } from '@sveltejs/kit';
 import {
   MOTIONS,
   FAMILY_MOTIONS,
@@ -54,49 +55,50 @@ function mockMastery(): Mastery {
   return M;
 }
 
-export const load = (async () => {
-    // mock user
+export const load: PageServerLoad = async ({ locals }) => {
+    // server can see the session via cookies (set in hooks.server)
+    const { data: { session }, error } = await locals.supabase.auth.getSession();
+    if (error || !session?.user) throw redirect(302, '/login');
+  
+    const { data: userData, error: userError } = await locals.supabase
+      .from('users')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
+  
+    if (userError || !userData) throw redirect(302, '/login');
+  
     const user = {
-      id: 'u_demo_001',
-      name: 'xc0de',
-      elo: 1320,
-      lp: 48
+      id: userData.id,
+      name: userData.name || session.user.email?.split('@')[0] || 'User',
+      elo: userData.rating || 1500,
+      lp:  userData.hidden_mmr || 1500
     };
   
-    // mastery & rank resolution
     const mastery = mockMastery();
-    // pretend we already have skill beyond Diamond so you see Nova+ UI
     const inputs = { mastery, skillIndex: 76, skillStdDev: 6 };
-    // const resolvedRank: RankName = rankFromInputs(inputs);
-    const resolvedRank: RankName = 'Singularity';
+    const resolvedRank: RankName = 'Singularity'; // or rankFromInputs(inputs)
     const cov = coverage(mastery);
-  
-    // Known motions at default threshold 0.7
     const known = knownSet(mastery);
     const isKnown = (m: Motion) => known.has(m);
   
-    // motion usage counts (bias toward known)
     const motionCounts: Record<string, number> = {};
     for (const m of MOTIONS) {
       motionCounts[m] = (isKnown(m) ? 30 + Math.floor(Math.random() * 90) : Math.floor(Math.random() * 12));
     }
   
-    // daily activity for heatmap (~16 weeks)
     const dailyCounts: Record<string, number> = {};
     for (let d = 0; d < 112; d++) {
       const day = new Date();
       day.setDate(day.getDate() - d);
       const iso = day.toISOString().slice(0, 10);
-      // play more on weekdays
       const weekday = day.getDay();
       const base = [0,2,3,3,2,1,0][weekday];
       dailyCounts[iso] = Math.max(0, base + Math.floor(Math.random() * 2) - (weekday === 0 ? 1 : 0));
     }
   
-    // match history (recent first)
     const history = Array.from({ length: 18 }).map((_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
+      const date = new Date(); date.setDate(date.getDate() - i);
       const win = Math.random() > 0.3;
       const eloDelta = win ? 12 + Math.floor(Math.random() * 10) : -(8 + Math.floor(Math.random() * 10));
       return {
@@ -109,18 +111,16 @@ export const load = (async () => {
       };
     });
   
-    // total stats
     const totals = {
       games: history.length,
       wins: history.filter(h => h.result === 'win').length,
       losses: history.filter(h => h.result === 'loss').length,
-      winRate: 0, // computed below
+      winRate: 0,
       avgAccuracy: Math.round(history.reduce((s,h)=>s+(h.accuracy??0),0)/history.length),
       coverage: cov
     };
     totals.winRate = Math.round((totals.wins / Math.max(1, totals.games)) * 100);
   
-    // motions with lock/unlock meta for grid
     const motionsGrid = MOTIONS.map((m) => {
       const family = MOTION_FAMILY[m];
       return {
@@ -132,7 +132,7 @@ export const load = (async () => {
     });
   
     return {
-      user: { ...user, rank: resolvedRank as RankName },
+      user: { ...user, rank: resolvedRank },
       mastery,
       knownList: Array.from(known),
       motionCounts,
@@ -141,4 +141,4 @@ export const load = (async () => {
       history,
       totals
     };
-}) satisfies PageLoad;
+};

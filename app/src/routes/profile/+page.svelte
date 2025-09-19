@@ -29,8 +29,8 @@
 <div
   class="w-full relative overflow-hidden"
 >
-  <div class="relative z-[2] px-6 pt-8 pb-4 max-w-6xl mx-auto space-y-8">
-    <Header variant="inline" size="large" />
+  <div class="relative z-[2] px-6 pt-24 pb-4 max-w-6xl mx-auto space-y-8">
+    <Header variant="fixed" size="small" />
   
     <!-- Stats row -->
     <div class="grid grid-cols-1 md:grid-cols-11 gap-4">

@@ -24,6 +24,34 @@
 	color: var(--color-text);
 }
 
+@font-face{
+    font-family:"DM Mono";
+    src:url("/fonts/DMMono-500.woff2") format("woff2");
+    font-weight:500;
+    font-style:normal;
+    font-display:swap; /* or optional */
+}
+
+@font-face{
+    font-family:"Sono";
+    src:url("/fonts/Sono-400.woff2") format("woff2");
+    font-weight:400;
+    font-style:normal;
+    font-display:swap;
+}
+
+.visually-hidden {
+	border: 0;
+	clip: rect(0 0 0 0);
+	height: auto;
+	margin: 0;
+	overflow: hidden;
+	padding: 0;
+	position: absolute;
+	width: 1px;
+	white-space: nowrap;
+}
+
 @keyframes blink {
 	0%, 50% { opacity: 1; }
 	51%, 100% { opacity: 0; }
@@ -106,14 +134,26 @@ button:focus:not(:focus-visible) {
 	}
 }
 
-.visually-hidden {
-	border: 0;
-	clip: rect(0 0 0 0);
-	height: auto;
-	margin: 0;
-	overflow: hidden;
-	padding: 0;
-	position: absolute;
-	width: 1px;
-	white-space: nowrap;
+
+/* Start hidden to avoid fallback→webfont flash */
+.logo-mark,
+.logo-word,
+.logo-cursor {
+    opacity: 0;
+    transition: opacity .18s ease;
+    will-change: opacity;
+}
+
+/* When the root layout sets .fonts-ready on <html>, fade them in everywhere */
+.fonts-ready .logo-mark,
+.fonts-ready .logo-word,
+.fonts-ready .logo-cursor {
+    opacity: 1;
+}
+
+/* Reserve width so hiding “vimgod” doesn’t shift layout (DM Mono is monospace) */
+.logo-word { display:inline-block; min-width:6ch; }
+
+@media (prefers-reduced-motion: reduce) {
+    .logo-mark, .logo-word, .logo-cursor { transition:none; }
 }
