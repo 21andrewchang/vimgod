@@ -30,6 +30,10 @@
 	const DIAMOND_THRESHOLD = 1600;
 	const HIGHLIGHT_CHANCE = 0.4;
 	const MANIPULATION_CHANCE = 0.35;
+	const MAX_MANIPULATION_LINES = 3;
+	const MAX_MANIPULATION_ROUNDS = 4;
+	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
+	const MAX_UNDO_ENTRIES = 50;
 
 	const RATING_TIMER_RULES: Array<{ max: number; ms: number }> = [
 		{ max: 399, ms: 5000 },
@@ -68,8 +72,13 @@
 
 	type RoundBracket = 'movement-only' | 'highlight-enabled' | 'manipulation-enabled';
 
+	type UndoSnapshot = { document: string; cursor: { row: number; col: number } };
 	let roundBracket: RoundBracket = 'movement-only';
+	let manipulationRoundsGenerated = 0;
 	let loadingRating = false;
+	let undoStack: UndoSnapshot[] = [];
+	let roundBaselineSnapshot: UndoSnapshot | null = null;
+	let lastActiveRoundIndex: number | null = null;
 	let unsubscribeUser: (() => void) | undefined;
 
 	export let match: MatchController;
@@ -109,8 +118,6 @@
 	let glowBorderColor = DEFAULT_BORDER_COLOR;
 	let editorStyle = '';
 	let currentRating: number | null = null;
-	let lastActiveRoundIndex: number | null = null;
-	let manipulationRestored = false;
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
@@ -136,6 +143,12 @@
 		}
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
+	$: if (matchState.status === 'idle') {
+		manipulationRoundsGenerated = 0;
+		undoStack = [];
+		roundBaselineSnapshot = null;
+		lastActiveRoundIndex = null;
+	}
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -520,6 +533,50 @@
 		return lines.map((line) => line.slice());
 	}
 
+	function selectionLineSpan(selection: HighlightSelection) {
+		if (selection.type === 'line') {
+			return selection.endRow - selection.startRow + 1;
+		}
+		return selection.end.row - selection.start.row + 1;
+	}
+
+	function pushUndoSnapshot(snapshot: UndoSnapshot) {
+		const last = undoStack[undoStack.length - 1];
+		if (
+			last &&
+			last.document === snapshot.document &&
+			last.cursor.row === snapshot.cursor.row &&
+			last.cursor.col === snapshot.cursor.col
+		) {
+			return;
+		}
+		undoStack.push(snapshot);
+		if (undoStack.length > MAX_UNDO_ENTRIES) {
+			const overflow = undoStack.length - MAX_UNDO_ENTRIES;
+			undoStack.splice(0, overflow);
+		}
+	}
+
+	function handleUndo() {
+		const snapshot = undoStack.pop();
+		if (snapshot) {
+			vim.resetDocument(snapshot.document, snapshot.cursor);
+			recomputeLayout();
+			return;
+		}
+		if (!roundBaselineSnapshot) return;
+		const currentDocument = serializeDocument();
+		const cursorMatchesBaseline =
+			cursor.row === roundBaselineSnapshot.cursor.row && cursor.col === roundBaselineSnapshot.cursor.col;
+		if (currentDocument === roundBaselineSnapshot.document && cursorMatchesBaseline) return;
+		vim.resetDocument(roundBaselineSnapshot.document, roundBaselineSnapshot.cursor);
+		recomputeLayout();
+	}
+
+	function isUndoKey(event: KeyboardEvent) {
+		return currentMode === 'normal' && event.key === 'u' && !event.metaKey && !event.ctrlKey && !event.altKey;
+	}
+
 	function applyDeletionToClone(clone: string[], selection: HighlightSelection) {
 		if (!clone.length) {
 			clone.push('');
@@ -557,25 +614,30 @@
 		return serializeDocument(clone);
 	}
 
+	function generateManipulationSelection(): HighlightSelection | null {
+		for (let attempt = 0; attempt < MAX_MANIPULATION_SELECTION_ATTEMPTS; attempt++) {
+			const selection = generateHighlightSelection();
+			if (!selection) continue;
+			if (selectionLineSpan(selection) <= MAX_MANIPULATION_LINES) {
+				return selection;
+			}
+		}
+		const fallbackRow = randomVisibleRow() ?? (lines.length ? randInt(0, lines.length - 1) : null);
+		if (fallbackRow === null) return null;
+		return { type: 'line', startRow: fallbackRow, endRow: fallbackRow };
+	}
+
 	function generateHighlightTarget(): MatchTarget | null {
 		const selection = generateHighlightSelection();
 		return selection ? { kind: 'highlight', selection } : null;
 	}
 
 	function generateManipulationTarget(): MatchTarget | null {
-		const selection = generateHighlightSelection();
+		const selection = generateManipulationSelection();
 		if (!selection) return null;
 		const snapshot = selectionText(selection);
-		const restoreDocument = serializeDocument();
 		const expectedDocument = expectedDocumentAfterDeletion(selection);
-		return {
-			kind: 'manipulate',
-			selection,
-			action: 'delete',
-			snapshot,
-			expectedDocument,
-			restoreDocument
-		};
+		return { kind: 'manipulate', selection, action: 'delete', snapshot, expectedDocument };
 	}
 
 	function generateMovementTarget(): MatchTarget {
@@ -584,11 +646,19 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
-		if (roundBracket === 'manipulation-enabled') {
+		const canAttemptManipulation =
+			roundBracket === 'manipulation-enabled' &&
+			manipulationRoundsGenerated < MAX_MANIPULATION_ROUNDS;
+		if (canAttemptManipulation) {
 			if (Math.random() < MANIPULATION_CHANCE) {
 				const manipulation = generateManipulationTarget();
-				if (manipulation) return manipulation;
+				if (manipulation) {
+					manipulationRoundsGenerated += 1;
+					return manipulation;
+				}
 			}
+		}
+		if (roundBracket === 'manipulation-enabled') {
 			if (Math.random() < HIGHLIGHT_CHANCE) {
 				const highlight = generateHighlightTarget();
 				if (highlight) return highlight;
@@ -601,6 +671,22 @@
 			}
 		}
 		return generateMovementTarget();
+	}
+
+	$: {
+		const activeIndex = matchState.active?.index ?? null;
+		if (activeIndex !== lastActiveRoundIndex) {
+			lastActiveRoundIndex = activeIndex;
+			undoStack = [];
+			if (activeIndex !== null) {
+				roundBaselineSnapshot = {
+					document: serializeDocument(),
+					cursor: { row: cursor.row, col: cursor.col }
+				};
+			} else {
+				roundBaselineSnapshot = null;
+			}
+		}
 	}
 
 	function timerForRating(rating: number | null) {
@@ -627,14 +713,6 @@
 			start: { row: selection.start.row, col: selection.start.col },
 			end: { row: selection.end.row, col: selection.end.col }
 		};
-	}
-
-	$: {
-		const activeIndex = matchState.active?.index ?? null;
-		if (activeIndex !== lastActiveRoundIndex) {
-			lastActiveRoundIndex = activeIndex;
-			manipulationRestored = false;
-		}
 	}
 
 	async function loadPlayerRating() {
@@ -690,11 +768,6 @@
 		const manipulationCleared = isManipulation
 			? serializeDocument() === target.expectedDocument
 			: false;
-		if (isManipulation && manipulationCleared && !manipulationRestored) {
-			vim.resetDocument(target.restoreDocument, { row: cursor.row, col: cursor.col });
-			recomputeLayout();
-			manipulationRestored = true;
-		}
 		let roundCompleted = false;
 		if (matchState.status === 'running') {
 			roundCompleted = match.evaluate({
@@ -704,9 +777,7 @@
 			});
 		}
 
-		if (roundCompleted && isManipulation) {
-			return;
-		}
+		if (roundCompleted && isManipulation) return;
 
 		if (target.kind === 'move') {
 			const x = paddingX + 10 + target.col * CARET_STEP;
@@ -852,7 +923,17 @@
 
 	function onKeyDown(e: KeyboardEvent) {
 		match.recordKey(e.key, now());
+		if (isUndoKey(e)) {
+			e.preventDefault();
+			handleUndo();
+			return;
+		}
+		const previousDocument = serializeDocument();
+		const previousCursor = { row: cursor.row, col: cursor.col };
 		vim.handleKeyDown(e);
+		if (serializeDocument() !== previousDocument) {
+			pushUndoSnapshot({ document: previousDocument, cursor: previousCursor });
+		}
 		const uiState = vim.getUiState();
 		pendingCombo = uiState.pendingCombo;
 		pendingCount = uiState.pendingCount;
