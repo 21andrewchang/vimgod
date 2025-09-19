@@ -133,10 +133,10 @@
 
     $: if (!triedInitialRank && state.status === 'complete' && $user && projectedRankValue !== null && placementRankValue !== null) {
         triedInitialRank = true;
-        setInitialRank(placementRankValue, projectedRankValue)
+        setInitialRank(projectedRankValue, placementRankValue)
             .then(({ updated }) => {
                 if (updated) {
-                    console.log('Initial rank set successfully', {hiddenMmr: placementRankValue, rating: projectedRankValue});
+                    console.log('Initial rank set successfully', {hiddenMmr: projectedRankValue, rating: placementRankValue});
                 } else {
                     console.log('Initial rank already set');
                 }
