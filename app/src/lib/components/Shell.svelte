@@ -3,6 +3,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabaseClient';
+	import { ENABLE_INSERT_MODE } from '$lib/config';
 
 	const ROWS = 15; // same as MAX_ROWS
 	const COLS = 64; // pick what looks right; fixed column budget
@@ -423,6 +424,7 @@
 		console.log('curr mode: ', currentMode);
 	}
 	export function insertMode() {
+		if (!ENABLE_INSERT_MODE) return;
 		if (currentMode !== 'insert') {
 			currentMode = 'insert';
 			console.log('curr mode: ', currentMode);
@@ -666,15 +668,19 @@
 			else if (k === 'i') insertMode();
 			else if (k === ':') enterCommand();
 			else if (k === 'o') {
+				if (!ENABLE_INSERT_MODE) return;
 				newLine();
 				insertMode();
 			} else if (k === 'a') {
+				if (!ENABLE_INSERT_MODE) return;
 				if (lines[cursor.row] !== '') cursor.col++;
 				insertMode();
 			} else if (k === 'I') {
+				if (!ENABLE_INSERT_MODE) return;
 				cursor.col = 0;
 				insertMode();
 			} else if (k === 'A') {
+				if (!ENABLE_INSERT_MODE) return;
 				moveLastCol();
 				if (lines[cursor.row] !== '') cursor.col++;
 				insertMode();

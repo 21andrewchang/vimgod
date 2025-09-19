@@ -1,3 +1,5 @@
+import { ENABLE_INSERT_MODE } from '$lib/config';
+
 export type Mode = 'normal' | 'insert' | 'visual' | 'command' | 'block' | 'line';
 
 export type Cursor = {
@@ -49,6 +51,7 @@ interface VimOptions {
   onModeChange?: (mode: Mode) => void;
   onUiStateChange?: (state: VimUiState) => void;
   onCommand?: (command: string) => void;
+  insertModeEnabled?: boolean;
 }
 
 const IGNORED_KEYS = new Set([
@@ -120,6 +123,7 @@ export function createVimController(options: VimOptions): VimController {
   const cursor: Cursor = { row: 0, col: 0, goalCol: null };
 
   let currentMode: Mode = 'normal';
+  const insertModeEnabled = options.insertModeEnabled ?? ENABLE_INSERT_MODE;
   let visualLineStart: number | null = null;
   let selection: Selection | null = null;
   let visualCharAnchor: Position | null = null;
@@ -326,6 +330,7 @@ export function createVimController(options: VimOptions): VimController {
   }
 
   function insertMode() {
+    if (!insertModeEnabled) return;
     if (currentMode === 'line' || currentMode === 'visual') {
       clearSelection();
     }
@@ -1530,28 +1535,34 @@ export function createVimController(options: VimOptions): VimController {
         visualLineMode();
         return true;
       case 'i':
+        if (!insertModeEnabled) return true;
         insertMode();
         return true;
       case ':':
         enterCommand();
         return true;
       case 'O':
+        if (!insertModeEnabled) return true;
         newLine('above');
         insertMode();
         return true;
       case 'o':
+        if (!insertModeEnabled) return true;
         newLine('normal');
         insertMode();
         return true;
       case 'a':
+        if (!insertModeEnabled) return true;
         if (lines[cursor.row] !== '') cursor.col++;
         insertMode();
         return true;
       case 'I':
+        if (!insertModeEnabled) return true;
         cursor.col = 0;
         insertMode();
         return true;
       case 'A':
+        if (!insertModeEnabled) return true;
         moveLastCol();
         if (lines[cursor.row] !== '') cursor.col++;
         insertMode();
