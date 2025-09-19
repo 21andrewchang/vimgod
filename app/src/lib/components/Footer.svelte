@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+    import { browser } from '$app/environment';
 
 	// Keycap style
 	const cap =
@@ -114,8 +115,12 @@
 			tryScheduleHide();
 		}
 	}
-	document.addEventListener('pointermove', onPointerMove, { passive: true });
-	onDestroy(() => document.removeEventListener('pointermove', onPointerMove));
+    onMount(() => {
+        if (!browser) return;
+        const handler = (e: PointerEvent) => onPointerMove(e);
+        document.addEventListener('pointermove', handler, { passive: true });
+        return () => document.removeEventListener('pointermove', handler);
+    });
 
 	// Geometry helpers
 	function getRect(el: Element | null) {

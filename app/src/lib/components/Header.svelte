@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { user, signOut } from '$lib/stores/auth';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
+    import { browser } from '$app/environment';
 
 	const { variant = 'inline', size = 'large' } = $props<{
 		variant?: 'fixed' | 'inline';
@@ -115,11 +116,12 @@
 		}
 	}
 
-	// Attach pointer tracking while the dropdown could be visible (client-side only)
-	if (typeof document !== 'undefined') {
-		document.addEventListener('pointermove', onPointerMove, { passive: true });
-		onDestroy(() => document.removeEventListener('pointermove', onPointerMove));
-	}
+    onMount(() => {
+        if (!browser) return;
+        const handler = (e: PointerEvent) => onPointerMove(e);
+        document.addEventListener('pointermove', handler, { passive: true });
+        return () => document.removeEventListener('pointermove', handler);
+    });
 
 	// --- Geometry helpers ----------------------------------------------------
 
