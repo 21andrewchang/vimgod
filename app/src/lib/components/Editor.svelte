@@ -80,22 +80,25 @@
 	let timeLimitMs = 5000;
 	let timeRemaining = timeLimitMs;
 	let timerExpired = false;
-	let timeLabel = '0.0s';
 	let totalPoints = 0;
 	let pointsLabel = '+0';
-	let timerColor = '#DDDDDD';
+	let timerValue = 0;
 	let timerProgress = 1; // remaining / limit
+	let timerFill = 'rgba(226, 232, 240, 0.14)';
+	let timerBorder = 'rgba(226, 232, 240, 0.45)';
 	let glowBoxShadow = 'none';
 	let glowBorderColor = DEFAULT_BORDER_COLOR;
 	let editorStyle = '';
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
-	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: totalPoints = matchState.totalPoints ?? 0;
 	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
+	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timerExpired = timeRemaining <= 0;
-	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
-	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
+	$: {
+		timerFill = timerExpired ? 'rgba(248, 113, 113, 0.24)' : 'rgba(226, 232, 240, 0.14)';
+		timerBorder = timerExpired ? 'rgba(248, 113, 113, 0.68)' : 'rgba(226, 232, 240, 0.45)';
+	}
 	$: activeTargetKind = matchState.active?.target.kind ?? null;
 	$: {
 		const strength = matchState.active ? glowStrength : 0;
@@ -725,21 +728,18 @@
 
 <div class="fixed inset-0 flex flex-col items-center justify-center">
 	<div class="flex flex-col gap-2">
-		<div class="flex flex-row items-center justify-between">
+		<div class="flex flex-row items-center">
 			{#if matchState.active}
-				<div class="pointer-events-none flex gap-2">
-					<span
-						class="rounded-xl border border-neutral-400/40 bg-neutral-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-neutral-100"
+				<div class="pointer-events-none flex">
+					<div
+						class="relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/40 bg-neutral-400/10 px-3 py-1 font-mono uppercase tracking-wide text-neutral-100"
 					>
-						{matchState.active.isWarmup
-							? `0/${totalRoundsDisplay}`
-							: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
-					</span>
-				</div>
-			{/if}
-			{#if matchState.active && matchState.status !== 'complete'}
-				<div class="relative flex h-8 w-8 items-center justify-center">
-					<CircularProgress value={timerValue} size={26} stroke={1} />
+						<span class="text-md leading-none">
+							{matchState.active.isWarmup
+								? `0/${totalRoundsDisplay}`
+								: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
+						</span>
+					</div>
 				</div>
 			{/if}
 		</div>

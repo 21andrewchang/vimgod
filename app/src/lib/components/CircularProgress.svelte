@@ -3,8 +3,8 @@
 	export let value = 0; // 0..1 (elapsed fraction). 0 = full, 1 = empty
 	export let size = 96; // px
 	export let stroke = 8; // border width (px)
-	export let fill = 'rgb(232, 232, 232, 0.2)'; // pie color
-	export let border = 'rgb(232, 232, 232, 0.5)'; // pie color
+	export let fill = 'rgb(232, 232, 232, 0.1)'; // pie color
+	export let border = 'rgb(232, 232, 232, 0.2)'; // pie color
 	export let startAt = -Math.PI / 2; // start angle (12 o’clock)
 	export let clockwise = true; // direction of depletion
 
