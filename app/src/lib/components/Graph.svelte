@@ -19,7 +19,7 @@
 	export let yMax: number | null = null;
 	export let eMax: number | null = null; // right axis (errors)
 	export let gridH = 4; // horizontal grid lines
-	export let color = 'rgb(194, 123, 255)'; // main line
+	export let color = 'rgb(160, 160, 160, 0.8)'; // main line
 	export let colorTarget = 'rgba(244,63,94,0.3)'; // dashed target
 	export let bgGrid = 'rgba(148,163,184,0.18)';
 	export let area = 0.12; // fill under main (0 disables)
@@ -161,29 +161,6 @@
 			/>
 		{/each}
 
-		{#if cutoffHeight !== null && cutoffHeight > 0}
-			<rect
-				x={axisPadLeft}
-				y={pad.t}
-				width={clipWidth}
-				height={cutoffHeight}
-				fill="rgba(244,63,94,0.1)"
-			/>
-		{/if}
-
-		<!-- dashed target -->
-		{#if dTarget}
-			<path
-				d={dTarget}
-				fill="none"
-				stroke={colorTarget}
-				stroke-width="2"
-				stroke-dasharray="6 6"
-				opacity="0.6"
-				vector-effect="non-scaling-stroke"
-			/>
-		{/if}
-
 		<!-- area under main -->
 		{#if area > 0 && dArea}
 			<path d={dArea} fill={color} opacity={area} />
@@ -195,7 +172,29 @@
 				d={dMain}
 				fill="none"
 				stroke={color}
+				stroke-width="1"
+				vector-effect="non-scaling-stroke"
+			/>
+		{/if}
+
+		<!-- target fill + overlays -->
+		{#if dTarget}
+			{#if cutoffHeight !== null && cutoffHeight > 0}
+				<rect
+					x={axisPadLeft}
+					y={pad.t}
+					width={clipWidth}
+					height={cutoffHeight}
+					fill="rgba(244,63,94,0.1)"
+				/>
+			{/if}
+			<path
+				d={dTarget}
+				fill="none"
+				stroke={colorTarget}
 				stroke-width="2"
+				stroke-dasharray="6 6"
+				opacity="0.7"
 				vector-effect="non-scaling-stroke"
 			/>
 		{/if}

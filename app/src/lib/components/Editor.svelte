@@ -5,7 +5,16 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
-	import type { MatchController, MatchState, MatchTarget } from '$lib/match/match';
+	import { supabase } from '$lib/supabaseClient';
+	import { user } from '$lib/stores/auth';
+	import { createVimController, type Cursor, type Mode } from '$lib/vim/vim';
+	import type {
+		MatchController,
+		MatchState,
+		MatchTarget,
+		PlayerSelection,
+		HighlightSelection
+	} from '$lib/match/match';
 
 	const COLS = 64; // pick what looks right; fixed column budget
 	const GUTTER_PAD = 20; // space for line numbers + gap
@@ -16,6 +25,70 @@
 	const ROWS = 15;
 	const MAX_ROWS = ROWS; // keep these in lockstep
 	const TEXT_TOP = 38;
+
+	const PLATINUM_THRESHOLD = 1200;
+	const DIAMOND_THRESHOLD = 1600;
+	const HIGHLIGHT_CHANCE = 0.4;
+	const MANIPULATION_CHANCE = 0.35;
+	const MAX_MANIPULATION_LINES = 2;
+	const MAX_MANIPULATION_ROUNDS = 4;
+	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
+	const MAX_UNDO_ENTRIES = 50;
+
+	const RATING_TIMER_RULES: Array<{ max: number; ms: number }> = [
+		{ max: 399, ms: 5000 },
+		{ max: 799, ms: 4000 },
+		{ max: 1199, ms: 3000 },
+		{ max: 1599, ms: 2000 },
+		{ max: Infinity, ms: 1500 }
+	];
+	const CARET_STEP = 9.6328;
+
+	const MOVEMENT_GLOW_CONFIG = {
+		rgb: '194, 123, 255',
+		blur: [90, 400] as [number, number],
+		spread: [10, 40] as [number, number],
+		alpha: [0.12, 0.2] as [number, number],
+		borderAlpha: [0.07, 0.22] as [number, number]
+	};
+
+	const HIGHLIGHT_GLOW_CONFIG = {
+		rgb: '96, 165, 250',
+		blur: [100, 400] as [number, number],
+		spread: [10, 40] as [number, number],
+		alpha: [0.14, 0.34] as [number, number],
+		borderAlpha: [0.1, 0.26] as [number, number]
+	};
+
+	const MANIPULATION_GLOW_CONFIG = {
+		rgb: '239, 68, 68',
+		blur: [100, 420] as [number, number],
+		spread: [10, 44] as [number, number],
+		alpha: [0.16, 0.38] as [number, number],
+		borderAlpha: [0.12, 0.32] as [number, number]
+	};
+
+	const FORCE_UNDO_GLOW_CONFIG = {
+		rgb: '252, 223, 73',
+		blur: [100, 300] as [number, number],
+		spread: [0, 1] as [number, number],
+		alpha: [0.16, 0.38] as [number, number],
+		borderAlpha: [0.1, 0.5] as [number, number]
+	};
+
+	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
+
+	type RoundBracket = 'movement-only' | 'highlight-enabled' | 'manipulation-enabled';
+
+	type UndoSnapshot = { document: string; cursor: { row: number; col: number } };
+	let roundBracket: RoundBracket = 'movement-only';
+	let manipulationRoundsGenerated = 0;
+	let loadingRating = false;
+	let undoStack: UndoSnapshot[] = [];
+	let roundBaselineSnapshot: UndoSnapshot | null = null;
+	let lastActiveRoundIndex: number | null = null;
+	let forceUndoRequired = false;
+	let unsubscribeUser: (() => void) | undefined;
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -43,22 +116,53 @@
 	let timeLimitMs = 5000;
 	let timeRemaining = timeLimitMs;
 	let timerExpired = false;
-	let timeLabel = '0.0s';
 	let totalPoints = 0;
 	let pointsLabel = '+0';
-	let timerBackground = 'conic-gradient(#34d399 360deg, rgba(15, 23, 42, 0.35) 360deg)';
-	let timerColor = '#DDDDDD';
+	let timerValue = 0;
 	let timerProgress = 1; // remaining / limit
-	let timerValue = 0; // elapsed / limit for the ring
+	let timerFill = 'rgba(226, 232, 240, 1)';
+	let timerBorder = 'rgba(226, 232, 240, 1)';
+	let displaySeconds = 0;
+	let glowBoxShadow = 'none';
+	let glowBorderColor = DEFAULT_BORDER_COLOR;
+	let editorStyle = '';
+	let currentRating: number | null = null;
 
-	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
 	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
+	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timerExpired = timeRemaining <= 0;
-	$: timeLabel = `${(timeRemaining / 1000).toFixed(1)}s`;
-	$: timerColor = timerExpired ? '#f87171' : '#DDDDDD';
-	$: timerBackground = `conic-gradient(${timerColor} ${timerProgress * 360}deg, rgba(15, 23, 42, 0.35) ${timerProgress * 360}deg)`;
+	$: displaySeconds = timeLimitMs > 0 ? Math.max(0, Math.ceil(timeRemaining / 1000)) : 0;
+	$: activeTargetKind = matchState.active?.target.kind ?? null;
+	$: {
+		const strength = matchState.active ? glowStrength : 0;
+		if (!matchState.active || strength <= 0.002) {
+			glowBoxShadow = 'none';
+			glowBorderColor = DEFAULT_BORDER_COLOR;
+		} else if (forceUndoRequired) {
+			const forcedStrength = Math.max(strength, 0.65);
+			glowBoxShadow = buildGlow(FORCE_UNDO_GLOW_CONFIG, forcedStrength);
+			glowBorderColor = buildBorderStyle(FORCE_UNDO_GLOW_CONFIG, forcedStrength);
+		} else if (activeTargetKind === 'highlight') {
+			glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
+		} else if (activeTargetKind === 'manipulate') {
+			glowBoxShadow = buildGlow(MANIPULATION_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MANIPULATION_GLOW_CONFIG, strength);
+		} else {
+			glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		}
+	}
+	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
+	$: if (matchState.status === 'idle') {
+		manipulationRoundsGenerated = 0;
+		undoStack = [];
+		roundBaselineSnapshot = null;
+		lastActiveRoundIndex = null;
+		forceUndoRequired = false;
+	}
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -66,404 +170,57 @@
 		targetH = Math.ceil(TEXT_TOP + MAX_ROWS * lineHeight) + 1; // +1 avoids clipping
 	}
 
-	const IGNORED_KEYS = new Set([
-		'Shift',
-		'Control',
-		'Alt',
-		'Meta',
-		'CapsLock',
-		'NumLock',
-		'ScrollLock',
-		'OS',
-		'Dead',
-		'Compose'
-	]);
-
-	function isPrintable(e: KeyboardEvent) {
-		// ignore named modifier keys outright
-		if (IGNORED_KEYS.has(e.key)) return false;
-
-		const altGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
-
-		if (e.ctrlKey || e.metaKey) return false;
-		if (e.altKey && !altGraph) return false;
-
-		// Single-character keys only (letters, digits, symbols, whitespace)
-		return e.key.length === 1;
-	}
-
-	function viewBase() {
-		const maxBase = Math.max(0, lines.length - MAX_ROWS);
-		return clamp(cursor.row - Math.floor(MAX_ROWS / 2), 0, maxBase);
-	}
-	let state: 'shell' | 'vim' = 'vim';
-	// VIM
-	type Mode = 'normal' | 'insert' | 'visual' | 'command' | 'block' | 'line';
 	let currentMode: Mode = 'normal';
+	let pendingCount: number | null = null;
+	let pendingCombo = '';
+	let commandBuf = '';
+	let glowStrength = 0;
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	let raf = 0;
 	let ro: ResizeObserver | undefined;
 	let dpr = 1;
-	type Cursor = { row: number; col: number; goalCol: number | null };
 
-	const normalized = defaultText.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
-	export const lines: string[] = normalized.length ? normalized.split('\n') : [''];
-	export const cursor: Cursor = { row: 0, col: 0, goalCol: null };
+	const vim = createVimController({
+		initialText: defaultText,
+		maxRows: MAX_ROWS,
+		onModeChange: (mode) => {
+			currentMode = mode;
+		},
+		onUiStateChange: (uiState) => {
+			pendingCombo = uiState.pendingCombo;
+			pendingCount = uiState.pendingCount;
+			commandBuf = uiState.commandBuffer;
+		},
+		onCommand: (command) => {
+			if (command === 'wq' || command === 'x' || command === 'q') {
+			}
+		}
+	});
+
+	{
+		const initialUiState = vim.getUiState();
+		pendingCombo = initialUiState.pendingCombo;
+		pendingCount = initialUiState.pendingCount;
+		commandBuf = initialUiState.commandBuffer;
+	}
+
+	export const lines = vim.lines;
+	export const cursor: Cursor = vim.cursor;
 
 	export let charWidth = 9.6; // update after measureText
 	export let lineHeight = 24; // fontSize * 1.3-ish
 	export const paddingX = 30;
 	export const paddingY = 20;
 
-	let combo: string[] = [];
-	let commandBuf = '';
-
-	function enterCommand() {
-		currentMode = 'command';
-		commandBuf = '';
-	}
-
-	function exitCommand() {
-		const cmd = commandBuf.trim();
-		if (cmd === 'w' || cmd === 'write') {
-		} else if (cmd === 'wq' || cmd === 'x') {
-			state = 'shell';
-		} else if (cmd === 'q') {
-			state = 'shell'; // quit without saving
-		}
-		currentMode = 'normal';
-		commandBuf = '';
-	}
-
-	function clamp(n: number, lo: number, hi: number) {
-		return Math.max(lo, Math.min(hi, n));
-	}
-
-	function lineLen(r: number) {
-		return lines[r]?.length === 0 ? 0 : lines[r]?.length - 1;
-	}
-
-	export function normalMode() {
-		currentMode = 'normal';
-		if (lines[cursor.row] === '') return;
-		if (cursor.col > lines[cursor.row].length - 1) cursor.col = lines[cursor.row].length - 1;
-	}
-
-	export function visualLineMode() {
-		if (currentMode !== 'line') {
-			currentMode = 'line';
-			visualLine_start = cursor.row;
-		}
-	}
-
-	export function insertMode() {
-		if (currentMode !== 'insert') {
-			currentMode = 'insert';
-		}
-	}
-
-	export function newLine(mode: 'insert' | 'below' | 'above' | 'normal' = 'insert') {
-		const r = cursor.row;
-		const c = cursor.col;
-		const cur = lines[r] ?? '';
-
-		if (mode === 'insert') {
-			const head = cur.slice(0, c);
-			const tail = cur.slice(c);
-			lines[r] = head;
-			lines.splice(r + 1, 0, tail); // INSERT here
-			cursor.row = r + 1;
-			cursor.col = 0;
-		} else if (mode === 'above') {
-			lines.splice(r, 0, ''); // INSERT above current row
-			cursor.col = 0;
-			// stay on the new blank line (same row index now points to it)
-		} else {
-			// 'below' | 'normal'
-			lines.splice(r + 1, 0, '');
-			cursor.row = r + 1;
-			cursor.col = 0;
-		}
-
-		cursor.goalCol = cursor.col;
-	}
-
-	export function backspace() {
-		const r = cursor.row;
-		const line = lines[r] ?? '';
-
-		// If we're not at the very start of the buffer, delete one char to the left.
-		if (cursor.col > 0) {
-			lines[r] = line.slice(0, cursor.col - 1) + line.slice(cursor.col);
-			cursor.col -= 1;
-			cursor.goalCol = cursor.col;
-			return;
-		}
-
-		// At column 0: if there is a previous line, join with it.
-		if (r > 0) {
-			const prev = lines[r - 1] ?? '';
-			const merged = prev + line;
-			lines[r - 1] = merged;
-			lines.splice(r, 1); // remove current line
-			cursor.row = r - 1;
-			cursor.col = prev.length; // insertion index after the old prev line
-			cursor.goalCol = cursor.col;
-			return;
-		}
-
-		// (r === 0 && col === 0): nothing to do.
-	}
-
-	export function insertChar(char: string) {
-		const line = lines[cursor.row] ?? '';
-		lines[cursor.row] = line.slice(0, cursor.col) + char + line.slice(cursor.col);
-		cursor.col++;
-		cursor.goalCol = cursor.col;
-	}
-	export function moveFirstCol() {
-		cursor.col = 0;
-		cursor.goalCol = cursor.col;
-	}
-	export function moveFirstChar() {
-		const curr = lines[cursor.row];
-		let i = 0;
-		for (i; i < curr.length; i++) {
-			if (curr[i] !== ' ') {
-				break;
-			}
-		}
-		cursor.col = i;
-		cursor.goalCol = cursor.col;
-	}
-
-	function _isSpaceCh(ch: string | null) {
-		return ch === ' ' || ch === '\t';
-	}
-
-	const ISKEYWORD_RE = /[\p{L}\p{N}_]/u;
-	function _isWordCh(ch: string | null) {
-		if (!ch) return false;
-		try {
-			return ISKEYWORD_RE.test(ch);
-		} catch {
-			return /[A-Za-z0-9_]/.test(ch);
-		}
-	}
-
-	function _classOf(r: number, c: number, big: boolean): 'space' | 'word' | 'punct' {
-		const s = lines[r] ?? '';
-		const ch = s[c];
-		if (_isSpaceCh(ch)) return 'space';
-		if (big) return 'word';
-		return _isWordCh(ch) ? 'word' : 'punct';
-	}
-
-	function skipSpaces(r_start: number, c_start: number, reverse: boolean) {
-		let curr_row = r_start;
-		let curr_col = c_start;
-		while (_isSpaceCh(lines[curr_row][curr_col])) {
-			if (curr_col == lines[curr_row].length - 1 && !reverse) {
-				curr_col = 0;
-				curr_row++;
-			} else if (reverse && curr_col == 0) {
-				curr_row--;
-				curr_col = lines[curr_row].length - 1;
-			} else {
-				curr_col += reverse ? -1 : 1;
-			}
-		}
-		return [curr_row, curr_col];
-	}
-
-	export function to(char: string, reverse: boolean) {
-		let curr_row = cursor.row;
-		let curr_col = cursor.col;
-		let new_row = cursor.row;
-		let new_col = curr_col;
-		if (
-			!reverse &&
-			curr_col < lines[curr_row].length - 1 &&
-			lines[curr_row][curr_col + 1] === char
-		) {
-			curr_col++;
-		}
-		if (reverse && curr_col > 0 && lines[curr_row][curr_col - 1] === char) {
-			curr_col--;
-		}
-		if (!reverse && curr_col < lines[curr_row].length - 1) {
-			new_col = curr_col + 1;
-		} else if (reverse && curr_col > 0) {
-			new_col = curr_col - 1;
-		}
-		while (lines[new_row][new_col] !== char) {
-			if (new_col == lines[curr_row].length - 1 || new_col == 0) {
-				new_col = curr_col;
-				break;
-			}
-			new_col += reverse ? -1 : 1;
-		}
-		cursor.col = new_col + (reverse ? 1 : -1);
-		cursor.goalCol = cursor.col;
-		cursor.row = new_row;
-	}
-	export function find(char: string, reverse: boolean) {
-		let curr_row = cursor.row;
-		let curr_col = cursor.col;
-		let new_row = cursor.row;
-		let new_col = curr_col;
-		if (!reverse && curr_col < lines[curr_row].length - 1) {
-			new_col = curr_col + 1;
-		} else if (reverse && curr_col > 0) {
-			new_col = curr_col - 1;
-		}
-		while (lines[new_row][new_col] !== char) {
-			if (new_col == lines[curr_row].length - 1 || new_col == 0) {
-				new_col = curr_col;
-				break;
-			}
-			new_col += reverse ? -1 : 1;
-		}
-		cursor.col = new_col;
-		cursor.goalCol = cursor.col;
-		cursor.row = new_row;
-	}
-
-	export function moveNextWord(count: number | null, big: boolean, ghost: boolean) {
-		let c = count ? count : 1;
-		let curr_row = cursor.row;
-		let curr_col = cursor.col;
-		let new_row = curr_row;
-		let new_col = curr_col + 1;
-		let curr = lines[cursor.row];
-
-		// HAVE TO USE WHILE LOOP CANNOT USE FOR LOOP
-		// using curr.length makes it stop at this line which isnt correct
-		for (; c > 0; c--) {
-			console.log(c);
-			if (curr_row == lines.length - 1 && curr_col == lines[curr_row].length - 1) return;
-			while (_classOf(curr_row, curr_col, big) === _classOf(new_row, new_col, big)) {
-				if (new_col < curr.length - 1) {
-					new_col++;
-				} else if (curr_row == lines.length - 1) {
-					new_col = lines[curr_row].length - 1;
-					break;
-				} else {
-					new_col = 0;
-					new_row++;
-					curr = lines[new_row];
-				}
-			}
-			curr_col = new_col;
-			curr_row = new_row;
-			if (_isSpaceCh(lines[curr_row][curr_col])) {
-				[new_row, new_col] = skipSpaces(curr_row, curr_col, false);
-			}
-		}
-		if (!ghost) {
-			cursor.col = new_col;
-			cursor.goalCol = cursor.col;
-			cursor.row = new_row;
-			pendingCount = null;
-		} else {
-			return [new_row, new_col];
-		}
-	}
-
-	// 1. move until start of a letnum or punctuation sequence
-	// 2. if in middle of sequence, go until diff class (including space)
-	export function moveBackWord(count: number | null, big: boolean, ghost: boolean) {
-		let c = count ? count : 1;
-		let curr_row = cursor.row;
-		let curr_col = cursor.col;
-		let new_row = curr_row;
-		let new_col = curr_col - 1;
-
-		if (curr_row == 0 && curr_col == 0) return;
-		for (; c > 0; c--) {
-			if (curr_row == 0 && curr_col == 1) {
-				new_col--;
-				break;
-			}
-			if (_classOf(curr_row, curr_col, big) !== _classOf(new_row, new_col, big)) {
-				curr_col = new_col;
-				new_col--;
-			}
-			if (_isSpaceCh(lines[curr_row][curr_col])) {
-				console.log('is space');
-				[curr_row, curr_col] = skipSpaces(curr_row, curr_col, true);
-				new_row = curr_row;
-				new_col = curr_col - 1;
-				console.log('skipSpaces done', curr_col);
-			}
-			while (_classOf(curr_row, curr_col, big) === _classOf(new_row, new_col, big)) {
-				new_col--;
-			}
-		}
-		if (!ghost) {
-			cursor.col = new_col + 1;
-			cursor.goalCol = cursor.col;
-			cursor.row = new_row;
-			pendingCount = null;
-		} else {
-			return [new_row, new_col + 1];
-		}
-	}
-
-	export function moveLastCol() {
-		cursor.col = lineLen(cursor.row);
-		cursor.goalCol = cursor.col;
-	}
-
-	export function moveLeft(count: number | null) {
-		cursor.col = clamp(cursor.col - (count ? count : 1), 0, lineLen(cursor.row));
-		cursor.goalCol = cursor.col;
-		pendingCount = null;
-	}
-
-	export function moveRight(count: number | null) {
-		cursor.col = clamp(cursor.col + (count ? count : 1), 0, lineLen(cursor.row));
-		cursor.goalCol = cursor.col;
-		pendingCount = null;
-	}
-
-	function setGoalIfNeeded() {
-		if (cursor.goalCol == null) cursor.goalCol = cursor.col;
-	}
-
-	export function moveUp(count: number | null) {
-		setGoalIfNeeded();
-		const base = viewBase();
-		cursor.row = clamp(cursor.row - (count ? count : 1), base, lines.length - 1);
-		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
-		pendingCount = null;
-	}
-	export function moveDown(count: number | null) {
-		setGoalIfNeeded();
-		const base = viewBase();
-		cursor.row = clamp(cursor.row + (count ? count : 1), base, lines.length - 1);
-		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
-		pendingCount = null;
-	}
-	export function moveFirstRow() {
-		setGoalIfNeeded();
-		cursor.row = 0;
-		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
-	}
-	export function moveLastRow() {
-		setGoalIfNeeded();
-		cursor.row = lines.length - 1; // bottom of buffer
-		cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
-	}
-	export function resetGoal() {
-		cursor.goalCol = null;
+	function viewBase() {
+		return vim.viewBase();
 	}
 
 	export function caretXY() {
 		const base = viewBase();
 		return {
-			x: paddingX + 10 + cursor.col * 9.6328,
+			x: paddingX + 10 + cursor.col * CARET_STEP,
 			y: paddingY + (cursor.row - base) * lineHeight
 		};
 	}
@@ -526,9 +283,38 @@
 		charWidth = ctx.measureText('M').width;
 	}
 
-	let visualLine_start: number;
 	function randInt(min: number, max: number) {
 		return Math.floor(Math.random() * (max - min + 1)) + min;
+	}
+
+	function lerp(a: number, b: number, t: number) {
+		return a + (b - a) * Math.min(Math.max(t, 0), 1);
+	}
+
+	function buildGlow(
+		config: {
+			rgb: string;
+			blur: [number, number];
+			spread: [number, number];
+			alpha: [number, number];
+		},
+		strength: number
+	) {
+		const blur = lerp(config.blur[0], config.blur[1], strength);
+		const spread = lerp(config.spread[0], config.spread[1], strength);
+		const alpha = lerp(config.alpha[0], config.alpha[1], strength);
+		return `0 0 ${blur.toFixed(1)}px ${spread.toFixed(1)}px rgba(${config.rgb}, ${alpha.toFixed(3)})`;
+	}
+
+	function buildBorderStyle(
+		config: {
+			rgb: string;
+			borderAlpha: [number, number];
+		},
+		strength: number
+	) {
+		const alpha = lerp(config.borderAlpha[0], config.borderAlpha[1], strength);
+		return `border-color: rgba(${config.rgb}, ${alpha.toFixed(3)});`;
 	}
 
 	function randomTargetInViewport(): { row: number; col: number } {
@@ -556,394 +342,677 @@
 		return candidates[randInt(0, candidates.length - 1)];
 	}
 
-	type MovementResult = { target: { row: number; col: number }; sequence: string[] };
-
-	function toDigitKeys(count: number) {
-		return count > 1 ? String(count).split('') : [];
+	function randomVisibleRow(): number | null {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		if (bottom < top) return null;
+		return randInt(top, bottom);
 	}
 
-	function goalColumnForRow(row: number) {
-		const desired = cursor.goalCol ?? cursor.col;
-		const max = Math.max(0, lineLen(row));
-		return clamp(desired, 0, max);
+	function visibleRowRange() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const rows: number[] = [];
+		for (let r = top; r <= bottom; r++) rows.push(r);
+		return rows;
 	}
 
-	function firstNonWhitespace(line: string) {
-		for (let i = 0; i < line.length; i++) {
-			const ch = line[i];
-			if (ch !== ' ' && ch !== '\t') return i;
-		}
-		return -1;
+	function lineHasMeaningfulContent(row: number) {
+		const text = lines[row] ?? '';
+		return text.trim().length >= 2;
 	}
 
-	function simulateSearchMotion(
-		char: string,
-		type: 'find' | 'to',
-		reverse: boolean,
-		startRow: number,
-		startCol: number
-	): { row: number; col: number } | null {
-		const line = lines[startRow] ?? '';
-		if (!line.length) return null;
-		const step = reverse ? -1 : 1;
-		let idx = reverse
-			? Math.min(startCol - 1, line.length - 1)
-			: Math.min(startCol + 1, line.length - 1);
-		while (idx >= 0 && idx < line.length) {
-			if (line[idx] === char) {
-				if (type === 'find') {
-					if (idx === startCol) return null;
-					return { row: startRow, col: idx };
+	function generateLineHighlightSelection(): HighlightSelection | null {
+		const candidates = visibleRowRange().filter((row) => lineHasMeaningfulContent(row));
+		if (!candidates.length) return null;
+		const row = candidates[randInt(0, candidates.length - 1)];
+		return { type: 'line', startRow: row, endRow: row };
+	}
+
+	function generateMultiLineHighlightSelection(): HighlightSelection | null {
+		const rows = visibleRowRange();
+		if (!rows.length || lines.length < 2) return null;
+		for (let attempt = 0; attempt < 10; attempt++) {
+			const startRow = rows[randInt(0, rows.length - 1)];
+			const available = Math.min(lines.length - 1 - startRow, MAX_ROWS - 1);
+			if (available < 1) continue;
+			const span = randInt(1, Math.min(3, available));
+			const endRow = startRow + span;
+			const lo = Math.min(startRow, endRow);
+			const hi = Math.max(startRow, endRow);
+			let valid = true;
+			for (let r = lo; r <= hi; r++) {
+				if (!lineHasMeaningfulContent(r)) {
+					valid = false;
+					break;
 				}
-				const offset = reverse ? 1 : -1;
-				const nextCol = idx + offset;
-				if (nextCol < 0 || nextCol >= line.length) return null;
-				if (nextCol === startCol) return null;
-				return { row: startRow, col: nextCol };
 			}
-			idx += step;
+			if (!valid) continue;
+			return {
+				type: 'line',
+				startRow: lo,
+				endRow: hi
+			};
 		}
 		return null;
 	}
 
-	function generateSequenceTarget(): MatchTarget {
-		const fallback = randomTargetInViewport();
-		return { row: fallback.row, col: fallback.col, sequence: [] };
+	function collectWordCandidates() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const candidates: Array<{ row: number; startCol: number; endCol: number }> = [];
+		for (let row = top; row <= bottom; row++) {
+			const text = lines[row] ?? '';
+			const regex = /[A-Za-z0-9_]+/g;
+			let match: RegExpExecArray | null;
+			while ((match = regex.exec(text)) !== null) {
+				const start = match.index ?? 0;
+				const end = start + (match[0]?.length ?? 0);
+				if (end > start) {
+					candidates.push({ row, startCol: start, endCol: end });
+				}
+			}
+		}
+		return candidates;
 	}
 
-	function drawGhostMove() {
-		if (matchState.status === 'running') {
-			match.evaluate({ row: cursor.row, col: cursor.col });
+	function generateWordHighlightSelection(): HighlightSelection | null {
+		const candidates = collectWordCandidates().filter(
+			(candidate) => candidate.endCol - candidate.startCol >= 2
+		);
+		if (!candidates.length) return null;
+		const candidate = candidates[randInt(0, candidates.length - 1)];
+		return {
+			type: 'char',
+			start: { row: candidate.row, col: candidate.startCol },
+			end: { row: candidate.row, col: candidate.endCol }
+		};
+	}
+
+	function collectInsideCandidates() {
+		const base = viewBase();
+		const top = base;
+		const bottom = Math.min(lines.length - 1, base + MAX_ROWS - 1);
+		const candidates: Array<{ row: number; startCol: number; endCol: number }> = [];
+		const bracketPairs: Array<{ open: string; close: string }> = [
+			{ open: '(', close: ')' },
+			{ open: '[', close: ']' },
+			{ open: '{', close: '}' },
+			{ open: '<', close: '>' }
+		];
+		const openSet = new Set(bracketPairs.map((pair) => pair.open));
+		const closeMap = new Map(bracketPairs.map((pair) => [pair.close, pair.open]));
+		for (let row = top; row <= bottom; row++) {
+			const text = lines[row] ?? '';
+			for (const quote of ['"', "'", '`']) {
+				let index = text.indexOf(quote);
+				while (index !== -1) {
+					const end = text.indexOf(quote, index + 1);
+					if (end === -1) break;
+					if (end > index + 1) {
+						candidates.push({ row, startCol: index + 1, endCol: end });
+					}
+					index = text.indexOf(quote, index + 1);
+				}
+			}
+			const stack: Array<{ char: string; index: number }> = [];
+			for (let i = 0; i < text.length; i++) {
+				const ch = text[i];
+				if (openSet.has(ch)) {
+					stack.push({ char: ch, index: i });
+					continue;
+				}
+				const matchingOpen = closeMap.get(ch);
+				if (!matchingOpen) continue;
+				for (let j = stack.length - 1; j >= 0; j--) {
+					if (stack[j].char === matchingOpen) {
+						const startIndex = stack[j].index;
+						stack.splice(j, 1);
+						if (i > startIndex + 1) {
+							candidates.push({ row, startCol: startIndex + 1, endCol: i });
+						}
+						break;
+					}
+				}
+			}
 		}
+		return candidates.filter((candidate) => candidate.endCol - candidate.startCol >= 2);
+	}
+
+	function generateInsideHighlightSelection(): HighlightSelection | null {
+		const candidates = collectInsideCandidates();
+		if (!candidates.length) return null;
+		const candidate = candidates[randInt(0, candidates.length - 1)];
+		return {
+			type: 'char',
+			start: { row: candidate.row, col: candidate.startCol },
+			end: { row: candidate.row, col: candidate.endCol }
+		};
+	}
+
+	function generateHighlightSelection(): HighlightSelection | null {
+		const generators: Array<() => HighlightSelection | null> = [
+			generateLineHighlightSelection,
+			generateMultiLineHighlightSelection,
+			generateWordHighlightSelection,
+			generateInsideHighlightSelection
+		];
+		const pool = [...generators];
+		while (pool.length) {
+			const index = randInt(0, pool.length - 1);
+			const selection = pool.splice(index, 1)[0]();
+			if (selection) return selection;
+		}
+		return null;
+	}
+
+	function selectionText(selection: HighlightSelection): string {
+		if (selection.type === 'line') {
+			const rows: string[] = [];
+			for (let r = selection.startRow; r <= selection.endRow; r++) {
+				if (r < 0 || r >= lines.length) {
+					rows.push('');
+					continue;
+				}
+				rows.push(lines[r] ?? '');
+			}
+			return rows.join('\n');
+		}
+
+		const startRow = selection.start.row;
+		const endRow = selection.end.row;
+		if (startRow < 0 || startRow >= lines.length) return '';
+		const parts: string[] = [];
+		for (let r = startRow; r <= endRow; r++) {
+			if (r < 0 || r >= lines.length) {
+				parts.push('');
+				continue;
+			}
+			const text = lines[r] ?? '';
+			const rowStart = r === startRow ? Math.min(selection.start.col, text.length) : 0;
+			const rowEnd = r === endRow ? Math.min(selection.end.col, text.length) : text.length;
+			parts.push(text.slice(rowStart, rowEnd));
+		}
+		return parts.join('\n');
+	}
+
+	function serializeDocument(source: string[] = lines) {
+		return source.join('\n');
+	}
+
+	function cloneLines() {
+		return lines.map((line) => line.slice());
+	}
+
+	function selectionLineSpan(selection: HighlightSelection) {
+		if (selection.type === 'line') {
+			return selection.endRow - selection.startRow + 1;
+		}
+		return selection.end.row - selection.start.row + 1;
+	}
+
+	function pushUndoSnapshot(snapshot: UndoSnapshot) {
+		const last = undoStack[undoStack.length - 1];
+		if (
+			last &&
+			last.document === snapshot.document &&
+			last.cursor.row === snapshot.cursor.row &&
+			last.cursor.col === snapshot.cursor.col
+		) {
+			return;
+		}
+		undoStack.push(snapshot);
+		if (undoStack.length > MAX_UNDO_ENTRIES) {
+			const overflow = undoStack.length - MAX_UNDO_ENTRIES;
+			undoStack.splice(0, overflow);
+		}
+	}
+
+	function resetForceUndoIfCleared(nextDocument: string) {
+		const baselineDocument = roundBaselineSnapshot?.document ?? null;
+		if (baselineDocument && nextDocument === baselineDocument) {
+			forceUndoRequired = false;
+			undoStack = [];
+			return true;
+		}
+		const target = matchState.active?.target;
+		if (target?.kind === 'manipulate' && nextDocument === target.expectedDocument) {
+			forceUndoRequired = false;
+			return true;
+		}
+		return false;
+	}
+
+	function handleDocumentChange(previousDocument: string, nextDocument: string) {
+		if (!matchState.active) return;
+		if (resetForceUndoIfCleared(nextDocument)) return;
+		const target = matchState.active.target;
+		if (target.kind === 'manipulate') {
+			forceUndoRequired = true;
+			return;
+		}
+		const deletionOccurred = nextDocument.length < previousDocument.length;
+		if (deletionOccurred) {
+			forceUndoRequired = true;
+		}
+	}
+
+	function handleUndo() {
+		const snapshot = undoStack.pop();
+		if (snapshot) {
+			vim.resetDocument(snapshot.document, snapshot.cursor);
+			recomputeLayout();
+			resetForceUndoIfCleared(serializeDocument());
+			return;
+		}
+		if (!roundBaselineSnapshot) return;
+		vim.resetDocument(roundBaselineSnapshot.document, roundBaselineSnapshot.cursor);
+		recomputeLayout();
+		resetForceUndoIfCleared(serializeDocument());
+	}
+
+	function isUndoKey(event: KeyboardEvent) {
+		const hasPendingCombo = pendingCombo.length > 0;
+		return (
+			currentMode === 'normal' &&
+			!hasPendingCombo &&
+			event.key === 'u' &&
+			!event.metaKey &&
+			!event.ctrlKey &&
+			!event.altKey
+		);
+	}
+
+	function applyDeletionToClone(clone: string[], selection: HighlightSelection) {
+		if (!clone.length) {
+			clone.push('');
+		}
+		if (selection.type === 'line') {
+			const startRow = Math.max(0, Math.min(selection.startRow, clone.length - 1));
+			const endRow = Math.max(0, Math.min(selection.endRow, clone.length - 1));
+			clone.splice(startRow, endRow - startRow + 1);
+			if (!clone.length) clone.push('');
+			return clone;
+		}
+
+		const startRow = Math.max(0, Math.min(selection.start.row, clone.length - 1));
+		const endRow = Math.max(0, Math.min(selection.end.row, clone.length - 1));
+		const startLine = clone[startRow] ?? '';
+		const endLine = clone[endRow] ?? '';
+		const startCol = Math.max(0, Math.min(selection.start.col, startLine.length));
+		const endCol = Math.max(0, Math.min(selection.end.col, endLine.length));
+
+		if (startRow === endRow) {
+			const line = clone[startRow] ?? '';
+			clone[startRow] = line.slice(0, startCol) + line.slice(endCol);
+		} else {
+			const before = startLine.slice(0, startCol);
+			const after = endLine.slice(endCol);
+			clone.splice(startRow, endRow - startRow + 1, before + after);
+		}
+
+		if (!clone.length) clone.push('');
+		return clone;
+	}
+
+	function expectedDocumentAfterDeletion(selection: HighlightSelection) {
+		const clone = applyDeletionToClone(cloneLines(), selection);
+		return serializeDocument(clone);
+	}
+
+	function generateManipulationSelection(): HighlightSelection | null {
+		for (let attempt = 0; attempt < MAX_MANIPULATION_SELECTION_ATTEMPTS; attempt++) {
+			const selection = generateHighlightSelection();
+			if (!selection) continue;
+			if (selectionLineSpan(selection) <= MAX_MANIPULATION_LINES) {
+				return selection;
+			}
+		}
+		const fallbackRow = randomVisibleRow() ?? (lines.length ? randInt(0, lines.length - 1) : null);
+		if (fallbackRow === null) return null;
+		return { type: 'line', startRow: fallbackRow, endRow: fallbackRow };
+	}
+
+	function generateHighlightTarget(): MatchTarget | null {
+		const selection = generateHighlightSelection();
+		return selection ? { kind: 'highlight', selection } : null;
+	}
+
+	function generateManipulationTarget(): MatchTarget | null {
+		const selection = generateManipulationSelection();
+		if (!selection) return null;
+		const snapshot = selectionText(selection);
+		const expectedDocument = expectedDocumentAfterDeletion(selection);
+		return { kind: 'manipulate', selection, action: 'delete', snapshot, expectedDocument };
+	}
+
+	function generateMovementTarget(): MatchTarget {
+		const fallback = randomTargetInViewport();
+		return { kind: 'move', row: fallback.row, col: fallback.col, sequence: [] };
+	}
+
+	function generateRoundTarget(): MatchTarget {
+		const canAttemptManipulation =
+			roundBracket === 'manipulation-enabled' &&
+			manipulationRoundsGenerated < MAX_MANIPULATION_ROUNDS;
+		if (canAttemptManipulation) {
+			if (Math.random() < MANIPULATION_CHANCE) {
+				const manipulation = generateManipulationTarget();
+				if (manipulation) {
+					manipulationRoundsGenerated += 1;
+					return manipulation;
+				}
+			}
+		}
+		if (roundBracket === 'manipulation-enabled') {
+			if (Math.random() < HIGHLIGHT_CHANCE) {
+				const highlight = generateHighlightTarget();
+				if (highlight) return highlight;
+			}
+		}
+		if (roundBracket === 'highlight-enabled') {
+			if (Math.random() < HIGHLIGHT_CHANCE) {
+				const highlight = generateHighlightTarget();
+				if (highlight) return highlight;
+			}
+		}
+		return generateMovementTarget();
+	}
+
+	$: {
+		const activeIndex = matchState.active?.index ?? null;
+		if (activeIndex !== lastActiveRoundIndex) {
+			lastActiveRoundIndex = activeIndex;
+			undoStack = [];
+			if (activeIndex !== null) {
+				roundBaselineSnapshot = {
+					document: serializeDocument(),
+					cursor: { row: cursor.row, col: cursor.col }
+				};
+			} else {
+				roundBaselineSnapshot = null;
+			}
+			forceUndoRequired = false;
+		}
+	}
+
+	function timerForRating(rating: number | null) {
+		const value = rating ?? 0;
+		for (const rule of RATING_TIMER_RULES) {
+			if (value < rule.max) return rule.ms;
+		}
+		return 5000;
+	}
+
+	function applyTimerForRating(rating: number | null) {
+		const ms = timerForRating(rating);
+		match?.setTimeLimit?.(ms);
+	}
+
+	function selectionForMatch(): PlayerSelection | null {
+		const selection = vim.getSelection();
+		if (!selection) return null;
+		if (selection.type === 'line') {
+			return { type: 'line', startRow: selection.startRow, endRow: selection.endRow };
+		}
+		return {
+			type: 'char',
+			start: { row: selection.start.row, col: selection.start.col },
+			end: { row: selection.end.row, col: selection.end.col }
+		};
+	}
+
+	async function loadPlayerRating() {
+		if (!browser || loadingRating) return;
+		loadingRating = true;
+		try {
+			const currentUser = get(user);
+			if (!currentUser) {
+				currentRating = null;
+				roundBracket = 'movement-only';
+				applyTimerForRating(currentRating);
+				return;
+			}
+			const { data, error } = await supabase
+				.from('users')
+				.select('rating')
+				.eq('id', currentUser.id)
+				.single();
+			if (error) {
+				console.error('Failed to fetch user rating', error);
+				currentRating = null;
+				roundBracket = 'movement-only';
+				applyTimerForRating(currentRating);
+				return;
+			}
+			const ratingValue = typeof data?.rating === 'number' ? data.rating : null;
+			currentRating = ratingValue;
+			if (ratingValue != null && ratingValue >= DIAMOND_THRESHOLD) {
+				roundBracket = 'manipulation-enabled';
+			} else if (ratingValue != null && ratingValue >= PLATINUM_THRESHOLD) {
+				roundBracket = 'highlight-enabled';
+			} else {
+				roundBracket = 'movement-only';
+			}
+			applyTimerForRating(currentRating);
+		} catch (error) {
+			console.error('Failed to fetch user rating', error);
+			roundBracket = 'movement-only';
+			currentRating = null;
+			applyTimerForRating(currentRating);
+		} finally {
+			loadingRating = false;
+		}
+	}
+
+	function drawTargetOverlay() {
 		const active = matchState.active;
 		if (!active) return;
 		const target = active.target;
 		const base = viewBase();
-		const x = paddingX + 10 + target.col * 9.6328;
-		const rowTop = paddingY + (target.row - base) * lineHeight;
-		const caretH = Math.max(1, lineHeight - 1);
+		const playerSelection = selectionForMatch();
+		const isManipulation = target.kind === 'manipulate';
+		const manipulationCleared = isManipulation
+			? serializeDocument() === target.expectedDocument
+			: false;
+		let roundCompleted = false;
+		if (matchState.status === 'running' && !forceUndoRequired) {
+			roundCompleted = match.evaluate({
+				cursor: { row: cursor.row, col: cursor.col },
+				selection: playerSelection ?? null,
+				manipulated: manipulationCleared
+			});
+		}
+
+		if (roundCompleted && isManipulation) return;
+
+		if (target.kind === 'move') {
+			const x = paddingX + 10 + target.col * CARET_STEP;
+			const rowTop = paddingY + (target.row - base) * lineHeight;
+			const caretH = Math.max(1, lineHeight - 1);
+			ctx.save();
+			ctx.fillStyle = forceUndoRequired ? 'rgb(156, 163, 175)' : 'rgb(194, 123, 255)';
+			ctx.globalAlpha = forceUndoRequired ? 0.15 : 0.5;
+			ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
+			ctx.restore();
+			return;
+		}
+
 		ctx.save();
-		ctx.fillStyle = 'rgb(194, 123, 255)';
-		ctx.globalAlpha = 0.5;
-		ctx.lineWidth = 1.5;
-		ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
+		if (forceUndoRequired) {
+			ctx.fillStyle = 'rgb(148, 163, 184)';
+			ctx.globalAlpha = 0.18;
+		} else if (target.kind === 'manipulate') {
+			ctx.fillStyle = 'rgb(248, 113, 113)';
+			ctx.globalAlpha = 0.38;
+		} else {
+			ctx.fillStyle = 'rgb(96, 165, 250)';
+			ctx.globalAlpha = 0.35;
+		}
+		const textStartX = paddingX + 10;
+		const targetSelection = target.selection;
+		if (targetSelection.type === 'line') {
+			const startRow = Math.max(targetSelection.startRow, base);
+			const endRow = Math.min(targetSelection.endRow, lines.length - 1);
+			for (let r = startRow; r <= endRow && r < base + MAX_ROWS; r++) {
+				const text = lines[r] ?? '';
+				const textW = Math.max(ctx.measureText(text).width, charWidth);
+				const rowY = paddingY + (r - base) * lineHeight;
+				ctx.fillRect(Math.floor(textStartX), Math.floor(rowY), Math.ceil(textW), lineHeight);
+			}
+		} else {
+			const startRow = targetSelection.start.row;
+			const endRow = targetSelection.end.row;
+			for (let r = startRow; r <= endRow; r++) {
+				if (r < base || r >= base + MAX_ROWS) continue;
+				const text = lines[r] ?? '';
+				const rowStart = r === startRow ? targetSelection.start.col : 0;
+				const rowEnd = r === endRow ? targetSelection.end.col : text.length;
+				const clampedStart = Math.max(0, Math.min(rowStart, text.length));
+				const clampedEnd = Math.max(clampedStart, Math.min(rowEnd, text.length));
+				if (clampedEnd <= clampedStart) continue;
+				const prefix = text.slice(0, clampedStart);
+				const segment = text.slice(clampedStart, clampedEnd);
+				const x = textStartX + ctx.measureText(prefix).width;
+				const width = Math.max(ctx.measureText(segment).width, charWidth);
+				const rowY = paddingY + (r - base) * lineHeight;
+				ctx.fillRect(Math.floor(x), Math.floor(rowY), Math.ceil(width), lineHeight);
+			}
+		}
 		ctx.restore();
 	}
 	function draw() {
 		clear();
+		const nowMs = performance.now();
+		ctx.font = '16px monospace';
 
 		const limit = timeLimitMs;
 		if (matchState.active) {
 			const startedAt = matchState.active.startedAt;
-			const elapsed = startedAt == null ? 0 : performance.now() - startedAt;
+			const elapsed = startedAt == null ? 0 : nowMs - startedAt;
 			timeRemaining = Math.max(0, limit - elapsed);
 		} else {
 			timeRemaining = limit;
 		}
 		timerProgress = limit > 0 ? Math.max(0, Math.min(1, timeRemaining / limit)) : 0;
 
-		drawGhostMove();
-		if (state === 'vim') {
-			drawText();
-			switch (currentMode) {
-				case 'insert':
-					ctx.fillStyle = '#B990F5';
-					break;
-				case 'command':
-					ctx.fillStyle = '#333333';
-					break;
-				case 'line':
-					ctx.fillStyle = '#B990F5';
-					break; // any highlight color
-				default:
-					ctx.fillStyle = '#dddddd';
-			}
-			const base = viewBase();
-			const rowTop = paddingY + (cursor.row - base) * lineHeight;
-			const textStartX = paddingX + 10;
+		if (matchState.active) {
+			const breath = (Math.sin(nowMs / 420) + 1) / 2; // 0..1
+			const fade = Math.pow(timerProgress, 0.65);
+			const base = fade * (0.6 + 0.4 * breath);
+			const flickerWindow = Math.max(0, 1 - timerProgress / 0.22);
+			const flicker = flickerWindow ? (Math.sin(nowMs / 75) * 0.5 + 0.5) * flickerWindow * 0.35 : 0;
+			glowStrength = Math.max(0, Math.min(1, base + flicker));
+		} else {
+			glowStrength = 0;
+		}
+		const undoBlink = forceUndoRequired ? (Math.sin(nowMs / 50) + 1) / 2 : 1;
 
-			if (currentMode === 'line' && visualLine_start !== null) {
-				const lo = Math.max(Math.min(visualLine_start, cursor.row), base);
-				const hi = Math.min(Math.max(visualLine_start, cursor.row), lines.length - 1);
+		drawTargetOverlay();
+		drawText();
+		const selection = vim.getSelection();
+		const base = viewBase();
+		const textStartX = paddingX + 10;
 
-				ctx.globalAlpha = 0.28;
-				for (let r = lo; r <= hi; r++) {
-					const textW = Math.max(ctx.measureText(lines[r] ?? '').width, charWidth);
-					const rowTop = paddingY + (r - base) * lineHeight;
-					ctx.fillRect(Math.floor(textStartX), Math.floor(rowTop), Math.ceil(textW), lineHeight);
+		switch (currentMode) {
+			case 'insert':
+				ctx.fillStyle = '#B990F5';
+				break;
+			case 'command':
+				ctx.fillStyle = '#333333';
+				break;
+			case 'line':
+			case 'visual':
+				ctx.fillStyle = '#dddddd';
+				break;
+			default:
+				ctx.fillStyle = '#dddddd';
+		}
+
+		if (selection) {
+			ctx.globalAlpha = 0.28;
+			if (selection.type === 'line') {
+				const startRow = Math.max(selection.startRow, base);
+				const endRow = Math.min(selection.endRow, lines.length - 1);
+				for (let r = startRow; r <= endRow && r < base + MAX_ROWS; r++) {
+					const text = lines[r] ?? '';
+					const textW = Math.max(ctx.measureText(text).width, charWidth);
+					const rowY = paddingY + (r - base) * lineHeight;
+					ctx.fillRect(Math.floor(textStartX), Math.floor(rowY), Math.ceil(textW), lineHeight);
 				}
-				ctx.globalAlpha = 1;
-			} else {
-				const { x } = caretXY();
-				const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
-				ctx.globalAlpha = 0.85;
-				ctx.fillRect(Math.floor(x), Math.floor(rowTop), 9.8, caretH);
-				ctx.globalAlpha = 1;
+			} else if (selection.type === 'char') {
+				for (let r = selection.start.row; r <= selection.end.row; r++) {
+					if (r < base || r >= base + MAX_ROWS) continue;
+					const text = lines[r] ?? '';
+					const rowStart = r === selection.start.row ? selection.start.col : 0;
+					const rowEnd = r === selection.end.row ? selection.end.col : text.length;
+					const clampedStart = Math.max(0, Math.min(rowStart, text.length));
+					const clampedEnd = Math.max(clampedStart, Math.min(rowEnd, text.length));
+					if (clampedEnd <= clampedStart) continue;
+					const prefix = text.slice(0, clampedStart);
+					const segment = text.slice(clampedStart, clampedEnd);
+					const x = textStartX + ctx.measureText(prefix).width;
+					const width = Math.max(ctx.measureText(segment).width, charWidth);
+					const rowY = paddingY + (r - base) * lineHeight;
+					ctx.fillRect(Math.floor(x), Math.floor(rowY), Math.ceil(width), lineHeight);
+				}
 			}
+			ctx.globalAlpha = 1;
+		}
+
+		const shouldDrawCaret = !selection || selection.type !== 'line';
+		if (shouldDrawCaret) {
+			const { x } = caretXY();
+			const caretRowTop = paddingY + (cursor.row - base) * lineHeight;
+			const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
+			const caretColor = forceUndoRequired ? '#9CA3AF' : '#dddddd';
+			const caretAlpha = forceUndoRequired ? 0.12 + 0.4 * undoBlink : 0.85;
+			ctx.fillStyle = caretColor;
+			ctx.globalAlpha = caretAlpha;
+			ctx.fillRect(Math.floor(x), Math.floor(caretRowTop), 9.8, caretH);
+			ctx.globalAlpha = 1;
 		}
 		raf = requestAnimationFrame(draw);
 	}
 
-	function deleteRow() {
-		const a = Math.min(visualLine_start, cursor.row);
-		const b = Math.max(visualLine_start, cursor.row);
-		const count = b - a + 1;
-
-		const removed = lines.splice(a, count);
-
-		if (lines.length === 0) {
-			lines.push('');
-		}
-
-		// place cursor at the line where the block used to start
-		cursor.row = Math.min(a, lines.length - 1);
-		cursor.col = 0;
-		cursor.goalCol = 0;
-
-		normalMode(); // your existing function
-	}
-	let pendingCount: number | null;
-	let pendingCombo: string = '';
-	let lastSearch: string = '';
-	let lastSearchDirection: boolean = false;
-	let lastSearchType: string = 'find';
 	function onKeyDown(e: KeyboardEvent) {
-		const k = e.key;
-		match.recordKey(k, now());
-		if ('hjkl'.includes(k)) e.preventDefault();
-
-		if (currentMode === 'normal') {
-			if (pendingCombo === 'T') {
-				if (k === 'Escape') {
-					e.preventDefault();
-					pendingCombo = ''; // cancel
-					pendingCount = null;
-					return;
-				}
-				if (isPrintable(e) && k.length === 1) {
-					e.preventDefault();
-					lastSearch = k;
-					lastSearchDirection = true;
-					lastSearchType = 'to';
-					pendingCount = null;
-					to(k, true);
-					pendingCombo = '';
-					return;
-				}
-				return; // ignore everything else (Shift, Ctrl, etc.)
-			}
-			if (pendingCombo === 't') {
-				if (k === 'Escape') {
-					e.preventDefault();
-					pendingCombo = ''; // cancel
-					pendingCount = null;
-					return;
-				}
-				if (isPrintable(e) && k.length === 1) {
-					e.preventDefault();
-					lastSearch = k;
-					lastSearchType = 'to';
-					lastSearchDirection = false;
-					pendingCount = null;
-					to(k, false);
-					pendingCombo = '';
-					return;
-				}
-				return;
-			}
-			if (pendingCombo === 'F') {
-				if (k === 'Escape') {
-					e.preventDefault();
-					pendingCombo = ''; // cancel
-					pendingCount = null;
-					return;
-				}
-				if (isPrintable(e) && k.length === 1) {
-					e.preventDefault();
-					lastSearch = k;
-					lastSearchDirection = true;
-					pendingCount = null;
-					lastSearchType = 'find';
-					find(k, true);
-					pendingCombo = '';
-					return;
-				}
-				return; // ignore everything else (Shift, Ctrl, etc.)
-			}
-			if (pendingCombo === 'f') {
-				if (k === 'Escape') {
-					e.preventDefault();
-					pendingCombo = ''; // cancel
-					pendingCount = null;
-					return;
-				}
-				if (isPrintable(e) && k.length === 1) {
-					e.preventDefault();
-					lastSearch = k;
-					lastSearchDirection = false;
-					pendingCount = null;
-					lastSearchType = 'find';
-					find(k, false);
-					pendingCombo = '';
-					return;
-				}
-				return; // ignore everything else (Shift, Ctrl, etc.)
-			}
-			if (k === ';') {
-				if (lastSearch !== '') {
-					if (lastSearchType === 'find') find(lastSearch, lastSearchDirection);
-					else to(lastSearch, lastSearchDirection);
-				}
-			}
-			if (k === ',') {
-				if (lastSearch !== '') {
-					if (lastSearchType === 'find') find(lastSearch, !lastSearchDirection);
-					else to(lastSearch, !lastSearchDirection);
-				}
-			}
-			if (k >= '1' && k <= '9') {
-				e.preventDefault();
-				if (pendingCount == null) pendingCount = k.charCodeAt(0) - 48;
-				else {
-					pendingCount = (pendingCount ?? 0) * 10 + (k.charCodeAt(0) - 48);
-				}
-				return;
-			}
-			if (k === 'h') moveLeft(pendingCount);
-			else if (k === 'l') moveRight(pendingCount);
-			else if (k === 'k') moveUp(pendingCount);
-			else if (k === 'j') moveDown(pendingCount);
-			else if (k === '^') moveFirstChar();
-			else if (k === '0') {
-				if (pendingCount != null) {
-					pendingCount = (pendingCount ?? 0) * 10 + (k.charCodeAt(0) - 48);
-				} else {
-					moveFirstCol();
-				}
-			} else if (k === '$') moveLastCol();
-			else if (k === 'G') moveLastRow();
-			// else if (k === 'u') console.log('undo');
-			else if (k === 'W') {
-				moveNextWord(pendingCount, true, false);
-			} else if (k === 'w') {
-				moveNextWord(pendingCount, false, false);
-			} else if (k === 'b') {
-				moveBackWord(pendingCount, false, false);
-			} else if (k === 'e') console.log('forward end');
-			else if (k === 'x') console.log('cut current letter');
-			// else if (k === 'q') console.log('macro start');
-			// else if (k === 'r') console.log('replace curr letter');
-			// else if (k === 'p') console.log('paste numeral combo 2p');
-			else if (k === 'T') {
-				pendingCombo = 'T';
-			} else if (k === 't') {
-				pendingCombo = 't';
-			} else if (k === 'F') {
-				pendingCombo = 'F';
-			} else if (k === 'f') {
-				pendingCombo = 'f';
-			} else if (k === 'T') {
-				pendingCombo = 'T';
-			} else if (k === 't') {
-				pendingCombo = 't';
-			} else if (k === 'y') console.log('COMBO yoink');
-			else if (k === 'g') {
-				if (pendingCombo == 'g') {
-					moveFirstRow();
-					pendingCombo = '';
-				} else {
-					pendingCombo += 'g';
-				}
-				console.log('COMBO go');
-			} else if (k === 'c') console.log('COMBO cut');
-			else if (k === 'v') console.log('COMBO visual mode');
-			else if (k === 'v') console.log('COMBO visual mode');
-			else if (k === 's') console.log('curr letter delete -> insert');
-			else if (k === 'x') console.log('curr letter delete');
-			else if (k === 'V') visualLineMode();
-			else if (k === 'i') insertMode();
-			else if (k === ':') enterCommand();
-			else if (k === 'O') {
-				newLine('above');
-				insertMode();
-			} else if (k === 'o') {
-				newLine('normal');
-				insertMode();
-			} else if (k === 'a') {
-				if (lines[cursor.row] !== '') cursor.col++;
-				insertMode();
-			} else if (k === 'I') {
-				cursor.col = 0;
-				insertMode();
-			} else if (k === 'A') {
-				moveLastCol();
-				if (lines[cursor.row] !== '') cursor.col++;
-				insertMode();
-			} else if (k === 'Escape') {
-				pendingCount = null;
-				pendingCombo = '';
-				normalMode();
-			} else {
-				combo.push(k);
-			}
-		} else if (currentMode === 'line') {
-			if (k === 'Escape') {
-				e.preventDefault();
-				normalMode();
-			} else if (k === 'k') {
-				moveUp(pendingCount);
-			} else if (k === 'j') {
-				moveDown(pendingCount);
-			} else if (k === 'd') {
-				deleteRow();
-			} else if (k === 'g') {
-				if (pendingCombo == 'g') {
-					moveFirstRow();
-					pendingCombo = '';
-				} else {
-					pendingCombo += 'g';
-				}
-				console.log('COMBO go');
-			}
-		} else if (currentMode === 'insert') {
-			if (k === 'Escape') {
-				e.preventDefault();
-				normalMode();
-			} else if (k === 'Enter') {
-				e.preventDefault();
-				newLine();
-			} else if (k === 'Backspace') {
-				e.preventDefault();
-				backspace();
-			} else if (isPrintable(e)) {
-				e.preventDefault();
-				insertChar(e.key); // '@' works; Shift is ignored as a modifier
-			} // else ignore
-		} else if (currentMode === 'command') {
-			if (k === 'Escape') {
-				e.preventDefault();
-				normalMode();
-			} else if (k === 'Enter') {
-				e.preventDefault();
-				exitCommand();
-			} else if (k === 'Backspace') {
-				e.preventDefault();
-				commandBuf = commandBuf.slice(0, -1);
-			} else if (isPrintable(e)) {
-				e.preventDefault();
-				commandBuf += e.key;
-			} // else ignore
+		match.recordKey(e.key, now());
+		const undoKeyPressed = isUndoKey(e);
+		if (forceUndoRequired && !undoKeyPressed) {
+			e.preventDefault();
+			return;
 		}
+		if (undoKeyPressed) {
+			e.preventDefault();
+			handleUndo();
+			return;
+		}
+		const previousDocument = serializeDocument();
+		const previousCursor = { row: cursor.row, col: cursor.col };
+		vim.handleKeyDown(e);
+		const nextDocument = serializeDocument();
+		if (nextDocument !== previousDocument) {
+			pushUndoSnapshot({ document: previousDocument, cursor: previousCursor });
+			handleDocumentChange(previousDocument, nextDocument);
+		}
+		const uiState = vim.getUiState();
+		pendingCombo = uiState.pendingCombo;
+		pendingCount = uiState.pendingCount;
+		commandBuf = uiState.commandBuffer;
 	}
 
-	onMount(async () => {
+	onMount(() => {
 		if (!browser) return;
+		applyTimerForRating(currentRating);
 
 		matchState = get(match);
 		unsubscribeMatch = match.subscribe((value) => {
 			matchState = value;
 		});
-		match.setGenerator(generateSequenceTarget);
+		match.setGenerator(() => generateRoundTarget());
 		if (matchState.status === 'idle') {
 			match.start();
 		}
@@ -961,12 +1030,18 @@
 		canvas.tabIndex = 0;
 		canvas.focus();
 
+		unsubscribeUser = user.subscribe(() => {
+			loadPlayerRating();
+		});
+		loadPlayerRating();
+
 		raf = requestAnimationFrame(draw);
 	});
 
 	onDestroy(() => {
 		if (!browser) return;
 		unsubscribeMatch?.();
+		unsubscribeUser?.();
 		ro?.disconnect();
 		window.removeEventListener('resize', resize);
 		cancelAnimationFrame(raf);
@@ -975,30 +1050,39 @@
 
 <div class="fixed inset-0 flex flex-col items-center justify-center">
 	<div class="flex flex-col gap-2">
-		<div class="flex flex-row items-center justify-between">
+		<div class="flex flex-row items-center">
 			{#if matchState.active}
 				<div class="pointer-events-none flex gap-2">
-					<span
-						class="rounded-xl border border-purple-400/40 bg-purple-400/10 px-3 py-1 font-mono text-lg uppercase tracking-wide text-purple-200"
+					<div
+						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
 					>
-						{matchState.active.isWarmup
-							? `0/${totalRoundsDisplay}`
-							: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
-					</span>
-				</div>
-			{/if}
-			{#if matchState.active && matchState.status !== 'complete'}
-				<div class="relative flex h-8 w-8 items-center justify-center">
-					<CircularProgress value={timerValue} size={26} stroke={1} />
+						{#if matchState.status !== 'complete'}
+							<div class="relative flex items-center justify-center">
+								<CircularProgress
+									value={timerValue}
+									size={14}
+									stroke={1}
+									fill={timerFill}
+									border={timerBorder}
+								/>
+							</div>
+						{/if}
+						<span class="text-md leading-none">
+							{matchState.active.isWarmup
+								? `0/${totalRoundsDisplay}`
+								: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
+						</span>
+					</div>
 				</div>
 			{/if}
 		</div>
 		<div class="relative mb-10">
 			<div
 				data-mode={currentMode}
+				data-glow-kind={activeTargetKind ?? 'none'}
 				class=" data-[mode=command]:border-white/7 overflow-hidden rounded-xl border
-         border-white/10 shadow-lg transition-colors"
-				style={`width:${targetW}px; height:${targetH}px`}
+         border-white/10 shadow-lg transition-all"
+				style={editorStyle}
 			>
 				<canvas
 					bind:this={canvas}
@@ -1032,3 +1116,11 @@
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
+
+<style>
+	[data-glow-kind] {
+		transition:
+			box-shadow 250ms ease,
+			border-color 250ms ease;
+	}
+</style>

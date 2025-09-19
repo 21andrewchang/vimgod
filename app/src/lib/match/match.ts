@@ -3,11 +3,45 @@ import { writable, type Writable } from 'svelte/store';
 
 export type MatchStatus = 'idle' | 'ready' | 'running' | 'complete';
 
-export interface MatchTarget {
+export type Position = {
   row: number;
   col: number;
-  sequence: string[];
-}
+};
+
+export type LineSelection = {
+  type: 'line';
+  startRow: number;
+  endRow: number;
+};
+
+export type CharSelection = {
+  type: 'char';
+  start: Position;
+  end: Position;
+};
+
+export type HighlightSelection = LineSelection | CharSelection;
+
+export type MatchTarget =
+  | {
+      kind: 'move';
+      row: number;
+      col: number;
+      sequence: string[];
+    }
+  | {
+      kind: 'highlight';
+      selection: HighlightSelection;
+    }
+  | {
+      kind: 'manipulate';
+      selection: HighlightSelection;
+      action: 'delete';
+      snapshot: string;
+      expectedDocument: string;
+    };
+
+export type PlayerSelection = HighlightSelection;
 
 export interface MatchKeypress {
   key: string;
@@ -93,7 +127,7 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
   const rawScoringRounds = options.totalRounds ?? 20;
   const scoringRounds = Math.max(1, rawScoringRounds);
   const totalRounds = scoringRounds + 1;
-  const timeLimitMs = options.timeLimitMs ?? 5000;
+  let timeLimitMs = options.timeLimitMs ?? 5000;
   const maxPoints = options.maxPoints ?? 20;
   const pointsPerRound = maxPoints / scoringRounds;
   const now = options.now ?? defaultNow;
@@ -141,6 +175,11 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     generator = fn;
   };
 
+  const setTimeLimit = (ms: number) => {
+    timeLimitMs = Math.max(300, Math.floor(ms));
+    store.update((state) => ({ ...state, timeLimitMs }));
+  };
+
   const recordKey = (key: string, at = now()) => {
     store.update((state) => {
       if ((state.status !== 'running' && state.status !== 'ready') || !state.active) return state;
@@ -161,24 +200,51 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     });
   };
 
-  const evaluate = (cursor: { row: number; col: number }, at = now()) => {
+  interface PlayerState {
+    cursor: Position;
+    selection: PlayerSelection | null;
+    manipulated?: boolean;
+  }
+
+  const positionsEqual = (a: Position, b: Position) => a.row === b.row && a.col === b.col;
+
+  const selectionMatches = (target: HighlightSelection, selection: PlayerSelection | null) => {
+    if (!selection) return false;
+    if (target.type === 'line' && selection.type === 'line') {
+      return target.startRow === selection.startRow && target.endRow === selection.endRow;
+    }
+    if (target.type === 'char' && selection.type === 'char') {
+      return (
+        positionsEqual(target.start, selection.start) &&
+        positionsEqual(target.end, selection.end)
+      );
+    }
+    return false;
+  };
+
+  const targetSatisfied = (target: MatchTarget, player: PlayerState) => {
+    if (target.kind === 'move') {
+      return target.row === player.cursor.row && target.col === player.cursor.col;
+    }
+    if (target.kind === 'highlight') {
+      return selectionMatches(target.selection, player.selection);
+    }
+    return player.manipulated === true;
+  };
+
+  const evaluate = (player: PlayerState, at = now()) => {
     let completed = false;
     store.update((state) => {
       if (state.status !== 'running' || !state.active) return state;
       const target = state.active.target;
-      if (cursor.row !== target.row || cursor.col !== target.col) return state;
+      if (!targetSatisfied(target, player)) return state;
 
       if (state.active.isWarmup) {
         if (!generator) return state;
 
         let nextTarget = generator();
         let safety = 0;
-        while (
-          nextTarget &&
-          nextTarget.row === cursor.row &&
-          nextTarget.col === cursor.col &&
-          safety < 5
-        ) {
+        while (nextTarget && targetSatisfied(nextTarget, player) && safety < 5) {
           nextTarget = generator();
           safety += 1;
         }
@@ -243,17 +309,12 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
 
       let nextTarget = generator();
       let safety = 0;
-      while (
-        nextTarget &&
-        nextTarget.row === cursor.row &&
-        nextTarget.col === cursor.col &&
-        safety < 5
-      ) {
+      while (nextTarget && targetSatisfied(nextTarget, player) && safety < 5) {
         nextTarget = generator();
         safety += 1;
       }
 
-      if (!nextTarget || (nextTarget.row === cursor.row && nextTarget.col === cursor.col)) {
+      if (!nextTarget || targetSatisfied(nextTarget, player)) {
         return {
           ...state,
           status: 'complete',
@@ -301,7 +362,8 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     setGenerator,
     recordKey,
     evaluate,
-    reset
+    reset,
+    setTimeLimit
   };
 };
 

@@ -3,8 +3,9 @@
 	export let value = 0; // 0..1 (elapsed fraction). 0 = full, 1 = empty
 	export let size = 96; // px
 	export let stroke = 8; // border width (px)
-	export let fill = 'rgb(194, 123, 255, 0.2)'; // pie color
-	export let border = 'rgb(194, 123, 255, 0.5)'; // pie color
+	export let fill = 'rgb(232, 232, 232, 1)'; // active pie fill
+	export let border = 'rgb(232, 232, 232, 0)'; // optional foreground ring
+	export let trackFill = 'rgba(111, 111, 111, 0.2)'; // background revealed as timer depletes
 	export let startAt = -Math.PI / 2; // start angle (12 o’clock)
 	export let clockwise = true; // direction of depletion
 
@@ -47,12 +48,12 @@
 	aria-hidden="true"
 	style="display:block"
 >
+	<circle cx={size / 2} cy={size / 2} {r} fill={trackFill} />
 	{#if d === null}
 		<circle cx={size / 2} cy={size / 2} {r} {fill} />
 	{:else if d}
 		<path {d} {fill} />
 	{/if}
 
-	<!-- solid border (always constant) -->
-	<circle cx={size / 2} cy={size / 2} {r} fill="none" stroke={border} stroke-width={stroke} />
+	<circle cx={size / 2} cy={size / 2} {r} fill="none" />
 </svg>
