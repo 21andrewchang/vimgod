@@ -8,6 +8,7 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { user } from '$lib/stores/auth';
 	import { createVimController, type Cursor, type Mode } from '$lib/vim/vim';
+	import RoundGoalBadge from '$lib/components/RoundGoalBadge.svelte';
 	import type {
 		MatchController,
 		MatchState,
@@ -127,6 +128,7 @@
 	let glowBorderColor = DEFAULT_BORDER_COLOR;
 	let editorStyle = '';
 	let currentRating: number | null = null;
+	let manipulationAction: 'delete' | null = null;
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
@@ -135,6 +137,8 @@
 	$: timerExpired = timeRemaining <= 0;
 	$: displaySeconds = timeLimitMs > 0 ? Math.max(0, Math.ceil(timeRemaining / 1000)) : 0;
 	$: activeTargetKind = matchState.active?.target.kind ?? null;
+	$: manipulationAction =
+		matchState.active?.target.kind === 'manipulate' ? matchState.active.target.action : null;
 	$: {
 		const strength = matchState.active ? glowStrength : 0;
 		if (!matchState.active || strength <= 0.002) {
@@ -1073,6 +1077,11 @@
 								: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
 						</span>
 					</div>
+					<RoundGoalBadge
+						forceUndoRequired={forceUndoRequired}
+						targetKind={activeTargetKind}
+						manipulationAction={manipulationAction}
+					/>
 				</div>
 			{/if}
 		</div>
