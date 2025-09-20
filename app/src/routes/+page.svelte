@@ -4,9 +4,32 @@
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import Header from '$lib/components/Header.svelte';
 	import { createMatchController } from '$lib/match/match';
+	import { getContext, onDestroy } from 'svelte';
 	import '$lib/stores/auth'; // Initialize auth store
 
 	const match = createMatchController({ totalRounds: 20 });
+
+	type ReloadGuardContext = {
+		enable: () => void;
+		disable: () => void;
+	};
+
+	const reloadGuard = getContext<ReloadGuardContext | undefined>('reload-guard');
+
+const shouldProtectStatuses = new Set(['ready', 'running']);
+
+$: if (reloadGuard) {
+	const status = $match.status;
+	if (shouldProtectStatuses.has(status)) {
+		reloadGuard.enable();
+	} else {
+		reloadGuard.disable();
+	}
+}
+
+	onDestroy(() => {
+		reloadGuard?.disable();
+	});
 </script>
 
 <svelte:head>

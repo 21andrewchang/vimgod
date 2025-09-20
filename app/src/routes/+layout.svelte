@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { onMount } from 'svelte';
+	import { onMount, setContext } from 'svelte';
 	import { browser } from '$app/environment';
 	import { get, writable } from 'svelte/store';
 
@@ -8,16 +8,23 @@
 
 	const reloadWarningVisible = writable(false);
 	const countdown = writable(5);
+	const reloadGuardActive = writable(false);
 	let countdownTimer: ReturnType<typeof setInterval> | undefined;
 
-	const clearCountdown = () => {
+	function clearCountdown() {
 		if (countdownTimer) {
 			clearInterval(countdownTimer);
 			countdownTimer = undefined;
 		}
-	};
+	}
 
-	const startCountdown = () => {
+	function hideReloadWarning() {
+		reloadWarningVisible.set(false);
+		countdown.set(5);
+		clearCountdown();
+	}
+
+	function startCountdown() {
 		clearCountdown();
 		countdown.set(5);
 		countdownTimer = setInterval(() => {
@@ -34,24 +41,33 @@
 				return next;
 			});
 		}, 1000);
-	};
+	}
 
-	const showReloadWarning = () => {
+	function showReloadWarning() {
 		reloadWarningVisible.set(true);
 		startCountdown();
+	}
+
+	const enableReloadGuard = () => reloadGuardActive.set(true);
+	const disableReloadGuard = () => {
+		reloadGuardActive.set(false);
+		hideReloadWarning();
 	};
 
-	const hideReloadWarning = () => {
-		reloadWarningVisible.set(false);
-		countdown.set(5);
-		clearCountdown();
-	};
+	setContext('reload-guard', {
+		enable: enableReloadGuard,
+		disable: disableReloadGuard
+	});
 
 	const handleKeyDown = (event: KeyboardEvent) => {
 		const key = event.key?.toLowerCase();
 		const isReloadCombo = key === 'r' && (event.metaKey || event.ctrlKey);
 		const warningActive = get(reloadWarningVisible);
+		const guardActive = get(reloadGuardActive);
 		if (isReloadCombo) {
+			if (!guardActive) {
+				return;
+			}
 			if (warningActive) {
 				// Allow the browser reload once the warning is already showing.
 				hideReloadWarning();
@@ -117,68 +133,19 @@
 	/>
 </svelte:head>
 
-<div class={`app ${$reloadWarningVisible ? 'app--intercepted' : ''}`}>
+<div class={`min-h-screen transition-[filter,transform] duration-150 ease-out `}>
 	{@render children()}
 	<!-- render the routed page here -->
 </div>
 
 {#if $reloadWarningVisible}
-	<div class="fixed flex items-center justify-center bg-black/50 backdrop-blur-md">
-		<div class="flex flex-col text-center font-mono text-neutral-200">
-			<p>reloading will exit the current match and result in a loss.</p>
-			<p>are you sure you want to continue?</p>
-			<p class="reload-overlay__countdown">{$countdown}s</p>
-			<p class="reload-overlay__dismiss">press escape to continue</p>
+	<div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+		<div class="text-center font-mono lowercase text-neutral-200">
+			<p>reloading will result in a loss</p>
+			<p class="text-[clamp(2rem,3vw,2.75rem)] tabular-nums tracking-[0.1em] text-red-400">
+				{$countdown}s
+			</p>
+			<p class="text-xs opacity-70">press escape to continue</p>
 		</div>
 	</div>
 {/if}
-
-<style>
-	.app {
-		min-height: 100vh;
-		transition:
-			filter 150ms ease,
-			transform 150ms ease;
-	}
-
-	.app--intercepted {
-		filter: blur(6px);
-		transform: scale(0.99);
-	}
-
-	.reload-overlay {
-		position: fixed;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(5, 5, 12, 0.88);
-		backdrop-filter: blur(4px);
-		z-index: 9999;
-	}
-
-	.reload-overlay__content {
-		display: grid;
-		gap: 0.75rem;
-		padding: 2.5rem 3rem;
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		background: rgba(12, 12, 20, 0.6);
-		border-radius: 0.75rem;
-		font-family: 'DM Mono', monospace;
-		text-transform: lowercase;
-		color: rgba(255, 255, 255, 0.9);
-		text-align: center;
-		max-width: min(90vw, 28rem);
-	}
-
-	.reload-overlay__countdown {
-		font-size: clamp(2rem, 3vw, 2.75rem);
-		font-variant-numeric: tabular-nums;
-		letter-spacing: 0.1em;
-	}
-
-	.reload-overlay__dismiss {
-		font-size: 0.875rem;
-		opacity: 0.7;
-	}
-</style>
