@@ -24,7 +24,7 @@
 		targetH = 0;
 
 	const ROWS = 15;
-	const MAX_ROWS = ROWS; // keep these in lockstep
+	const MAX_ROWS = ROWS;
 	const TEXT_TOP = 38;
 
 	const PLATINUM_THRESHOLD = 1200;
@@ -123,99 +123,99 @@
 	let pointsLabel = '+0';
 	let timerValue = 0;
 	let timerProgress = 1; // remaining / limit
-let timerFill = 'rgba(226, 232, 240, 1)';
-let timerBorder = 'rgba(226, 232, 240, 1)';
-let displaySeconds = 0;
-let glowBoxShadow = 'none';
-let glowBorderColor = DEFAULT_BORDER_COLOR;
-let editorStyle = '';
-let currentRating: number | null = null;
-let activeTargetKind: MatchTarget['kind'] | null = null;
-let manipulationAction: 'delete' | null = null;
-let undoCount = 0;
-let signedIn = false;
-let warmupState: 'inactive' | 'waiting' | 'countdown' | 'complete' = 'inactive';
-let warmupCountdownValue = 3;
-let warmupPulse = false;
-let warmupTimer: ReturnType<typeof setTimeout> | null = null;
-let warmupPulseTimer: ReturnType<typeof setTimeout> | null = null;
-let warmupRoomActive = false;
-let showTimer = false;
-let currentRoundDisplay = 0;
+	let timerFill = 'rgba(226, 232, 240, 1)';
+	let timerBorder = 'rgba(226, 232, 240, 1)';
+	let displaySeconds = 0;
+	let glowBoxShadow = 'none';
+	let glowBorderColor = DEFAULT_BORDER_COLOR;
+	let editorStyle = '';
+	let currentRating: number | null = null;
+	let activeTargetKind: MatchTarget['kind'] | null = null;
+	let manipulationAction: 'delete' | null = null;
+	let undoCount = 0;
+	let signedIn = false;
+	let warmupState: 'inactive' | 'waiting' | 'countdown' | 'complete' = 'inactive';
+	let warmupCountdownValue = 3;
+	let warmupPulse = false;
+	let warmupTimer: ReturnType<typeof setTimeout> | null = null;
+	let warmupPulseTimer: ReturnType<typeof setTimeout> | null = null;
+	let warmupRoomActive = false;
+	let showTimer = false;
+	let currentRoundDisplay = 0;
 
-function cancelWarmupTimer() {
-	if (warmupTimer) {
-		clearTimeout(warmupTimer);
-		warmupTimer = null;
-	}
-}
-
-function cancelWarmupPulseTimer() {
-	if (warmupPulseTimer) {
-		clearTimeout(warmupPulseTimer);
-		warmupPulseTimer = null;
-	}
-}
-
-function exitWarmup() {
-	cancelWarmupTimer();
-	cancelWarmupPulseTimer();
-	warmupState = 'inactive';
-	warmupCountdownValue = 3;
-	warmupPulse = false;
-}
-
-function enterWarmup() {
-	exitWarmup();
-	warmupState = 'waiting';
-	forceUndoRequired = false;
-	undoStack = [];
-	roundBaselineSnapshot = null;
-}
-
-function triggerWarmupPulse() {
-	warmupPulse = true;
-	cancelWarmupPulseTimer();
-	warmupPulseTimer = setTimeout(() => {
-		warmupPulse = false;
-		warmupPulseTimer = null;
-	}, 320);
-}
-
-function finishWarmup() {
-	cancelWarmupTimer();
-	cancelWarmupPulseTimer();
-	warmupState = 'complete';
-	warmupCountdownValue = 0;
-	warmupPulse = false;
-	match.start({ skipWarmup: true });
-}
-
-function runWarmupCountdownStep(value: number) {
-	warmupCountdownValue = value;
-	triggerWarmupPulse();
-	if (value <= 1) {
-		warmupTimer = setTimeout(() => {
+	function cancelWarmupTimer() {
+		if (warmupTimer) {
+			clearTimeout(warmupTimer);
 			warmupTimer = null;
-			finishWarmup();
-		}, 1000);
-	} else {
-		warmupTimer = setTimeout(() => {
-			runWarmupCountdownStep(value - 1);
-		}, 1000);
+		}
 	}
-}
 
-function startWarmupCountdown() {
-	if (warmupState !== 'waiting') return;
-	warmupState = 'countdown';
-	runWarmupCountdownStep(3);
-}
+	function cancelWarmupPulseTimer() {
+		if (warmupPulseTimer) {
+			clearTimeout(warmupPulseTimer);
+			warmupPulseTimer = null;
+		}
+	}
 
-$: timeLimitMs = matchState.timeLimitMs ?? 5000;
-$: totalPoints = matchState.totalPoints ?? 0;
-$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
-$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
+	function exitWarmup() {
+		cancelWarmupTimer();
+		cancelWarmupPulseTimer();
+		warmupState = 'inactive';
+		warmupCountdownValue = 3;
+		warmupPulse = false;
+	}
+
+	function enterWarmup() {
+		exitWarmup();
+		warmupState = 'waiting';
+		forceUndoRequired = false;
+		undoStack = [];
+		roundBaselineSnapshot = null;
+	}
+
+	function triggerWarmupPulse() {
+		warmupPulse = true;
+		cancelWarmupPulseTimer();
+		warmupPulseTimer = setTimeout(() => {
+			warmupPulse = false;
+			warmupPulseTimer = null;
+		}, 320);
+	}
+
+	function finishWarmup() {
+		cancelWarmupTimer();
+		cancelWarmupPulseTimer();
+		warmupState = 'complete';
+		warmupCountdownValue = 0;
+		warmupPulse = false;
+		match.start({ skipWarmup: true });
+	}
+
+	function runWarmupCountdownStep(value: number) {
+		warmupCountdownValue = value;
+		triggerWarmupPulse();
+		if (value <= 1) {
+			warmupTimer = setTimeout(() => {
+				warmupTimer = null;
+				finishWarmup();
+			}, 1000);
+		} else {
+			warmupTimer = setTimeout(() => {
+				runWarmupCountdownStep(value - 1);
+			}, 1000);
+		}
+	}
+
+	function startWarmupCountdown() {
+		if (warmupState !== 'waiting') return;
+		warmupState = 'countdown';
+		runWarmupCountdownStep(3);
+	}
+
+	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
+	$: totalPoints = matchState.totalPoints ?? 0;
+	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
+	$: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / timeLimitMs)) : 0);
 	$: timerExpired = timeRemaining <= 0;
 	$: displaySeconds = timeLimitMs > 0 ? Math.max(0, Math.ceil(timeRemaining / 1000)) : 0;
 	$: activeTargetKind = matchState.active?.target.kind ?? null;
@@ -233,39 +233,37 @@ $: timerValue = 1 - (timeLimitMs > 0 ? Math.max(0, Math.min(1, timeRemaining / t
 		} else if (activeTargetKind === 'highlight') {
 			glowBoxShadow = buildGlow(HIGHLIGHT_GLOW_CONFIG, strength);
 			glowBorderColor = buildBorderStyle(HIGHLIGHT_GLOW_CONFIG, strength);
-	} else if (activeTargetKind === 'manipulate') {
-		glowBoxShadow = buildGlow(MANIPULATION_GLOW_CONFIG, strength);
-		glowBorderColor = buildBorderStyle(MANIPULATION_GLOW_CONFIG, strength);
-	} else {
-		glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
-		glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		} else if (activeTargetKind === 'manipulate') {
+			glowBoxShadow = buildGlow(MANIPULATION_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MANIPULATION_GLOW_CONFIG, strength);
+		} else {
+			glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
+			glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		}
 	}
-}
-$: warmupRoomActive = signedIn && (warmupState === 'waiting' || warmupState === 'countdown');
-$: currentRoundDisplay =
-	warmupRoomActive || matchState.active?.isWarmup
-		? 0
-		: Math.min(matchState.active?.index ?? 0, totalRoundsDisplay);
-$: showTimer =
-	matchState.status !== 'complete' &&
-	!!matchState.active &&
-	(!matchState.active.isWarmup || !signedIn);
-$: if (warmupRoomActive) {
-	if (warmupState === 'waiting') {
-		glowBoxShadow = 'none';
-		glowBorderColor = 'border-color: rgba(255, 255, 255, 0.48);';
-	} else {
-		glowBoxShadow = warmupPulse
-			? '0 0 48px 12px rgba(255, 255, 255, 0.35)'
-			: 'none';
-		glowBorderColor = 'border-color: rgba(255, 255, 255, 0.7);';
+	$: warmupRoomActive = signedIn && (warmupState === 'waiting' || warmupState === 'countdown');
+	$: currentRoundDisplay =
+		warmupRoomActive || matchState.active?.isWarmup
+			? 0
+			: Math.min(matchState.active?.index ?? 0, totalRoundsDisplay);
+	$: showTimer =
+		matchState.status !== 'complete' &&
+		!!matchState.active &&
+		(!matchState.active.isWarmup || !signedIn);
+	$: if (warmupRoomActive) {
+		if (warmupState === 'waiting') {
+			glowBoxShadow = 'none';
+			glowBorderColor = 'border-color: rgba(255, 255, 255, 0.1);';
+		} else {
+			glowBoxShadow = warmupPulse ? '0 0 48px 12px rgba(255, 255, 255, 0.35)' : 'none';
+			glowBorderColor = 'border-color: rgba(255, 255, 255, 0.1);';
+		}
 	}
-}
-$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
-$: if (matchState.status === 'idle') {
-	manipulationRoundsGenerated = 0;
-	undoStack = [];
-	roundBaselineSnapshot = null;
+	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
+	$: if (matchState.status === 'idle') {
+		manipulationRoundsGenerated = 0;
+		undoStack = [];
+		roundBaselineSnapshot = null;
 		lastActiveRoundIndex = null;
 		forceUndoRequired = false;
 		undoCount = 0;
@@ -1136,22 +1134,22 @@ $: if (matchState.status === 'idle') {
 		if (!browser) return;
 		applyTimerForRating(currentRating);
 
-	matchState = get(match);
-	signedIn = Boolean(get(user));
-	unsubscribeMatch = match.subscribe((value) => {
-		matchState = value;
-		if (signedIn && value.status === 'idle' && warmupState !== 'countdown') {
-			enterWarmup();
-		}
-	});
-	match.setGenerator(() => generateRoundTarget());
-	if (signedIn) {
-		match.reset();
 		matchState = get(match);
-		enterWarmup();
-	} else if (matchState.status === 'idle') {
-		match.start();
-	}
+		signedIn = Boolean(get(user));
+		unsubscribeMatch = match.subscribe((value) => {
+			matchState = value;
+			if (signedIn && value.status === 'idle' && warmupState !== 'countdown') {
+				enterWarmup();
+			}
+		});
+		match.setGenerator(() => generateRoundTarget());
+		if (signedIn) {
+			match.reset();
+			matchState = get(match);
+			enterWarmup();
+		} else if (matchState.status === 'idle') {
+			match.start();
+		}
 
 		ctx = canvas.getContext('2d', { alpha: false })!;
 		ctx.textBaseline = 'top';
@@ -1166,21 +1164,21 @@ $: if (matchState.status === 'idle') {
 		canvas.tabIndex = 0;
 		canvas.focus();
 
-	unsubscribeUser = user.subscribe((value) => {
-		signedIn = Boolean(value);
-		if (signedIn) {
-			exitWarmup();
-			match.reset();
-			matchState = get(match);
-			enterWarmup();
-		} else {
-			exitWarmup();
-			match.reset();
-			matchState = get(match);
-			match.start();
-		}
-		loadPlayerRating();
-	});
+		unsubscribeUser = user.subscribe((value) => {
+			signedIn = Boolean(value);
+			if (signedIn) {
+				exitWarmup();
+				match.reset();
+				matchState = get(match);
+				enterWarmup();
+			} else {
+				exitWarmup();
+				match.reset();
+				matchState = get(match);
+				match.start();
+			}
+			loadPlayerRating();
+		});
 		loadPlayerRating();
 
 		raf = requestAnimationFrame(draw);
@@ -1220,9 +1218,9 @@ $: if (matchState.status === 'idle') {
 					</div>
 					{#if matchState.active && (!matchState.active.isWarmup || !signedIn)}
 						<RoundGoalBadge
-							forceUndoRequired={forceUndoRequired}
+							{forceUndoRequired}
 							targetKind={activeTargetKind}
-							manipulationAction={manipulationAction}
+							{manipulationAction}
 						/>
 					{/if}
 				</div>
@@ -1232,7 +1230,7 @@ $: if (matchState.status === 'idle') {
 			<div
 				data-mode={currentMode}
 				data-glow-kind={activeTargetKind ?? 'none'}
-				class="relative data-[mode=command]:border-white/7 overflow-hidden rounded-xl border
+				class="data-[mode=command]:border-white/7 relative overflow-hidden rounded-xl border
          border-white/10 shadow-lg transition-all"
 				style={editorStyle}
 			>
@@ -1245,8 +1243,10 @@ $: if (matchState.status === 'idle') {
 				{#if warmupRoomActive}
 					<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
 						{#if warmupState === 'waiting'}
-							<div class="rounded-full border border-white/20 bg-black/40 px-6 py-2 font-mono text-xs uppercase tracking-[0.5em] text-white/70">
-								move to begin warmup
+							<div
+								class="rounded-full border border-white/20 bg-black/40 px-6 py-2 font-mono text-xs uppercase tracking-[0.5em] text-white/70 backdrop-blur-md"
+							>
+								move to start match
 							</div>
 						{:else if warmupState === 'countdown'}
 							<div class={`warmup-countdown ${warmupPulse ? 'warmup-countdown--pulse' : ''}`}>
