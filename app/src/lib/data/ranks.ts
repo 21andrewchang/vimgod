@@ -32,6 +32,18 @@ const RANK_VALUES = {
     singularity: 2500
 } as const;
 
+export const colorByRank: Record<string, string> = {
+    Unranked:'bg-neutral-300 text-neutral-800',
+    Bronze:'bg-amber-700 text-white',
+    Silver:'bg-slate-300 text-slate-900',
+    Gold:'bg-amber-200 text-yellow-700',
+    Platinum:'bg-teal-200 text-teal-600',
+    Diamond:'bg-indigo-300 text-blue-700',
+    Nova:'bg-rose-300 text-rose-600',
+    Supernova:'bg-violet-500 text-violet-50',
+    Singularity:'bg-pearlescent shiny-glow text-neutral-900'
+};
+
 export const FAMILY_MOTIONS = {
     // modes (normal, insert, visual, command)
     modes: [
@@ -268,6 +280,24 @@ export function prettyRank(rankId: RankId): string {
   }
   // Fallback
   return cap(rankId);
+}
+
+export function nextRankId(current: RankId): RankId | null {
+    const i = ORDER.indexOf(current);
+    return i >= 0 && i < ORDER.length - 1 ? ORDER[i + 1] : null;
+}
+
+// 🆕 short label like G2, P1, D4, N, SN, SG
+export function abbrevFromRankId(id: RankId): string {
+    if (id === 'nova') return 'N';
+    if (id === 'supernova') return 'SN';
+    if (id === 'singularity') return 'SG';
+    const m = id.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
+    if (m) {
+        const map: Record<string,string> = { bronze:'B', silver:'S', gold:'G', platinum:'P', diamond:'D' };
+        return `${map[m[1].toLowerCase()]}${m[2]}`;
+    }
+    return id;
 }
 
 export interface RankInputs {

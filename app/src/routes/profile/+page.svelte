@@ -7,9 +7,35 @@
 	import StatCard from '$lib/components/StatCard.svelte';
 	import ProfileCard from '$lib/components/ProfileCard.svelte';
 
+    const rating = profileUser.elo ?? 0;
 
-    const { span: lpMax, lp } = lpForRating(profileUser.elo);
+    const { rankId, next, span, lp } = lpForRating(rating);
+    const nextId = next !== null ? rankIdFromRating(next) : null;
+
+    const lpMax = span ?? 100;
     const lpPercent = lpMax ? Math.min(100, Math.round((lp / lpMax) * 100)) : 100;
+
+    function familyFromRankId(id: string): string {
+        if (id === 'nova' || id === 'supernova' || id === 'singularity') {
+        return id.charAt(0).toUpperCase() + id.slice(1);
+        }
+        const m = id.match(/(bronze|silver|gold|platinum|diamond)/i);
+        return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1) : 'Unranked';
+    }
+
+    function textClassByRank(id: string) {
+        const family = familyFromRankId(id);
+        const tokens = (colorByRank[family] ?? '').split(' ');
+        const textToken = tokens.find((t) => t.startsWith('text-'));
+        return textToken ?? 'text-neutral-300';
+    }
+
+    const currentTextClass = $derived(textClassByRank(rankId));
+    const nextTextClass = $derived(nextId ? textClassByRank(nextId) : '');
+
+    const leftProgressLabel = nextId ? `${abbrevFromRankId(rankId)} → ${abbrevFromRankId(nextId)}` : `${abbrevFromRankId(rankId)}`;
+
+    console.log('leftProgressLabel', leftProgressLabel);
 
     const statItems = [
         // { label: 'rank', value: `${profileUser.elo}` },
@@ -25,7 +51,7 @@
     import MatchTable from '$lib/components/MatchTable.svelte';
     import BgDarkTiles from '$lib/components/BgDarkTiles.svelte';
     import Footer from '$lib/components/Footer.svelte';
-    import { lpForRating } from '$lib/data/ranks';
+    import { lpForRating, rankIdFromRating, nextRankId, abbrevFromRankId, prettyRank, colorByRank } from '$lib/data/ranks';
 </script>
   
 
@@ -40,7 +66,8 @@
         <div class="md:col-span-5">
             <ProfileCard 
                 userName={profileUser.name} 
-                rank={profileUser.rank} 
+                rank={profileUser.rank}
+                rankName={profileUser.rankName}
                 level={profileUser.level}
                 experience={profileUser.experience} 
                 maxExperience={profileUser.maxExperience} 
@@ -60,19 +87,22 @@
       
                   <!-- Footer: LP label (right) + progress bar at the bottom -->
                   <svelte:fragment slot="footer">
-                    <div class="flex flex-col gap-2">
-                      <div
-                        class="text-xs text-right"
-                        style="color: #c9ced6; font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
-                      >
+                    <div class="mb-2 flex w-full justify-between">
+                        <div class="text-xs font-mono flex items-center gap-1">
+                        <span class={currentTextClass}>{abbrevFromRankId(rankId)}</span>
+                        {#if nextId}
+                            <span class="text-white">→</span>
+                            <span class={nextTextClass}>{abbrevFromRankId(nextId)}</span>
+                        {/if}
+                        </div>
+
+                        <div class="text-xs font-mono text-right" style="color:#c9ced6;">
                         {lpMax ? `${lp}/${lpMax} LP` : `${lp}+ LP`}
-                      </div>
-                      <div class="w-full bg-zinc-800/60 rounded-full h-2 overflow-hidden">
-                        <div
-                          class="h-2 rounded-full bg-pearlescent shiny-glow"
-                          style={`width: ${lpPercent}%;`}
-                        />
-                      </div>
+                        </div>
+                    </div>
+
+                    <div class="w-full bg-zinc-800/60 rounded-full h-2 overflow-hidden">
+                        <div class="h-2 rounded-full bg-pearlescent shiny-glow" style={`width:${lpPercent}%;`} />
                     </div>
                   </svelte:fragment>
                 </StatCard>

@@ -41,7 +41,7 @@
   
     <div class="p-4 flex flex-col justify-center h-full relative z-10 item-center">
       {#if value !== undefined}
-        <div class="mt-2 text-[11px] tracking-[0.08em]" style="color:#c9ced6; font-family:
+        <div class="mt-2 mb-2 text-[11px] tracking-[0.08em]" style="color:#c9ced6; font-family:
             'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
             {label}
         </div>
@@ -67,8 +67,10 @@
         <div class="mt-2 text-sm" style="color:#a8b0b8;">{description}</div>
       {/if}
 
-      <div class="mt-3">
-        <slot name="footer" />
-      </div>
+      {#if value === undefined}
+        <div class="mt-3">
+            <slot name="footer" />
+        </div>
+      {/if}
     </div>
 </div>

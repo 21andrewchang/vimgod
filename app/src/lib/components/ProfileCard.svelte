@@ -1,16 +1,20 @@
 <script lang="ts">
     import CardIcon from '$lib/components/CardIcon.svelte';
     import RankBadge from '$lib/components/RankBadge.svelte';
+
+    import { lpForRating, rankIdFromRating, abbrevFromRankId, colorByRank } from '$lib/data/ranks';
     
     const { 
         userName = "Player", 
         rank = "Bronze", 
+        rankName = "Bronze",
         level = 420, 
         experience = 67, 
         maxExperience = 100
     } = $props<{ 
         userName?: string; 
         rank?: string; 
+        rankName?: string;
         level?: number; 
         experience?: number; 
         maxExperience?: number; 
@@ -56,7 +60,7 @@
                 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
                 {userName}
             </div>
-            <RankBadge rank={rank} />
+            <RankBadge rank={rank} rankName={rankName} />
         </div>
         
         <!-- Level Progress -->

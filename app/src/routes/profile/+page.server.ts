@@ -83,7 +83,12 @@ export const load: PageServerLoad = async ({ locals }) => {
     const { level, experience, maxExperience } = levelFromXP(xp);
     const rankId = rankIdFromRating(userData.rating ?? 1500);
     const rank = prettyRank(rankId);
+    const rankName = rank.split(' ')[0];
 
+
+    console.log('rankId', rankId);
+    console.log('rank', rank);
+    console.log('rankName', rankName);
 
     const appUser = {
       id: userData.id,
@@ -92,6 +97,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       lp:  userData.hidden_mmr ?? 1500,
       rankId,
       rank,
+      rankName,
       level,
       experience,
       maxExperience
