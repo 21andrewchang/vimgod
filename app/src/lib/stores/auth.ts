@@ -37,6 +37,69 @@ export const setInitialRank = async (hiddenMmr: number, rating: number) => {
     return { updated: Array.isArray(data) ? data.length : 0};
 };
 
+export const applyRatingDelta = async (delta: number) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+  
+    const uid = session?.user?.id;
+    // console.log('uid', uid);
+    if (!uid) throw new Error('No active session found');
+  
+    // 1) Read current rating
+    const { data: current, error: readErr } = await supabase
+      .from('users')
+      .select('rating')
+      .eq('id', uid)
+      .single();
+    if (readErr) throw readErr;
+
+    // console.log('current', current);
+  
+    const prev = current?.rating ?? 0;
+    const next = Math.max(0, Math.min(3000, prev + Math.round(delta))); // clamp + round
+  
+    // 2) Persist new rating
+    const { data: updated, error: upErr } = await supabase
+      .from('users')
+      .update({ rating: next })
+      .eq('id', uid)
+      .select('rating')
+      .single();
+    if (upErr) throw upErr;
+
+    // console.log('updated', updated);
+  
+    return updated.rating as number;
+  };
+
+export const increaseXp = async (delta: number) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+  
+    const uid = session?.user?.id;
+    if (!uid) throw new Error('No active session found');
+
+    const { data: current, error: readErr } = await supabase
+      .from('users')
+      .select('xp')
+      .eq('id', uid)
+      .single();
+    if (readErr) throw readErr;
+
+    const prev = current?.xp ?? 0;
+    const next = prev + delta;
+
+    const { data: updated, error: upErr } = await supabase
+      .from('users')
+      .update({ xp: next })
+      .eq('id', uid)
+      .select('xp')
+      .single();
+    if (upErr) throw upErr;
+
+    return updated.xp as number;
+}
+
 // Google sign in function
 export const signInWithGoogle = async () => {
     const redirectTo = browser ? `${window.location.origin}/auth/callback?next=/profile` : undefined;

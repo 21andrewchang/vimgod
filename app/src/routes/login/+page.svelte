@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { signInWithGoogle } from '$lib/stores/auth';
-	import Header from '$lib/components/Header.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import BgDarkTiles from '$lib/components/BgDarkTiles.svelte';
 </script>
@@ -14,8 +13,6 @@
 
 <div class="w-full relative overflow-hidden min-h-screen">
 	<div class="relative z-[2] px-6 py-8 max-w-4xl mx-auto min-h-screen flex flex-col">
-		<Header variant="fixed" size="small" />
-		
 		<!-- Login Section -->
 		<div class="flex flex-col items-center justify-center flex-1 space-y-8">
 			<div class="text-center space-y-4">

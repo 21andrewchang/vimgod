@@ -2,7 +2,6 @@
 	import Footer from '$lib/components/Footer.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
-	import Header from '$lib/components/Header.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
 	import { DODGE_LP_PENALTY, DODGE_STORAGE_KEY, type DodgeSnapshot } from '$lib/reloadGuard';
 	import { browser } from '$app/environment';
@@ -122,7 +121,6 @@ type ReloadGuardContext = {
 <main
 	class="relative flex min-h-[100dvh] w-[100dvw] flex-col items-center justify-center gap-6 bg-black py-8"
 >
-	<Header variant="fixed" size="small" />
 	{#if $match.status !== 'complete'}
 		<div class="rounded-xl border border-white/20">
 			<Editor {match} />

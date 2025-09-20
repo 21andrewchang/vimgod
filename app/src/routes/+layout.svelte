@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { onMount, setContext } from 'svelte';
 	import { browser } from '$app/environment';
+	import Header from '$lib/components/Header.svelte';
 	import { get, writable } from 'svelte/store';
 	import { DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 	import type { DodgeSnapshot } from '$lib/reloadGuard';
@@ -192,6 +193,7 @@
 </svelte:head>
 
 <div class={`min-h-screen transition-[filter,transform] duration-150 ease-out `}>
+    <Header variant="fixed" size="small" />
 	{@render children()}
 	<!-- render the routed page here -->
 </div>
