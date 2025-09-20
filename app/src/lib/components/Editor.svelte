@@ -136,9 +136,7 @@
 	let signedIn = false;
 	let warmupState: 'inactive' | 'waiting' | 'countdown' | 'complete' = 'inactive';
 	let warmupCountdownValue = 3;
-	let warmupPulse = false;
 	let warmupTimer: ReturnType<typeof setTimeout> | null = null;
-	let warmupPulseTimer: ReturnType<typeof setTimeout> | null = null;
 	let warmupRoomActive = false;
 	let showTimer = false;
 	let currentRoundDisplay = 0;
@@ -150,19 +148,10 @@
 		}
 	}
 
-	function cancelWarmupPulseTimer() {
-		if (warmupPulseTimer) {
-			clearTimeout(warmupPulseTimer);
-			warmupPulseTimer = null;
-		}
-	}
-
 	function exitWarmup() {
 		cancelWarmupTimer();
-		cancelWarmupPulseTimer();
 		warmupState = 'inactive';
 		warmupCountdownValue = 3;
-		warmupPulse = false;
 	}
 
 	function enterWarmup() {
@@ -173,27 +162,15 @@
 		roundBaselineSnapshot = null;
 	}
 
-	function triggerWarmupPulse() {
-		warmupPulse = true;
-		cancelWarmupPulseTimer();
-		warmupPulseTimer = setTimeout(() => {
-			warmupPulse = false;
-			warmupPulseTimer = null;
-		}, 320);
-	}
-
 	function finishWarmup() {
 		cancelWarmupTimer();
-		cancelWarmupPulseTimer();
 		warmupState = 'complete';
 		warmupCountdownValue = 0;
-		warmupPulse = false;
 		match.start({ skipWarmup: true });
 	}
 
 	function runWarmupCountdownStep(value: number) {
 		warmupCountdownValue = value;
-		triggerWarmupPulse();
 		if (value <= 1) {
 			warmupTimer = setTimeout(() => {
 				warmupTimer = null;
@@ -251,13 +228,8 @@
 		!!matchState.active &&
 		(!matchState.active.isWarmup || !signedIn);
 	$: if (warmupRoomActive) {
-		if (warmupState === 'waiting') {
-			glowBoxShadow = 'none';
-			glowBorderColor = 'border-color: rgba(255, 255, 255, 0.1);';
-		} else {
-			glowBoxShadow = warmupPulse ? '0 0 48px 12px rgba(255, 255, 255, 0.35)' : 'none';
-			glowBorderColor = 'border-color: rgba(255, 255, 255, 0.1);';
-		}
+		glowBoxShadow = '0 0 42px 10px rgba(255, 255, 255, 0.28)';
+		glowBorderColor = 'border-color: rgba(255, 255, 255, 0.55);';
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 	$: if (matchState.status === 'idle') {
@@ -1216,7 +1188,9 @@
 						{/if}
 						<span class="text-sm leading-none">{currentRoundDisplay}/{totalRoundsDisplay}</span>
 					</div>
-					{#if matchState.active && (!matchState.active.isWarmup || !signedIn)}
+					{#if warmupRoomActive}
+						<RoundGoalBadge labelOverride="ranked" />
+					{:else if matchState.active && (!matchState.active.isWarmup || !signedIn)}
 						<RoundGoalBadge
 							{forceUndoRequired}
 							targetKind={activeTargetKind}
@@ -1241,18 +1215,21 @@
 					on:click={() => canvas?.focus()}
 				></canvas>
 				{#if warmupRoomActive}
-					<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-						{#if warmupState === 'waiting'}
-							<div
-								class="rounded-full border border-white/20 bg-black/40 px-6 py-2 font-mono text-xs uppercase tracking-[0.5em] text-white/70 backdrop-blur-md"
-							>
-								move to start match
-							</div>
-						{:else if warmupState === 'countdown'}
-							<div class={`warmup-countdown ${warmupPulse ? 'warmup-countdown--pulse' : ''}`}>
-								{warmupCountdownValue}
-							</div>
-						{/if}
+					<div class="pointer-events-none absolute inset-0">
+						<div class="absolute inset-0 bg-black/80"></div>
+						<div class="relative flex h-full w-full items-center justify-center">
+							{#if warmupState === 'waiting'}
+								<div
+									class="rounded-full border border-white/25 px-6 py-3 font-mono text-xs uppercase tracking-[0.5em] text-white/80 shadow-[0_0_32px_rgba(255,255,255,0.25)] backdrop-blur-md"
+								>
+									move to start match
+								</div>
+							{:else if warmupState === 'countdown'}
+								{#each [warmupCountdownValue] as value (value)}
+									<div class="warmup-countdown">{value}</div>
+								{/each}
+							{/if}
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1297,10 +1274,7 @@
 		color: rgba(255, 255, 255, 0.92);
 		text-shadow: 0 0 18px rgba(255, 255, 255, 0.45);
 		opacity: 0.9;
-	}
-
-	.warmup-countdown--pulse {
-		animation: warmupPulse 0.9s ease-out;
+		animation: warmupPulse 0.95s ease-out;
 	}
 
 	@keyframes warmupPulse {
