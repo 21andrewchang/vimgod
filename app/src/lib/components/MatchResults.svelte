@@ -172,7 +172,9 @@
 
 	const playAgain = () => {
 		match.reset();
-		match.start();
+		if (!signedIn) {
+			match.start();
+		}
         triedInitialRank = false;
 	};
 

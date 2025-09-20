@@ -13,6 +13,7 @@
 	const reloadGuardActive = writable(false);
 	let snapshotProvider: (() => DodgeSnapshot | null) | null = null;
 	let snapshotFinalizer: ((snapshot: DodgeSnapshot | null) => void) | null = null;
+	let guardDisabled = false;
 	let countdownTimer: ReturnType<typeof setInterval> | undefined;
 
 	function clearCountdown() {
@@ -26,6 +27,13 @@
 		reloadWarningVisible.set(false);
 		countdown.set(5);
 		clearCountdown();
+	}
+
+	function setGuardDisabled(value: boolean) {
+		guardDisabled = value;
+		if (value) {
+			hideReloadWarning();
+		}
 	}
 
 	function persistReloadSnapshot(snapshot: DodgeSnapshot | null) {
@@ -91,17 +99,20 @@
 		reloadGuardActive.set(true);
 		snapshotProvider = provider ?? null;
 		snapshotFinalizer = finalizer ?? null;
+		setGuardDisabled(false);
 	};
 	const disableReloadGuard = () => {
 		reloadGuardActive.set(false);
 		snapshotProvider = null;
 		snapshotFinalizer = null;
+		setGuardDisabled(false);
 		hideReloadWarning();
 	};
 
 	setContext('reload-guard', {
 		enable: enableReloadGuard,
-		disable: disableReloadGuard
+		disable: disableReloadGuard,
+		disableBlocking: setGuardDisabled
 	});
 
 	const handleKeyDown = (event: KeyboardEvent) => {
@@ -110,7 +121,7 @@
 		const warningActive = get(reloadWarningVisible);
 		const guardActive = get(reloadGuardActive);
 		if (isReloadCombo) {
-			if (!guardActive) {
+			if (!guardActive || guardDisabled) {
 				return;
 			}
 			event.preventDefault();

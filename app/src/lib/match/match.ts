@@ -102,6 +102,7 @@ interface MatchControllerOptions {
 
 interface StartOptions {
   generator?: MatchTargetGenerator;
+  skipWarmup?: boolean;
 }
 
 interface InitialConfig {
@@ -155,17 +156,21 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
 
     const target = generator();
 
+    const skipWarmup = opts.skipWarmup ?? false;
+    const activeIndex = skipWarmup ? 1 : 0;
+    const isWarmup = !skipWarmup;
+
     store.set({
       status: 'ready',
       totalRounds,
       scoringRounds,
       roundIndex: 0,
       active: {
-        index: 0,
+        index: activeIndex,
         target,
         startedAt: null,
         keys: [],
-        isWarmup: true
+        isWarmup
       },
       completed: [],
       startTime: undefined,
