@@ -24,7 +24,7 @@
 		targetH = 0;
 
 	const ROWS = 15;
-	const MAX_ROWS = ROWS; // keep these in lockstep
+	const MAX_ROWS = ROWS;
 	const TEXT_TOP = 38;
 
 	const PLATINUM_THRESHOLD = 1200;
@@ -133,6 +133,82 @@
 	let activeTargetKind: MatchTarget['kind'] | null = null;
 	let manipulationAction: 'delete' | null = null;
 	let undoCount = 0;
+	let signedIn = false;
+	let warmupState: 'inactive' | 'waiting' | 'countdown' | 'complete' = 'inactive';
+	let warmupCountdownValue = 3;
+	let warmupTimer: ReturnType<typeof setTimeout> | null = null;
+	let warmupRoomActive = false;
+	let showTimer = false;
+	let currentRoundDisplay = 0;
+	let warmupPulse = false;
+	let warmupPulseTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function cancelWarmupTimer() {
+		if (warmupTimer) {
+			clearTimeout(warmupTimer);
+			warmupTimer = null;
+		}
+	}
+
+	function cancelWarmupPulseTimer() {
+		if (warmupPulseTimer) {
+			clearTimeout(warmupPulseTimer);
+			warmupPulseTimer = null;
+		}
+	}
+
+	function exitWarmup() {
+		cancelWarmupTimer();
+		cancelWarmupPulseTimer();
+		warmupState = 'inactive';
+		warmupCountdownValue = 3;
+	}
+
+	function enterWarmup() {
+		exitWarmup();
+		warmupState = 'waiting';
+		forceUndoRequired = false;
+		undoStack = [];
+		roundBaselineSnapshot = null;
+	}
+
+	function finishWarmup() {
+		cancelWarmupTimer();
+		cancelWarmupPulseTimer();
+		warmupState = 'complete';
+		warmupCountdownValue = 0;
+		match.start({ skipWarmup: true });
+	}
+
+	function triggerWarmupPulse() {
+		warmupPulse = true;
+		cancelWarmupPulseTimer();
+		warmupPulseTimer = setTimeout(() => {
+			warmupPulse = false;
+			warmupPulseTimer = null;
+		}, 320);
+	}
+
+	function runWarmupCountdownStep(value: number) {
+		warmupCountdownValue = value;
+		triggerWarmupPulse();
+		if (value <= 1) {
+			warmupTimer = setTimeout(() => {
+				warmupTimer = null;
+				finishWarmup();
+			}, 1000);
+		} else {
+			warmupTimer = setTimeout(() => {
+				runWarmupCountdownStep(value - 1);
+			}, 1000);
+		}
+	}
+
+	function startWarmupCountdown() {
+		if (warmupState !== 'waiting') return;
+		warmupState = 'countdown';
+		runWarmupCountdownStep(3);
+	}
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
@@ -161,6 +237,29 @@
 		} else {
 			glowBoxShadow = buildGlow(MOVEMENT_GLOW_CONFIG, strength);
 			glowBorderColor = buildBorderStyle(MOVEMENT_GLOW_CONFIG, strength);
+		}
+	}
+	$: warmupRoomActive = signedIn && (warmupState === 'waiting' || warmupState === 'countdown');
+	$: currentRoundDisplay =
+		warmupRoomActive || matchState.active?.isWarmup
+			? 0
+			: Math.min(matchState.active?.index ?? 0, totalRoundsDisplay);
+	$: showTimer =
+		matchState.status !== 'complete' &&
+		!!matchState.active &&
+		(!matchState.active.isWarmup || !signedIn);
+	$: if (warmupRoomActive) {
+		if (warmupState === 'countdown') {
+			const baseGlow = warmupPulse
+				? '0 0 300px 0px rgba(255, 255, 255, 0.2)'
+				: '0 0 50px 0px rgba(255, 255, 255, 0.2)';
+			glowBoxShadow = baseGlow;
+			glowBorderColor = warmupPulse
+				? 'border-color: rgba(255, 255, 255, 0.1);'
+				: 'border-color: rgba(255, 255, 255, 0.1);';
+		} else {
+			glowBoxShadow = 'none';
+			glowBorderColor = 'border-color: rgba(255, 255, 255, 0.1);';
 		}
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
@@ -996,24 +1095,39 @@
 	}
 
 	function onKeyDown(e: KeyboardEvent) {
-		match.recordKey(e.key, now());
+		const inWarmupRoom = warmupRoomActive;
+		if (!inWarmupRoom) {
+			match.recordKey(e.key, now());
+		}
 		const undoKeyPressed = isUndoKey(e);
-		if (forceUndoRequired && !undoKeyPressed) {
+		if (!inWarmupRoom && forceUndoRequired && !undoKeyPressed) {
 			e.preventDefault();
 			return;
 		}
 		if (undoKeyPressed) {
 			e.preventDefault();
-			handleUndo();
+			if (!inWarmupRoom) {
+				handleUndo();
+			}
 			return;
 		}
 		const previousDocument = serializeDocument();
 		const previousCursor = { row: cursor.row, col: cursor.col };
 		vim.handleKeyDown(e);
 		const nextDocument = serializeDocument();
-		if (nextDocument !== previousDocument) {
+		const docChanged = nextDocument !== previousDocument;
+		if (inWarmupRoom) {
+			if (docChanged) {
+				vim.resetDocument(previousDocument, previousCursor);
+				recomputeLayout();
+			}
+		} else if (docChanged) {
 			pushUndoSnapshot({ document: previousDocument, cursor: previousCursor });
 			handleDocumentChange(previousDocument, nextDocument);
+		}
+		const moved = previousCursor.row !== cursor.row || previousCursor.col !== cursor.col;
+		if (warmupState === 'waiting' && moved) {
+			startWarmupCountdown();
 		}
 		const uiState = vim.getUiState();
 		pendingCombo = uiState.pendingCombo;
@@ -1026,11 +1140,19 @@
 		applyTimerForRating(currentRating);
 
 		matchState = get(match);
+		signedIn = Boolean(get(user));
 		unsubscribeMatch = match.subscribe((value) => {
 			matchState = value;
+			if (signedIn && value.status === 'idle' && warmupState !== 'countdown') {
+				enterWarmup();
+			}
 		});
 		match.setGenerator(() => generateRoundTarget());
-		if (matchState.status === 'idle') {
+		if (signedIn) {
+			match.reset();
+			matchState = get(match);
+			enterWarmup();
+		} else if (matchState.status === 'idle') {
 			match.start();
 		}
 
@@ -1047,7 +1169,19 @@
 		canvas.tabIndex = 0;
 		canvas.focus();
 
-		unsubscribeUser = user.subscribe(() => {
+		unsubscribeUser = user.subscribe((value) => {
+			signedIn = Boolean(value);
+			if (signedIn) {
+				exitWarmup();
+				match.reset();
+				matchState = get(match);
+				enterWarmup();
+			} else {
+				exitWarmup();
+				match.reset();
+				matchState = get(match);
+				match.start();
+			}
 			loadPlayerRating();
 		});
 		loadPlayerRating();
@@ -1062,18 +1196,19 @@
 		ro?.disconnect();
 		window.removeEventListener('resize', resize);
 		cancelAnimationFrame(raf);
+		exitWarmup();
 	});
 </script>
 
 <div class="fixed inset-0 flex flex-col items-center justify-center">
 	<div class="flex flex-col gap-2">
 		<div class="flex flex-row items-center">
-			{#if matchState.active}
+			{#if matchState.active || warmupRoomActive}
 				<div class="pointer-events-none flex gap-2">
 					<div
 						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
 					>
-						{#if matchState.status !== 'complete'}
+						{#if showTimer}
 							<div class="relative flex items-center justify-center">
 								<CircularProgress
 									value={timerValue}
@@ -1084,17 +1219,17 @@
 								/>
 							</div>
 						{/if}
-						<span class="text-sm leading-none">
-							{matchState.active.isWarmup
-								? `0/${totalRoundsDisplay}`
-								: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}
-						</span>
+						<span class="text-sm leading-none">{currentRoundDisplay}/{totalRoundsDisplay}</span>
 					</div>
-					<RoundGoalBadge
-						forceUndoRequired={forceUndoRequired}
-						targetKind={activeTargetKind}
-						manipulationAction={manipulationAction}
-					/>
+					{#if warmupRoomActive}
+						<RoundGoalBadge labelOverride="ranked" />
+					{:else if matchState.active && (!matchState.active.isWarmup || !signedIn)}
+						<RoundGoalBadge
+							{forceUndoRequired}
+							targetKind={activeTargetKind}
+							{manipulationAction}
+						/>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -1102,7 +1237,7 @@
 			<div
 				data-mode={currentMode}
 				data-glow-kind={activeTargetKind ?? 'none'}
-				class=" data-[mode=command]:border-white/7 overflow-hidden rounded-xl border
+				class="data-[mode=command]:border-white/7 relative overflow-hidden rounded-xl border
          border-white/10 shadow-lg transition-all"
 				style={editorStyle}
 			>
@@ -1112,6 +1247,24 @@
 					on:keydown={onKeyDown}
 					on:click={() => canvas?.focus()}
 				></canvas>
+				{#if warmupRoomActive}
+					<div class="pointer-events-none absolute inset-0">
+						<div class="absolute inset-0 bg-black/80"></div>
+						<div class="relative flex h-full w-full items-center justify-center">
+							{#if warmupState === 'waiting'}
+								<div
+									class="rounded-full border border-white/25 px-6 py-3 font-mono text-xs uppercase tracking-[0.5em] text-white/80 shadow-[0_0_32px_rgba(255,255,255,0.25)] backdrop-blur-md"
+								>
+									move to start match
+								</div>
+							{:else if warmupState === 'countdown'}
+								{#each [warmupCountdownValue] as value (value)}
+									<div class="warmup-countdown">{value}</div>
+								{/each}
+							{/if}
+						</div>
+					</div>
+				{/if}
 			</div>
 
 			{#if currentMode === 'command'}
@@ -1144,5 +1297,34 @@
 		transition:
 			box-shadow 250ms ease,
 			border-color 250ms ease;
+	}
+
+	.warmup-countdown {
+		font-family: 'DM Mono', monospace;
+		font-size: clamp(3rem, 12vw, 5.5rem);
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.92);
+		text-shadow: 0 0 18px rgba(255, 255, 255, 0.45);
+		opacity: 0.9;
+		animation: warmupPulse 0.95s ease-out;
+	}
+
+	@keyframes warmupPulse {
+		0% {
+			transform: scale(0.65);
+			opacity: 0.35;
+			text-shadow: 0 0 0 rgba(255, 255, 255, 0);
+		}
+		50% {
+			transform: scale(1.08);
+			opacity: 1;
+			text-shadow: 0 0 40px rgba(255, 255, 255, 0.55);
+		}
+		100% {
+			transform: scale(0.95);
+			opacity: 0.45;
+			text-shadow: 0 0 14px rgba(255, 255, 255, 0.35);
+		}
 	}
 </style>

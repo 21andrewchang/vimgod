@@ -8,6 +8,7 @@
 	import { browser } from '$app/environment';
 	import { get } from 'svelte/store';
 	import { getContext, onDestroy } from 'svelte';
+	import { user } from '$lib/stores/auth';
 	import '$lib/stores/auth'; // Initialize auth store
 
 	const match = createMatchController({ totalRounds: 20 });
@@ -28,17 +29,20 @@
 		}
 	}
 
-	type ReloadGuardContext = {
-		enable: (
-			snapshotProvider?: () => DodgeSnapshot | null,
-			finalizer?: (snapshot: DodgeSnapshot | null) => void
-		) => void;
-		disable: () => void;
-	};
+type ReloadGuardContext = {
+	enable: (
+		snapshotProvider?: () => DodgeSnapshot | null,
+		finalizer?: (snapshot: DodgeSnapshot | null) => void
+	) => void;
+	disable: () => void;
+	disableBlocking: (value: boolean) => void;
+};
 
 	const reloadGuard = getContext<ReloadGuardContext | undefined>('reload-guard');
 
 	const shouldProtectStatuses = new Set<MatchState['status']>(['ready', 'running']);
+	let signedIn = false;
+	$: signedIn = Boolean($user);
 
 	const cloneRounds = (rounds: MatchState['completed']) =>
 		rounds.map((round) => ({
@@ -79,15 +83,22 @@
 
 	const startNewMatch = () => {
 		match.reset();
-		match.start();
+		if (!signedIn) {
+			match.start();
+		}
 	};
 
 	$: if (reloadGuard) {
 		const status = $match.status;
-		if (shouldProtectStatuses.has(status)) {
+		if (!signedIn) {
+			reloadGuard.disableBlocking(true);
+			reloadGuard.disable();
+		} else if (shouldProtectStatuses.has(status)) {
+			reloadGuard.disableBlocking(false);
 			reloadGuard.enable(createDodgeSnapshot, finalizeDodge);
 		} else {
-			reloadGuard.enable(undefined, () => startNewMatch());
+			reloadGuard.disableBlocking(false);
+			reloadGuard.enable(undefined, (_snapshot) => startNewMatch());
 		}
 	}
 
