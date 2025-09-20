@@ -14,7 +14,7 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
   // Pull minimal fields from your public.users row
   const { data: row } = await locals.supabase
     .from('users')
-    .select('id, name, xp') // add more columns if you need them globally
+    .select('id, name, rating, hidden_mmr, xp') // add more columns if you need them globally
     .eq('id', user.id)
     .maybeSingle();
 
@@ -30,6 +30,8 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
       id: user.id,
       email: user.email,
       name,             // <-- DB-backed name now everywhere
+      rating: row?.rating ?? null,
+      hidden_mmr: row?.hidden_mmr ?? null,
       xp: row?.xp ?? 0, // handy if you want it globally
     }
   };

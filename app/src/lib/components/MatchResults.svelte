@@ -5,7 +5,8 @@
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import type { MatchController, MatchState } from '$lib/match/match';
-	import { user, signInWithGoogle, setInitialRank } from '$lib/stores/auth';
+	import { user, signInWithGoogle, setInitialRank, applyRatingDelta, increaseXp } from '$lib/stores/auth'
+    import { page } from '$app/stores';
 
 	export let match: MatchController;
 	
@@ -153,6 +154,25 @@
             });
     }
 
+    let updatedRating = false;
+
+    $: if (!updatedRating && state.status === 'complete' && $user) {
+        updatedRating = true;
+        
+        (async () => {
+            try {
+                if (lpDelta !== 0) {
+                    const newRating = await applyRatingDelta(lpDelta);
+                    elo = newRating;
+                    const newXp = await increaseXp(10);
+                    xp = newXp;
+                }
+            } catch (error) {
+                console.error('Failed to update rating', error);
+            }
+        })();
+    }
+
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
 	$: dashed = roundDurations.length
@@ -179,7 +199,9 @@
 	};
 
 	const graphHeight = 200;
-	const elo = 1500;
+    console.log('page.data', $page.data);
+	let elo = $page.data?.user?.rating ?? 67;
+    let xp = $page.data?.user?.xp ?? 0;
 </script>
 
 <div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">

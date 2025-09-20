@@ -85,7 +85,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     const rank = prettyRank(rankId);
 
 
-
     const appUser = {
       id: userData.id,
       name: displayName,
