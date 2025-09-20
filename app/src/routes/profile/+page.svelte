@@ -27,7 +27,23 @@
         const family = familyFromRankId(id);
         const tokens = (colorByRank[family] ?? '').split(' ');
         const textToken = tokens.find((t) => t.startsWith('text-'));
-        return textToken ?? 'text-neutral-300';
+        
+        if (!textToken) return 'text-neutral-300';
+        
+        // Static mapping of lighter text colors (100 intensity levels lighter)
+        const lighterTextColors: Record<string, string> = {
+            'text-neutral-800': 'text-neutral-300',
+            'text-white': 'text-neutral-200',
+            'text-slate-900': 'text-slate-400',
+            'text-yellow-700': 'text-yellow-400',
+            'text-teal-600': 'text-teal-400',
+            'text-blue-700': 'text-blue-400',
+            'text-rose-600': 'text-rose-400',
+            'text-violet-50': 'text-violet-200',
+            'text-neutral-900': 'text-neutral-300'
+        };
+        
+        return lighterTextColors[textToken] || textToken;
     }
 
     const currentTextClass = $derived(textClassByRank(rankId));
@@ -35,7 +51,7 @@
 
     const leftProgressLabel = nextId ? `${abbrevFromRankId(rankId)} → ${abbrevFromRankId(nextId)}` : `${abbrevFromRankId(rankId)}`;
 
-    console.log('leftProgressLabel', leftProgressLabel);
+    // console.log('leftProgressLabel', leftProgressLabel);
 
     const statItems = [
         // { label: 'rank', value: `${profileUser.elo}` },
