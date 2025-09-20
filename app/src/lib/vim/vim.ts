@@ -1,4 +1,4 @@
-import { ENABLE_INSERT_MODE } from '$lib/config';
+import { ENABLE_INSERT_MODE } from '../config';
 
 export type Mode = 'normal' | 'insert' | 'visual' | 'command' | 'block' | 'line';
 
@@ -1588,6 +1588,39 @@ export function createVimController(options: VimOptions): VimController {
 
     if (key === 'v') {
       event.preventDefault();
+      clearPending();
+      normalMode();
+      return true;
+    }
+
+    if (key === 'd') {
+      event.preventDefault();
+
+      const currentSelection = selection;
+
+      if (!currentSelection) {
+        clearPending();
+        normalMode();
+        return true;
+      }
+
+      if (currentSelection.type === 'char') {
+        const start = { ...currentSelection.start };
+        const end = { ...currentSelection.end };
+        const deleted = deleteRange(start, end);
+        if (!deleted) normalMode();
+        clearPending();
+        return true;
+      }
+
+      if (currentSelection.type === 'line') {
+        const count = currentSelection.endRow - currentSelection.startRow + 1;
+        cursor.row = currentSelection.startRow;
+        deleteCurrentLines(count);
+        clearPending();
+        return true;
+      }
+
       clearPending();
       normalMode();
       return true;
