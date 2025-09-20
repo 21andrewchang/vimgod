@@ -5,12 +5,21 @@
 	import { get } from 'svelte/store';
 	import { onDestroy } from 'svelte';
 	import type { MatchController, MatchState } from '$lib/match/match';
-	import { user, signInWithGoogle, setInitialRank, applyRatingDelta, increaseXp } from '$lib/stores/auth'
-    import { page } from '$app/stores';
+	import { supabase } from '$lib/supabaseClient';
+	import {
+		user,
+		signInWithGoogle,
+		setInitialRank,
+		applyRatingDelta,
+		increaseXp
+	} from '$lib/stores/auth';
+	import { page } from '$app/stores';
 
 	export let match: MatchController;
-	
-	// Use auth store instead of prop
+
+	let wroteHistory = false;
+	let elo = $page.data?.user?.rating ?? 67;
+	let xp = $page.data?.user?.xp ?? 0;
 	$: signedIn = !!$user;
 
 	let state: MatchState = get(match);
@@ -21,13 +30,7 @@
 	$: wins = completedRounds.filter((round) => round.succeeded).length;
 	$: losses = completedRounds.length - wins;
 	$: matchOutcome =
-		state.outcome === 'dodge'
-			? 'Dodge'
-			: wins > losses
-				? 'Win'
-				: wins < losses
-					? 'Loss'
-					: 'Draw';
+		state.outcome === 'dodge' ? 'Dodge' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw';
 	$: lpDelta = state.totalPoints;
 
 	$: averageMs = completedRounds.length
@@ -129,7 +132,8 @@
 	$: projectedRankValue = completedRounds.length
 		? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
 		: null;
-	$: placementRankValue = projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP);
+	$: placementRankValue =
+		projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP);
 	$: projectedRankValue !== null &&
 		console.log('Projected rank (avg ms):', {
 			averageMs,
@@ -137,41 +141,72 @@
 			placementRankValue
 		});
 
-    let triedInitialRank = false;
+	let triedInitialRank = false;
 
-    $: if (!triedInitialRank && state.status === 'complete' && $user && projectedRankValue !== null && placementRankValue !== null) {
-        triedInitialRank = true;
-        setInitialRank(projectedRankValue, placementRankValue)
-            .then(({ updated }) => {
-                if (updated) {
-                    console.log('Initial rank set successfully', {hiddenMmr: projectedRankValue, rating: placementRankValue});
-                } else {
-                    console.log('Initial rank already set');
-                }
-            })
-            .catch((error) => {
-                console.error('Failed to set initial rank', error);
-            });
-    }
+	$: if (
+		!triedInitialRank &&
+		state.status === 'complete' &&
+		$user &&
+		projectedRankValue !== null &&
+		placementRankValue !== null
+	) {
+		triedInitialRank = true;
+		setInitialRank(projectedRankValue, placementRankValue)
+			.then(({ updated }) => {
+				if (updated) {
+					console.log('Initial rank set successfully', {
+						hiddenMmr: projectedRankValue,
+						rating: placementRankValue
+					});
+				} else {
+					console.log('Initial rank already set');
+				}
+			})
+			.catch((error) => {
+				console.error('Failed to set initial rank', error);
+			});
+	}
 
-    let updatedRating = false;
+	let prevWasComplete = false; // rising-edge detector
 
-    $: if (!updatedRating && state.status === 'complete' && $user) {
-        updatedRating = true;
-        
-        (async () => {
-            try {
-                if (lpDelta !== 0) {
-                    const newRating = await applyRatingDelta(lpDelta);
-                    elo = newRating;
-                    const newXp = await increaseXp(10);
-                    xp = newXp;
-                }
-            } catch (error) {
-                console.error('Failed to update rating', error);
-            }
-        })();
-    }
+	async function writeMatchHistory() {
+		try {
+			const uid = $user.id;
+			const { error } = await supabase.from('match_history').insert([
+				{
+					player_id: uid,
+					avg_speed: averageMs,
+					efficiency: averageKeys,
+					most_used: mostUsedKey?.key ?? null,
+					undos: undoCount,
+					apm: Math.round(apm),
+					reaction_time: averageReaction,
+					start_elo: elo,
+					end_elo: elo + lpDelta,
+					lp_delta: lpDelta
+				}
+			]);
+			if (error) {
+				console.error('match_history insert failed', error);
+				wroteHistory = false;
+			}
+		} catch (e) {
+			console.error('match_history insert threw', e);
+			wroteHistory = false;
+		}
+	}
+
+	// Rising-edge effect: runs exactly once when status flips to 'complete'
+	$: {
+		const isComplete = state.status === 'complete' && !!$user;
+		if (isComplete && !prevWasComplete && !wroteHistory) {
+			prevWasComplete = true; // lock the edge
+			wroteHistory = true; // prevent double fire
+			// Important: do NOT mutate `state` or `$user` here
+			void writeMatchHistory();
+		}
+		if (!isComplete) prevWasComplete = false; // reset if user leaves results
+	}
 
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
@@ -195,13 +230,11 @@
 		if (!signedIn) {
 			match.start();
 		}
-        triedInitialRank = false;
+		triedInitialRank = false;
 	};
 
 	const graphHeight = 200;
-    console.log('page.data', $page.data);
-	let elo = $page.data?.user?.rating ?? 67;
-    let xp = $page.data?.user?.xp ?? 0;
+	console.log('page.data', $page.data);
 </script>
 
 <div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">

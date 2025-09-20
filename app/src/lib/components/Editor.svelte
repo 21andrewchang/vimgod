@@ -1253,7 +1253,7 @@
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
 								<div
-									class="rounded-full border border-white/25 px-6 py-3 font-mono text-xs uppercase tracking-[0.5em] text-white/80 shadow-[0_0_32px_rgba(255,255,255,0.25)] backdrop-blur-md"
+									class="rounded-full border border-white/25 px-6 py-3 font-mono text-sm uppercase tracking-[0.5em] text-white/80 shadow-[0_0_32px_rgba(255,255,255,0.25)] backdrop-blur-md"
 								>
 									move to start match
 								</div>
