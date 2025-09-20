@@ -3,29 +3,93 @@
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import Header from '$lib/components/Header.svelte';
-	import { createMatchController } from '$lib/match/match';
+	import { createMatchController, type MatchState } from '$lib/match/match';
+	import { DODGE_LP_PENALTY, DODGE_STORAGE_KEY, type DodgeSnapshot } from '$lib/reloadGuard';
+	import { browser } from '$app/environment';
+	import { get } from 'svelte/store';
 	import { getContext, onDestroy } from 'svelte';
 	import '$lib/stores/auth'; // Initialize auth store
 
 	const match = createMatchController({ totalRounds: 20 });
 
+	if (browser) {
+		const stored = localStorage.getItem(DODGE_STORAGE_KEY);
+		if (stored) {
+			try {
+				const parsed = JSON.parse(stored) as DodgeSnapshot;
+				if (parsed?.type === 'dodge' && parsed.state) {
+					match.replaceState(parsed.state as MatchState);
+				}
+			} catch (error) {
+				console.warn('failed to hydrate dodge snapshot', error);
+			} finally {
+				localStorage.removeItem(DODGE_STORAGE_KEY);
+			}
+		}
+	}
+
 	type ReloadGuardContext = {
-		enable: () => void;
+		enable: (
+			snapshotProvider?: () => DodgeSnapshot | null,
+			finalizer?: (snapshot: DodgeSnapshot | null) => void
+		) => void;
 		disable: () => void;
 	};
 
 	const reloadGuard = getContext<ReloadGuardContext | undefined>('reload-guard');
 
-const shouldProtectStatuses = new Set(['ready', 'running']);
+	const shouldProtectStatuses = new Set<MatchState['status']>(['ready', 'running']);
 
-$: if (reloadGuard) {
-	const status = $match.status;
-	if (shouldProtectStatuses.has(status)) {
-		reloadGuard.enable();
-	} else {
-		reloadGuard.disable();
+	const cloneRounds = (rounds: MatchState['completed']) =>
+		rounds.map((round) => ({
+			...round,
+			keys: round.keys.map((entry) => ({ ...entry }))
+		}));
+
+	const createDodgeSnapshot = (): DodgeSnapshot | null => {
+		const state = get(match);
+		if (!shouldProtectStatuses.has(state.status)) return null;
+		const endTime = Date.now();
+		const completed = cloneRounds(state.completed);
+		const penaltyTotal = -Math.abs(DODGE_LP_PENALTY);
+		const snapshotState: MatchState = {
+			...state,
+			status: 'complete',
+			active: null,
+			completed,
+			endTime,
+			roundIndex: Math.min(completed.length, state.scoringRounds),
+			totalPoints: penaltyTotal,
+			outcome: 'dodge',
+			undoCount: state.undoCount ?? 0
+		};
+		return {
+			type: 'dodge',
+			version: 1,
+			penalty: Math.abs(penaltyTotal),
+			storedAt: endTime,
+			state: snapshotState
+		};
+	};
+
+	const finalizeDodge = (snapshot: DodgeSnapshot | null) => {
+		if (!snapshot) return;
+		match.replaceState(snapshot.state as MatchState);
+	};
+
+	const startNewMatch = () => {
+		match.reset();
+		match.start();
+	};
+
+	$: if (reloadGuard) {
+		const status = $match.status;
+		if (shouldProtectStatuses.has(status)) {
+			reloadGuard.enable(createDodgeSnapshot, finalizeDodge);
+		} else {
+			reloadGuard.enable(undefined, () => startNewMatch());
+		}
 	}
-}
 
 	onDestroy(() => {
 		reloadGuard?.disable();

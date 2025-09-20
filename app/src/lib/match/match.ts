@@ -68,6 +68,8 @@ export interface ActiveRound {
   isWarmup: boolean;
 }
 
+export type MatchOutcome = 'dodge';
+
 export interface MatchState {
   status: MatchStatus;
   totalRounds: number;
@@ -82,6 +84,7 @@ export interface MatchState {
   maxPoints: number;
   pointsPerRound: number;
   undoCount: number;
+  outcome?: MatchOutcome;
 }
 
 export type MatchTargetGenerator = () => MatchTarget;
@@ -122,7 +125,8 @@ const createInitialState = (config: InitialConfig): MatchState => ({
   totalPoints: 0,
   maxPoints: config.maxPoints,
   pointsPerRound: config.pointsPerRound,
-  undoCount: 0
+  undoCount: 0,
+  outcome: undefined
 });
 
 export const createMatchController = (options: MatchControllerOptions = {}) => {
@@ -169,7 +173,9 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
       timeLimitMs,
       totalPoints: 0,
       maxPoints,
-      pointsPerRound
+      pointsPerRound,
+      undoCount: 0,
+      outcome: undefined
     });
   };
 
@@ -362,6 +368,10 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     if (!keepGenerator) generator = null;
   };
 
+  const replaceState = (nextState: MatchState) => {
+    store.set(nextState);
+  };
+
   return {
     subscribe: store.subscribe,
     start,
@@ -370,7 +380,8 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     evaluate,
     reset,
     setTimeLimit,
-    setUndoCount
+    setUndoCount,
+    replaceState
   };
 };
 

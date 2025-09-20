@@ -104,7 +104,9 @@
 		timeLimitMs: 5000,
 		totalPoints: 0,
 		maxPoints: 20,
-		pointsPerRound: 1
+		pointsPerRound: 1,
+		undoCount: 0,
+		outcome: undefined
 	};
 	let unsubscribeMatch: (() => void) | null = null;
 	let averageMs = 0;

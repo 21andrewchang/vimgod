@@ -3,12 +3,16 @@
 	import { onMount, setContext } from 'svelte';
 	import { browser } from '$app/environment';
 	import { get, writable } from 'svelte/store';
+	import { DODGE_STORAGE_KEY } from '$lib/reloadGuard';
+	import type { DodgeSnapshot } from '$lib/reloadGuard';
 
 	let { children } = $props();
 
 	const reloadWarningVisible = writable(false);
 	const countdown = writable(5);
 	const reloadGuardActive = writable(false);
+	let snapshotProvider: (() => DodgeSnapshot | null) | null = null;
+	let snapshotFinalizer: ((snapshot: DodgeSnapshot | null) => void) | null = null;
 	let countdownTimer: ReturnType<typeof setInterval> | undefined;
 
 	function clearCountdown() {
@@ -24,6 +28,42 @@
 		clearCountdown();
 	}
 
+	function persistReloadSnapshot(snapshot: DodgeSnapshot | null) {
+		if (!browser || !snapshot) return;
+		try {
+			localStorage.setItem(DODGE_STORAGE_KEY, JSON.stringify(snapshot));
+		} catch (error) {
+			console.warn('failed to persist reload snapshot', error);
+		}
+	}
+
+	function resolveReloadIntent() {
+		let snapshot: DodgeSnapshot | null = null;
+		if (snapshotProvider) {
+			try {
+				snapshot = snapshotProvider();
+			} catch (error) {
+				console.warn('failed to prepare dodge snapshot', error);
+				snapshot = null;
+			}
+		}
+
+		persistReloadSnapshot(snapshot);
+
+		if (snapshotFinalizer) {
+			snapshotFinalizer(snapshot);
+			hideReloadWarning();
+			return;
+		}
+
+		if (browser) {
+			location.reload();
+			return;
+		}
+
+		hideReloadWarning();
+	}
+
 	function startCountdown() {
 		clearCountdown();
 		countdown.set(5);
@@ -32,11 +72,7 @@
 				const next = Math.max(0, value - 1);
 				if (next === 0) {
 					clearCountdown();
-					if (browser) {
-						// Allow the reload to go through once the timer expires.
-						reloadWarningVisible.set(false);
-						location.reload();
-					}
+					resolveReloadIntent();
 				}
 				return next;
 			});
@@ -48,9 +84,18 @@
 		startCountdown();
 	}
 
-	const enableReloadGuard = () => reloadGuardActive.set(true);
+	const enableReloadGuard = (
+		provider?: () => DodgeSnapshot | null,
+		finalizer?: (snapshot: DodgeSnapshot | null) => void
+	) => {
+		reloadGuardActive.set(true);
+		snapshotProvider = provider ?? null;
+		snapshotFinalizer = finalizer ?? null;
+	};
 	const disableReloadGuard = () => {
 		reloadGuardActive.set(false);
+		snapshotProvider = null;
+		snapshotFinalizer = null;
 		hideReloadWarning();
 	};
 
@@ -68,14 +113,16 @@
 			if (!guardActive) {
 				return;
 			}
-			if (warningActive) {
-				// Allow the browser reload once the warning is already showing.
-				hideReloadWarning();
-				return;
-			}
-
 			event.preventDefault();
 			event.stopPropagation();
+			if (!snapshotProvider && snapshotFinalizer && !warningActive) {
+				snapshotFinalizer(null);
+				return;
+			}
+			if (warningActive) {
+				resolveReloadIntent();
+				return;
+			}
 			showReloadWarning();
 			return;
 		}
@@ -139,13 +186,13 @@
 </div>
 
 {#if $reloadWarningVisible}
-	<div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+	<div class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur">
 		<div class="text-center font-mono lowercase text-neutral-200">
 			<p>reloading will result in a loss</p>
 			<p class="text-[clamp(2rem,3vw,2.75rem)] tabular-nums tracking-[0.1em] text-red-400">
 				{$countdown}s
 			</p>
-			<p class="text-xs opacity-70">press escape to continue</p>
+			<p class="text-xs opacity-70">press [esc] to continue</p>
 		</div>
 	</div>
 {/if}

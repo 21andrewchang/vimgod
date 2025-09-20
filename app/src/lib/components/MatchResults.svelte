@@ -19,7 +19,14 @@
 	$: completedRounds = state.completed.filter((round) => round.index > 0);
 	$: wins = completedRounds.filter((round) => round.succeeded).length;
 	$: losses = completedRounds.length - wins;
-	$: matchOutcome = wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw';
+	$: matchOutcome =
+		state.outcome === 'dodge'
+			? 'Dodge'
+			: wins > losses
+				? 'Win'
+				: wins < losses
+					? 'Loss'
+					: 'Draw';
 	$: lpDelta = state.totalPoints;
 
 	$: averageMs = completedRounds.length
@@ -228,6 +235,11 @@
 						>
 							{formatPoints(lpDelta)}
 						</div>
+						{#if state.outcome === 'dodge'}
+							<div class="mt-2 font-mono text-[0.7rem] uppercase tracking-widest text-rose-300">
+								dodge penalty applied ({formatPoints(Math.abs(lpDelta) * -1)} lp)
+							</div>
+						{/if}
 					</div>
 				</div>
 			</div>
