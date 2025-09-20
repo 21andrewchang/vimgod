@@ -7,12 +7,12 @@ import {
   FAMILY_UNLOCK_RANK,
   MOTION_FAMILY,
   type Motion,
-  type RankName,
   type Mastery,
   coverage,
   coverageByFamily,
   knownSet,
-  rankFromInputs
+  rankIdFromRating,
+  prettyRank
 } from '$lib/data/ranks';
 import { levelFromXP } from '$lib/utils';
 
@@ -81,6 +81,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     const displayName = userData.name ?? user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'Player';
     const xp = userData.xp ?? 0;
     const { level, experience, maxExperience } = levelFromXP(xp);
+    const rankId = rankIdFromRating(userData.rating ?? 1500);
+    const rank = prettyRank(rankId);
 
 
 
@@ -89,7 +91,8 @@ export const load: PageServerLoad = async ({ locals }) => {
       name: displayName,
       elo: userData.rating ?? 1500,
       lp:  userData.hidden_mmr ?? 1500,
-      rank: 'Singularity' as RankName,
+      rankId,
+      rank,
       level,
       experience,
       maxExperience
@@ -97,7 +100,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   
     const mastery = mockMastery();
     const inputs = { mastery, skillIndex: 76, skillStdDev: 6 };
-    const resolvedRank: RankName = 'Singularity'; // or rankFromInputs(inputs)
     const cov = coverage(mastery);
     const known = knownSet(mastery);
     const isKnown = (m: Motion) => known.has(m);

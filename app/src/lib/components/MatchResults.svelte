@@ -108,13 +108,13 @@
 		diamond3: 1700,
 		diamond2: 1800,
 		diamond1: 1900,
-		masters: 2000,
-		grandmaster: 2100,
-		challenger: 2200
+		nova: 2000,
+		supernova: 2200,
+		singularity: 2500
 	} as const;
 
 	const rankBands = [
-		{ label: 'Masters+', maxMs: 900, value: RANK_VALUES.masters },
+		{ label: 'Masters+', maxMs: 900, value: RANK_VALUES.nova },
 		{ label: 'Diamond 1', maxMs: 1000, value: RANK_VALUES.diamond1 },
 		{ label: 'Platinum 1', maxMs: 2000, value: RANK_VALUES.platinum1 },
 		{ label: 'Gold 1', maxMs: 3000, value: RANK_VALUES.gold1 },

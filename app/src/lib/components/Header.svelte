@@ -281,11 +281,11 @@
 			aria-controls="user-menu"
 		>
 			<svg 
-				width="22" height="22" viewBox="0 0 24 24" fill="none"
+				width="20" height="20" viewBox="0 0 24 24" fill="none"
 				stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 				shape-rendering="geometricPrecision"
 				class="transition-colors duration-200"
-				style="color: {isUserIconHovered ? 'white' : 'rgba(255, 255, 255, 0.5)'};"
+				style="color: {isUserIconHovered ? 'white' : 'rgba(255, 255, 255, 0.4)'};"
 			>
 				<path d="M20 21.5v-2.5a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2.5h16"/>
 				<circle cx="12" cy="7" r="4"/>
@@ -293,8 +293,8 @@
 
             {#if isAuthed}
 				<span
-					class="ml-2 text-[13px] text-neutral-300 font-mono max-w-[12rem] truncate transition-colors duration-200 leading-[1.2] py-[1px]"
-					style="color: {isUserIconHovered ? 'white' : 'rgba(255,255,255,0.5)'};"
+					class="ml-2 text-[14px] text-neutral-300 font-mono max-w-[12rem] truncate transition-colors duration-200 leading-[1.2] py-[1px]"
+					style="color: {isUserIconHovered ? 'white' : 'rgba(255,255,255,0.4)'};"
 				>
 					{displayName}
 				</span>

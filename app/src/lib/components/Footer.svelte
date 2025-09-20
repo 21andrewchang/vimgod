@@ -201,7 +201,7 @@
 						<div
 							bind:this={twitterTextRef}
 							class="animated-underline flex items-center gap-2 font-mono text-xs transition-colors duration-200 cursor-pointer {twitterActive ? 'twitter-hovered' : ''}"
-							style="color: {twitterActive ? 'white' : 'rgba(255, 255, 255, 0.5)'};"
+							style="color: {twitterActive ? 'white' : 'rgba(255, 255, 255, 0.4)'};"
 							onmouseenter={handleTwitterMouseEnter}
 							onmouseleave={handleTwitterMouseLeave}
 							aria-haspopup="dialog"
@@ -219,9 +219,9 @@
 							target="_blank"
 							rel="noopener noreferrer"
 							class="animated-underline flex items-center gap-2 font-mono text-xs transition-colors duration-200"
-							style="color: rgba(255, 255, 255, 0.5);"
+							style="color: rgba(255, 255, 255, 0.4);"
 							onmouseenter={(e) => ((e.target as HTMLElement).style.color = 'white')}
-							onmouseleave={(e) => ((e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.5)')}
+							onmouseleave={(e) => ((e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.4)')}
 						>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="transition-colors duration-200">
 								<path d={link.icon} />
@@ -236,27 +236,27 @@
 			<div class="absolute bottom-16 left-1/2 -translate-x-1/2">
 				<div class="flex items-center gap-16 text-[10px]">
 					<div class="group flex gap-2">
-						<kbd class={cap}>h</kbd><span style="color: rgba(255,255,255,0.5);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.5);">left</span>
+						<kbd class={cap}>h</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+						<span class="font-mono" style="color: rgba(255,255,255,0.4);">left</span>
 					</div>
 					<div class="group flex gap-2">
-						<kbd class={cap}>j</kbd><span style="color: rgba(255,255,255,0.5);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.5);">down</span>
+						<kbd class={cap}>j</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+						<span class="font-mono" style="color: rgba(255,255,255,0.4);">down</span>
 					</div>
 					<div class="group flex gap-2">
-						<kbd class={cap}>k</kbd><span style="color: rgba(255,255,255,0.5);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.5);">up</span>
+						<kbd class={cap}>k</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+						<span class="font-mono" style="color: rgba(255,255,255,0.4);">up</span>
 					</div>
 					<div class="group flex gap-2">
-						<kbd class={cap}>l</kbd><span style="color: rgba(255,255,255,0.5);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.5);">right</span>
+						<kbd class={cap}>l</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+						<span class="font-mono" style="color: rgba(255,255,255,0.4);">right</span>
 					</div>
 				</div>
 			</div>
 
 			<!-- Copyright -->
 			<div>
-				<p class="font-mono text-xs" style="color: rgba(255, 255, 255, 0.5);">© 2025 vimgod. All rights reserved.</p>
+				<p class="font-mono text-xs" style="color: rgba(255, 255, 255, 0.4);">© 2025 vimgod. All rights reserved.</p>
 			</div>
 		</div>
 	</div>

@@ -6,6 +6,32 @@ export const RANKS: RankName[] = [
     'Unranked', 'Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Nova', 'Supernova', 'Singularity'
 ];
 
+const RANK_VALUES = {
+    bronze4: 0,
+    bronze3: 100,
+    bronze2: 200,
+    bronze1: 300,
+    silver4: 400,
+    silver3: 500,
+    silver2: 600,
+    silver1: 700,
+    gold4: 800,
+    gold3: 900,
+    gold2: 1000,
+    gold1: 1100,
+    platinum4: 1200,
+    platinum3: 1300,
+    platinum2: 1400,
+    platinum1: 1500,
+    diamond4: 1600,
+    diamond3: 1700,
+    diamond2: 1800,
+    diamond1: 1900,
+    nova: 2000,
+    supernova: 2200,
+    singularity: 2500
+} as const;
+
 export const FAMILY_MOTIONS = {
     // modes (normal, insert, visual, command)
     modes: [
@@ -198,6 +224,50 @@ export function meetsDiamondFloors(M: Mastery): boolean {
       if ((famCov[fam] ?? 0) < min) return false;
     }
     return true;
+}
+
+export type RankId = keyof typeof RANK_VALUES;
+
+const ORDER: RankId[] = Object.entries(RANK_VALUES)
+  .sort((a, b) => a[1] - b[1])
+  .map(([k]) => k as RankId);
+
+export function rankIdFromRating(rating: number): RankId {
+  let current = ORDER[0];
+  for (const key of ORDER) {
+    if (rating >= RANK_VALUES[key]) current = key;
+    else break;
+  }
+  return current;
+}
+
+export function lpForRating(rating: number) {
+    let current: RankId = ORDER[0];
+    for (const id of ORDER) {
+      if (rating >= RANK_VALUES[id]) current = id;
+      else break;
+    }
+    const i = ORDER.indexOf(current);
+    const floor = RANK_VALUES[current];
+    const next = i < ORDER.length - 1 ? RANK_VALUES[ORDER[i + 1]] : null;
+    const span = next ? next - floor : null; // e.g., 100 for most subtiers, 200 for Nova→Supernova
+    const lp = Math.max(0, rating - floor);
+    return { rankId: current, floor, next, span, lp };
+}
+
+function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+export function prettyRank(rankId: RankId): string {
+  if (rankId === 'nova' || rankId === 'supernova' || rankId === 'singularity') {
+    return cap(rankId);
+  }
+  const m = rankId.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
+  if (m) {
+    const tierRoman = { '1': 'I', '2': 'II', '3': 'III', '4': 'IV' } as const;
+    return `${cap(m[1])} ${tierRoman[m[2] as keyof typeof tierRoman]}`;
+  }
+  // Fallback
+  return cap(rankId);
 }
 
 export interface RankInputs {

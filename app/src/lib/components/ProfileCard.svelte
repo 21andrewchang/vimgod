@@ -34,6 +34,7 @@
     bind:this={cardElement}
     class="relative border border-dashed w-full transition-all duration-300 dark:border-zinc-700 border-zinc-400"
     style="background:#0a0a0a; position: relative;"
+    role="presentation"
     onmouseenter={handleMouseEnter}
     onmouseleave={handleMouseLeave}
 >
