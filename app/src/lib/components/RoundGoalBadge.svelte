@@ -21,5 +21,5 @@
 </script>
 
 <div class={BASE_CLASS}>
-	<span class="text-sm leading-none">{label}</span>
+	<span class="font-mono text-sm leading-none">{label}</span>
 </div>
