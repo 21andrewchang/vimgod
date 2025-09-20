@@ -249,13 +249,18 @@
 		!!matchState.active &&
 		(!matchState.active.isWarmup || !signedIn);
 	$: if (warmupRoomActive) {
-		const baseGlow = warmupPulse
-			? '0 0 60px 16px rgba(255, 255, 255, 0.38)'
-			: '0 0 40px 9px rgba(255, 255, 255, 0.22)';
-		glowBoxShadow = baseGlow;
-		glowBorderColor = warmupPulse
-			? 'border-color: rgba(255, 255, 255, 0.78);'
-			: 'border-color: rgba(255, 255, 255, 0.55);';
+		if (warmupState === 'countdown') {
+			const baseGlow = warmupPulse
+				? '0 0 300px 0px rgba(255, 255, 255, 0.2)'
+				: '0 0 50px 0px rgba(255, 255, 255, 0.2)';
+			glowBoxShadow = baseGlow;
+			glowBorderColor = warmupPulse
+				? 'border-color: rgba(255, 255, 255, 0.1);'
+				: 'border-color: rgba(255, 255, 255, 0.1);';
+		} else {
+			glowBoxShadow = 'none';
+			glowBorderColor = 'border-color: rgba(255, 255, 255, 0.1);';
+		}
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 	$: if (matchState.status === 'idle') {
