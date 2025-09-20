@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { user, signOut } from '$lib/stores/auth';
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
     import { browser } from '$app/environment';
+    import { page } from '$app/stores';
 
 	const { variant = 'inline', size = 'large' } = $props<{
 		variant?: 'fixed' | 'inline';
@@ -24,6 +25,14 @@
 	const SAFE_MARGIN = 4;     // px around the bridge area
 	const HIDE_DELAY = 0;    // ms grace to allow travel outside both
 
+    const serverUser = $derived($page.data?.user ?? null);
+    const activeUser = $derived($user ?? serverUser);
+    const isAuthed = $derived(activeUser !== null);
+    const dbNameFromPage = $derived($page.data?.user?.name ?? null);
+    const displayName = $derived(
+        isAuthed ? (dbNameFromPage ?? activeUser?.user_metadata?.name ?? activeUser?.email?.split('@')[0] ?? 'User') : ''
+    );
+
 	function handleHeaderMouseEnter() { isHeaderHovered = true; }
 	function handleHeaderMouseLeave() { isHeaderHovered = false; }
 
@@ -32,13 +41,13 @@
 	}
 
 	function handleUserIconClick() {
-		if (!$user) {
+		if (!isAuthed) {
 			window.location.href = '/login';
 		}
 	}
 
 	function handleUserIconMouseEnter() {
-		if ($user) {
+		if (isAuthed) {
 			cancelHide();
 			showUserDropdown = true;
 		}
@@ -105,14 +114,14 @@
 		lastPointer = { x: e.clientX, y: e.clientY };
 
 		// Keep dropdown up if in icon, menu, or the “bridge” area between them.
-		const inIcon = isPointInRect(lastPointer, getRect(iconRef));
+		const inTrigger = isPointInRect(lastPointer, getRect(iconRef));
 		const inMenu = menuRef ? isPointInRect(lastPointer, getRect(menuRef)) : false;
 		const inBridge = isPointerInBridge();
 
 		// Icon highlight only when actually over icon
-		isUserIconHovered = inIcon;
+		isUserIconHovered = inTrigger;
 
-		if ($user && (inIcon || inMenu || inBridge)) {
+		if (isAuthed && (inTrigger || inMenu || inBridge)) {
 			// Ensure visible while traveling between
 			cancelHide();
 			showUserDropdown = true;
@@ -158,14 +167,14 @@
         // If overlapping vertically already, fall back to the original bounding-box bridge
         if (bottom <= top) {
             return {
-            left: Math.min(a.left, b.left) - SAFE_MARGIN,
-            right: Math.max(a.right, b.right) + SAFE_MARGIN,
-            top: Math.min(a.top, b.top) - SAFE_MARGIN,
-            bottom: Math.max(a.bottom, b.bottom) + SAFE_MARGIN
+                left: Math.min(a.left, b.left) - SAFE_MARGIN,
+                right: Math.max(a.right, b.right) + SAFE_MARGIN,
+                top: Math.min(a.top, b.top) - SAFE_MARGIN,
+                bottom: Math.max(a.bottom, b.bottom) + SAFE_MARGIN
             };
         }
         return { left, right, top, bottom };
-        }
+    }
 
 	function isPointerInIcon() {
 		return isPointInRect(lastPointer, getRect(iconRef));
@@ -250,13 +259,13 @@
 		</span>
 	</div>
 	
-	<!-- User Icon Section -->
+	<!-- User Icon + Username Section -->
 	<div class="flex items-center" class:max-[740px]:hidden={variant === 'fixed'}>
 		<div
 			bind:this={iconRef}
 			role="button"
 			tabindex="0"
-			class="p-2 cursor-pointer relative"
+			class="p-2 cursor-pointer relative flex items-center"
 			onmouseenter={handleUserIconMouseEnter}
 			onmouseleave={handleUserIconMouseLeave}
 			onclick={handleUserIconClick}
@@ -266,13 +275,13 @@
 					handleUserIconClick();
 				}
 			}}
-			aria-label={$user ? 'User menu' : 'Sign in'}
+			aria-label={isAuthed ? 'User menu' : 'Sign in'}
 			aria-haspopup="menu"
-			aria-expanded={$user && showUserDropdown ? 'true' : 'false'}
+			aria-expanded={isAuthed && showUserDropdown ? 'true' : 'false'}
 			aria-controls="user-menu"
 		>
 			<svg 
-				width="24" height="24" viewBox="0 0 24 24" fill="none"
+				width="22" height="22" viewBox="0 0 24 24" fill="none"
 				stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 				shape-rendering="geometricPrecision"
 				class="transition-colors duration-200"
@@ -282,11 +291,20 @@
 				<circle cx="12" cy="7" r="4"/>
 			</svg>
 
-			{#if $user && showUserDropdown}
+            {#if isAuthed}
+				<span
+					class="ml-2 text-[13px] text-neutral-300 font-mono max-w-[12rem] truncate transition-colors duration-200 leading-[1.2] py-[1px]"
+					style="color: {isUserIconHovered ? 'white' : 'rgba(255,255,255,0.5)'};"
+				>
+					{displayName}
+				</span>
+			{/if}
+
+			{#if isAuthed && showUserDropdown}
 				<div 
 					id="user-menu"
 					bind:this={menuRef}
-					class="user-dropdown absolute top-full right-0 mt-1 w-24 bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50 {dropdownHiding ? 'hiding' : ''}"
+					class="user-dropdown absolute top-full right-0 mt-1 w-40 bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50 {dropdownHiding ? 'hiding' : ''}"
 					role="menu"
 					tabindex="-1"
 					style="font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
@@ -299,13 +317,13 @@
 							class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
 							onclick={() => handleDropdownAction('profile')}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleDropdownAction('profile'))}
-						>profile</div>
+						>user profile</div>
 						<div
 							role="menuitem" tabindex="0"
 							class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
 							onclick={() => handleDropdownAction('settings')}
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), handleDropdownAction('settings'))}
-						>settings</div>
+						>account settings</div>
 						<hr class="border-neutral-700">
 						<div
 							role="menuitem" tabindex="0"

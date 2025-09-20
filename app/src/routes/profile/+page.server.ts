@@ -14,6 +14,7 @@ import {
   knownSet,
   rankFromInputs
 } from '$lib/data/ranks';
+import { levelFromXP } from '$lib/utils';
 
 
 function mockMastery(): Mastery {
@@ -57,22 +58,41 @@ function mockMastery(): Mastery {
 
 export const load: PageServerLoad = async ({ locals }) => {
     // server can see the session via cookies (set in hooks.server)
-    const { data: { session }, error } = await locals.supabase.auth.getSession();
-    if (error || !session?.user) throw redirect(302, '/login');
+    const { data: { user }, error } = await locals.supabase.auth.getUser();
+    if (error || !user) throw redirect(302, '/login');
   
-    const { data: userData, error: userError } = await locals.supabase
+    let { data: userData, error: userError } = await locals.supabase
       .from('users')
-      .select('*')
-      .eq('id', session.user.id)
-      .single();
+      .select('id, name, rating, hidden_mmr, xp')
+      .eq('id', user.id)
+      .maybeSingle();
   
-    if (userError || !userData) throw redirect(302, '/login');
-  
-    const user = {
+    if (!userData) {
+        const inserted = await locals.supabase
+            .from('users')
+            .insert({ id: user.id })
+            .select('id, name, rating, hidden_mmr, xp')
+            .single();
+
+        if (inserted.error) throw redirect(302, '/login');
+        userData = inserted.data;
+    }
+
+    const displayName = userData.name ?? user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'Player';
+    const xp = userData.xp ?? 0;
+    const { level, experience, maxExperience } = levelFromXP(xp);
+
+
+
+    const appUser = {
       id: userData.id,
-      name: userData.name || session.user.email?.split('@')[0] || 'User',
-      elo: userData.rating || 1500,
-      lp:  userData.hidden_mmr || 1500
+      name: displayName,
+      elo: userData.rating ?? 1500,
+      lp:  userData.hidden_mmr ?? 1500,
+      rank: 'Singularity' as RankName,
+      level,
+      experience,
+      maxExperience
     };
   
     const mastery = mockMastery();
@@ -132,7 +152,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     });
   
     return {
-      user: { ...user, rank: resolvedRank },
+      profileUser: appUser,
       mastery,
       knownList: Array.from(known),
       motionCounts,

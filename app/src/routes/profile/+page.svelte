@@ -2,11 +2,10 @@
     import type { PageData } from './$types';
     const { data } = $props<{ data: PageData }>();
 
-    const { user, motionsGrid, motionCounts, dailyCounts, history, totals } = data;
+    const { profileUser, motionsGrid, motionCounts, dailyCounts, history, totals } = data;
 
-    import StatCard from '$lib/components/StatCard.svelte';
-    import ProfileCard from '$lib/components/ProfileCard.svelte';
-    import Header from '$lib/components/Header.svelte';
+	import StatCard from '$lib/components/StatCard.svelte';
+	import ProfileCard from '$lib/components/ProfileCard.svelte';
 
     const statItems = [
         { label: 'wins', value: `${totals.wins} (${totals.winRate}%)` },
@@ -30,17 +29,15 @@
   class="w-full relative overflow-hidden"
 >
   <div class="relative z-[2] px-6 pt-24 pb-4 max-w-6xl mx-auto space-y-8">
-    <Header variant="fixed" size="small" />
-  
     <!-- Stats row -->
     <div class="grid grid-cols-1 md:grid-cols-11 gap-4">
         <div class="md:col-span-5">
             <ProfileCard 
-                userName={user.name} 
-                rank={user.rank} 
-                level={user.level || 420} 
-                experience={user.experience || 67} 
-                maxExperience={user.maxExperience || 100} 
+                userName={profileUser.name} 
+                rank={profileUser.rank} 
+                level={profileUser.level}
+                experience={profileUser.experience} 
+                maxExperience={profileUser.maxExperience} 
             />
         </div>
         <div class="md:col-span-6 flex gap-4">
