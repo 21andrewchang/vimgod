@@ -16,7 +16,6 @@
 	const unsubscribe = match.subscribe((value) => (state = value));
 	onDestroy(unsubscribe);
 
-	console.log(state.completed);
 	$: completedRounds = state.completed.filter((round) => round.index > 0);
 	$: wins = completedRounds.filter((round) => round.succeeded).length;
 	$: losses = completedRounds.length - wins;
@@ -38,6 +37,7 @@
 				0
 			) / roundsWithKeys.length
 		: 0;
+	$: undoCount = state.undoCount ?? 0;
 
 	const IGNORED_KEYS = new Set([
 		'Alt',
@@ -257,8 +257,8 @@
 				<div class="mt-1 font-mono text-2xl">{mostUsedKey ? mostUsedKey.key : '—'}</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
-				<div class="font-mono text-xs text-neutral-400">least used</div>
-				<div class="mt-1 font-mono text-2xl">V</div>
+				<div class="font-mono text-xs text-neutral-400">undos</div>
+				<div class="mt-1 font-mono text-2xl">{undoCount}</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">apm</div>

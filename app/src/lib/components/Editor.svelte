@@ -128,7 +128,9 @@
 	let glowBorderColor = DEFAULT_BORDER_COLOR;
 	let editorStyle = '';
 	let currentRating: number | null = null;
+	let activeTargetKind: MatchTarget['kind'] | null = null;
 	let manipulationAction: 'delete' | null = null;
+	let undoCount = 0;
 
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
@@ -166,7 +168,9 @@
 		roundBaselineSnapshot = null;
 		lastActiveRoundIndex = null;
 		forceUndoRequired = false;
+		undoCount = 0;
 	}
+	$: match?.setUndoCount?.(undoCount);
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -590,17 +594,24 @@
 		return false;
 	}
 
+	function requireUndo() {
+		if (!forceUndoRequired) {
+			forceUndoRequired = true;
+			undoCount += 1;
+		}
+	}
+
 	function handleDocumentChange(previousDocument: string, nextDocument: string) {
 		if (!matchState.active) return;
 		if (resetForceUndoIfCleared(nextDocument)) return;
 		const target = matchState.active.target;
 		if (target.kind === 'manipulate') {
-			forceUndoRequired = true;
+			requireUndo();
 			return;
 		}
 		const deletionOccurred = nextDocument.length < previousDocument.length;
 		if (deletionOccurred) {
-			forceUndoRequired = true;
+			requireUndo();
 		}
 	}
 
@@ -1071,7 +1082,7 @@
 								/>
 							</div>
 						{/if}
-						<span class="text-md leading-none">
+						<span class="text-sm leading-none">
 							{matchState.active.isWarmup
 								? `0/${totalRoundsDisplay}`
 								: `${Math.min(matchState.active.index, totalRoundsDisplay)}/${totalRoundsDisplay}`}

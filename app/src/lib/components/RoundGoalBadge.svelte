@@ -1,6 +1,6 @@
 <script lang="ts">
-	export type GoalKind = 'move' | 'highlight' | 'manipulate' | null;
-	export type ManipulationAction = 'delete' | null;
+	type GoalKind = 'move' | 'highlight' | 'manipulate' | null;
+	type ManipulationAction = 'delete' | null;
 
 	export let forceUndoRequired = false;
 	export let targetKind: GoalKind = null;
@@ -21,5 +21,5 @@
 </script>
 
 <div class={BASE_CLASS}>
-	<span class="text-md leading-none">{label}</span>
+	<span class="text-sm leading-none">{label}</span>
 </div>

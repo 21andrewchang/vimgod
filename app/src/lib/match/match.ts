@@ -81,6 +81,7 @@ export interface MatchState {
   totalPoints: number;
   maxPoints: number;
   pointsPerRound: number;
+  undoCount: number;
 }
 
 export type MatchTargetGenerator = () => MatchTarget;
@@ -120,7 +121,8 @@ const createInitialState = (config: InitialConfig): MatchState => ({
   timeLimitMs: config.timeLimitMs,
   totalPoints: 0,
   maxPoints: config.maxPoints,
-  pointsPerRound: config.pointsPerRound
+  pointsPerRound: config.pointsPerRound,
+  undoCount: 0
 });
 
 export const createMatchController = (options: MatchControllerOptions = {}) => {
@@ -198,6 +200,10 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
         }
       };
     });
+  };
+
+  const setUndoCount = (count: number) => {
+    store.update((state) => ({ ...state, undoCount: Math.max(0, count) }));
   };
 
   interface PlayerState {
@@ -363,7 +369,8 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     recordKey,
     evaluate,
     reset,
-    setTimeLimit
+    setTimeLimit,
+    setUndoCount
   };
 };
 
