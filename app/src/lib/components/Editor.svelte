@@ -134,27 +134,37 @@
 	let manipulationAction: 'delete' | null = null;
 	let undoCount = 0;
 	let signedIn = false;
-	let warmupState: 'inactive' | 'waiting' | 'countdown' | 'complete' = 'inactive';
-	let warmupCountdownValue = 3;
-	let warmupTimer: ReturnType<typeof setTimeout> | null = null;
-	let warmupRoomActive = false;
-	let showTimer = false;
-	let currentRoundDisplay = 0;
+let warmupState: 'inactive' | 'waiting' | 'countdown' | 'complete' = 'inactive';
+let warmupCountdownValue = 3;
+let warmupTimer: ReturnType<typeof setTimeout> | null = null;
+let warmupRoomActive = false;
+let showTimer = false;
+let currentRoundDisplay = 0;
+let warmupPulse = false;
+let warmupPulseTimer: ReturnType<typeof setTimeout> | null = null;
 
-	function cancelWarmupTimer() {
-		if (warmupTimer) {
-			clearTimeout(warmupTimer);
-			warmupTimer = null;
-		}
+function cancelWarmupTimer() {
+	if (warmupTimer) {
+		clearTimeout(warmupTimer);
+		warmupTimer = null;
 	}
+}
 
-	function exitWarmup() {
-		cancelWarmupTimer();
-		warmupState = 'inactive';
-		warmupCountdownValue = 3;
+function cancelWarmupPulseTimer() {
+	if (warmupPulseTimer) {
+		clearTimeout(warmupPulseTimer);
+		warmupPulseTimer = null;
 	}
+}
 
-	function enterWarmup() {
+function exitWarmup() {
+	cancelWarmupTimer();
+	cancelWarmupPulseTimer();
+	warmupState = 'inactive';
+	warmupCountdownValue = 3;
+}
+
+function enterWarmup() {
 		exitWarmup();
 		warmupState = 'waiting';
 		forceUndoRequired = false;
@@ -162,20 +172,31 @@
 		roundBaselineSnapshot = null;
 	}
 
-	function finishWarmup() {
-		cancelWarmupTimer();
-		warmupState = 'complete';
-		warmupCountdownValue = 0;
-		match.start({ skipWarmup: true });
-	}
+function finishWarmup() {
+	cancelWarmupTimer();
+	cancelWarmupPulseTimer();
+	warmupState = 'complete';
+	warmupCountdownValue = 0;
+	match.start({ skipWarmup: true });
+}
 
-	function runWarmupCountdownStep(value: number) {
-		warmupCountdownValue = value;
-		if (value <= 1) {
-			warmupTimer = setTimeout(() => {
-				warmupTimer = null;
-				finishWarmup();
-			}, 1000);
+function triggerWarmupPulse() {
+	warmupPulse = true;
+	cancelWarmupPulseTimer();
+	warmupPulseTimer = setTimeout(() => {
+		warmupPulse = false;
+		warmupPulseTimer = null;
+	}, 320);
+}
+
+function runWarmupCountdownStep(value: number) {
+	warmupCountdownValue = value;
+	triggerWarmupPulse();
+	if (value <= 1) {
+		warmupTimer = setTimeout(() => {
+			warmupTimer = null;
+			finishWarmup();
+		}, 1000);
 		} else {
 			warmupTimer = setTimeout(() => {
 				runWarmupCountdownStep(value - 1);
@@ -227,10 +248,13 @@
 		matchState.status !== 'complete' &&
 		!!matchState.active &&
 		(!matchState.active.isWarmup || !signedIn);
-	$: if (warmupRoomActive) {
-		glowBoxShadow = '0 0 42px 10px rgba(255, 255, 255, 0.28)';
-		glowBorderColor = 'border-color: rgba(255, 255, 255, 0.55);';
-	}
+$: if (warmupRoomActive) {
+	const baseGlow = warmupPulse ? '0 0 60px 16px rgba(255, 255, 255, 0.38)' : '0 0 40px 9px rgba(255, 255, 255, 0.22)';
+	glowBoxShadow = baseGlow;
+	glowBorderColor = warmupPulse
+		? 'border-color: rgba(255, 255, 255, 0.78);'
+		: 'border-color: rgba(255, 255, 255, 0.55);';
+}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 	$: if (matchState.status === 'idle') {
 		manipulationRoundsGenerated = 0;
@@ -1065,7 +1089,9 @@
 
 	function onKeyDown(e: KeyboardEvent) {
 		const inWarmupRoom = warmupRoomActive;
-		match.recordKey(e.key, now());
+		if (!inWarmupRoom) {
+			match.recordKey(e.key, now());
+		}
 		const undoKeyPressed = isUndoKey(e);
 		if (!inWarmupRoom && forceUndoRequired && !undoKeyPressed) {
 			e.preventDefault();
