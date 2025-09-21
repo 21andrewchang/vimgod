@@ -128,6 +128,46 @@
 	] as const;
 
 	const PLACEMENT_CAP = RANK_VALUES.gold4;
+	const lsKey = (uid: string | null) => `mh:last:${uid ?? 'anon'}`;
+
+	function buildSignature(state: MatchState, uid: string | null) {
+		const rounds = state.completed.filter((r) => r.index > 0);
+		const firstStart = rounds[0]?.startedAt ?? state.startTime ?? 0;
+		const lastDone = state.endTime ?? rounds.at(-1)?.completedAt ?? 0;
+		return JSON.stringify({
+			uid,
+			rounds: rounds.length,
+			firstStart,
+			lastDone,
+			totalPoints: state.totalPoints,
+			timeLimitMs: state.timeLimitMs
+		});
+	}
+
+	function getOrCreateMatchId(signature: string, uid: string | null) {
+		try {
+			const key = lsKey(uid);
+			const saved = localStorage.getItem(key);
+			if (saved) {
+				const parsed = JSON.parse(saved);
+				if (parsed?.signature === signature && parsed?.match_id) {
+					return parsed.match_id as string; // reuse on reload
+				}
+			}
+			// new id
+			const match_id =
+				crypto?.randomUUID?.() ??
+				`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+			localStorage.setItem(key, JSON.stringify({ signature, match_id }));
+			return match_id;
+		} catch {
+			// fallback if LS unavailable
+			return (
+				crypto?.randomUUID?.() ??
+				`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+			);
+		}
+	}
 
 	$: projectedRankValue = completedRounds.length
 		? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
@@ -167,45 +207,45 @@
 			});
 	}
 
-	let prevWasComplete = false; // rising-edge detector
+	let wroteHistoryOnce = false;
 
-	async function writeMatchHistory() {
-		try {
-			const uid = $user.id;
-			const { error } = await supabase.from('match_history').insert([
-				{
-					player_id: uid,
-					avg_speed: averageMs,
-					efficiency: averageKeys,
-					most_used: mostUsedKey?.key ?? null,
-					undos: undoCount,
-					apm: Math.round(apm),
-					reaction_time: averageReaction,
-					start_elo: elo,
-					end_elo: elo + lpDelta,
-					lp_delta: lpDelta
-				}
-			]);
-			if (error) {
-				console.error('match_history insert failed', error);
-				wroteHistory = false;
-			}
-		} catch (e) {
-			console.error('match_history insert threw', e);
-			wroteHistory = false;
+	async function writeHistoryIdempotent() {
+		if (wroteHistoryOnce) return;
+		if (state.status !== 'complete') return;
+
+		const uid = $user?.id ?? null;
+
+		// build signature from the computed stats you already have here
+		const signature = buildSignature(state, uid);
+		const match_id = getOrCreateMatchId(signature, uid);
+
+		const row = {
+			match_id,
+			player_id: uid,
+			avg_speed: averageMs,
+			efficiency: averageKeys,
+			most_used: mostUsedKey?.key ?? null,
+			undos: undoCount,
+			apm: Math.round(apm),
+			reaction_time: averageReaction,
+			start_elo: elo,
+			end_elo: elo + lpDelta,
+			lp_delta: lpDelta
+		};
+
+		const { error } = await supabase
+			.from('match_history')
+			.upsert([row], { onConflict: 'match_id' }); // <- overwrite same match_id
+
+		if (!error) {
+			wroteHistoryOnce = true;
+		} else {
+			console.error('match_history upsert failed', error);
 		}
 	}
 
-	// Rising-edge effect: runs exactly once when status flips to 'complete'
-	$: {
-		const isComplete = state.status === 'complete' && !!$user;
-		if (isComplete && !prevWasComplete && !wroteHistory) {
-			prevWasComplete = true; // lock the edge
-			wroteHistory = true; // prevent double fire
-			// Important: do NOT mutate `state` or `$user` here
-			void writeMatchHistory();
-		}
-		if (!isComplete) prevWasComplete = false; // reset if user leaves results
+	$: if (state.status === 'complete') {
+		void writeHistoryIdempotent();
 	}
 
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
