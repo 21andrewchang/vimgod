@@ -8,7 +8,7 @@
 	import { get } from 'svelte/store';
 	import { getContext, onDestroy } from 'svelte';
 	import { user } from '$lib/stores/auth';
-	import '$lib/stores/auth'; // Initialize auth store
+	import '$lib/stores/auth';
 
 	const match = createMatchController({ totalRounds: 20 });
 
@@ -28,14 +28,14 @@
 		}
 	}
 
-type ReloadGuardContext = {
-	enable: (
-		snapshotProvider?: () => DodgeSnapshot | null,
-		finalizer?: (snapshot: DodgeSnapshot | null) => void
-	) => void;
-	disable: () => void;
-	disableBlocking: (value: boolean) => void;
-};
+	type ReloadGuardContext = {
+		enable: (
+			snapshotProvider?: () => DodgeSnapshot | null,
+			finalizer?: (snapshot: DodgeSnapshot | null) => void
+		) => void;
+		disable: () => void;
+		disableBlocking: (value: boolean) => void;
+	};
 
 	const reloadGuard = getContext<ReloadGuardContext | undefined>('reload-guard');
 
