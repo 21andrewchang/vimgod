@@ -209,15 +209,17 @@
 
 	let wroteHistoryOnce = false;
 
-	async function writeHistoryIdempotent() {
-		if (wroteHistoryOnce) return;
-		if (state.status !== 'complete') return;
+	async function writeHistoryIdempotent(): Promise<number | null> {
+		if (wroteHistoryOnce) return null;
+		if (state.status !== 'complete') return null;
 
 		const uid = $user?.id ?? null;
 
-		// build signature from the computed stats you already have here
 		const signature = buildSignature(state, uid);
 		const match_id = getOrCreateMatchId(signature, uid);
+
+		// Compute once here, but prefer DB return as source of truth
+		const computedEndElo = (elo ?? 0) + (lpDelta ?? 0);
 
 		const row = {
 			match_id,
@@ -229,23 +231,35 @@
 			apm: Math.round(apm),
 			reaction_time: averageReaction,
 			start_elo: elo,
-			end_elo: elo + lpDelta,
+			end_elo: computedEndElo,
 			lp_delta: lpDelta
 		};
 
-		const { error } = await supabase
+		const { data, error } = await supabase
 			.from('match_history')
-			.upsert([row], { onConflict: 'match_id' }); // <- overwrite same match_id
+			.upsert([row], { onConflict: 'match_id' })
+			.select('end_elo') // <-- ask Supabase to return the row
+			.single(); // <-- table has unique match_id, so single is fine
 
-		if (!error) {
-			wroteHistoryOnce = true;
-		} else {
+		if (error) {
 			console.error('match_history upsert failed', error);
+			return null;
 		}
+
+		wroteHistoryOnce = true;
+
+		// Prefer whatever the DB returned; fall back to the computed value
+		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : computedEndElo;
+		return endElo;
 	}
 
 	$: if (state.status === 'complete') {
-		void writeHistoryIdempotent();
+		(async () => {
+			const endElo = await writeHistoryIdempotent();
+			if (typeof endElo === 'number') {
+				elo = endElo;
+			}
+		})();
 	}
 
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
