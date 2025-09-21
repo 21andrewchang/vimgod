@@ -7,8 +7,13 @@
 	import { DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 	import type { DodgeSnapshot } from '$lib/reloadGuard';
 
+	import { supabase } from '$lib/supabaseClient';
+	import { user } from '$lib/stores/auth';
+	import { profile, refreshProfile } from '$lib/stores/profile';
+
 	let { children } = $props();
 
+	/* existing reload-guard state */
 	const reloadWarningVisible = writable(false);
 	const countdown = writable(5);
 	const reloadGuardActive = writable(false);
@@ -16,6 +21,10 @@
 	let snapshotFinalizer: ((snapshot: DodgeSnapshot | null) => void) | null = null;
 	let guardDisabled = false;
 	let countdownTimer: ReturnType<typeof setInterval> | undefined;
+
+	/* NEW: realtime channel + unsub handle */
+	let usersChannel: ReturnType<typeof supabase.channel> | null = null;
+	let unsubAuth: (() => void) | null = null;
 
 	function clearCountdown() {
 		if (countdownTimer) {
@@ -145,10 +154,32 @@
 		}
 	};
 
+	/* --- NEW: bind/unbind realtime on users row --- */
+	function bindUsersRealtime(uid: string | null) {
+		// clean previous
+		if (usersChannel) {
+			supabase.removeChannel(usersChannel);
+			usersChannel = null;
+		}
+		if (!uid) return;
+
+		usersChannel = supabase
+			.channel(`users-row-${uid}`)
+			.on(
+				'postgres_changes',
+				{ event: '*', schema: 'public', table: 'users', filter: `id=eq.${uid}` },
+				async () => {
+					// whenever users row changes (triggers, manual updates, etc.), refresh the profile store
+					await refreshProfile();
+				}
+			)
+			.subscribe();
+	}
+
 	onMount(() => {
 		if (!browser) return;
 
-		// If Font Loading API is missing, just show the logo.
+		// FONT LOADING (existing)
 		const fonts: FontFaceSet | undefined = (document as any).fonts;
 		if (!fonts) {
 			document.documentElement.classList.add('fonts-ready');
@@ -156,21 +187,43 @@
 			document.documentElement.classList.add('fonts-ready');
 		} else {
 			(async () => {
-				// Wait briefly for your specific faces; don't block forever.
 				await Promise.race([
 					Promise.allSettled([fonts.load('500 24px "DM Mono"'), fonts.load('400 24px "Sono"')]),
 					new Promise((r) => setTimeout(r, 1500))
 				]);
-
 				document.documentElement.classList.add('fonts-ready');
 			})();
 		}
 
+		// KEY HANDLER (existing)
 		window.addEventListener('keydown', handleKeyDown, { capture: true });
+
+		// PROFILE HYDRATION + REALTIME (new)
+		(async () => {
+			await refreshProfile(); // initial read
+			bindUsersRealtime(get(user)?.id ?? null);
+		})();
+
+		// react to auth changes -> refresh + rebind realtime
+		unsubAuth = user.subscribe(async (u) => {
+			await refreshProfile();
+			bindUsersRealtime(u?.id ?? null);
+		});
 
 		return () => {
 			window.removeEventListener('keydown', handleKeyDown, { capture: true });
 			clearCountdown();
+
+			if (usersChannel) {
+				supabase.removeChannel(usersChannel);
+				usersChannel = null;
+			}
+			if (unsubAuth) {
+				try {
+					unsubAuth();
+				} catch {}
+				unsubAuth = null;
+			}
 		};
 	});
 </script>
@@ -193,9 +246,8 @@
 </svelte:head>
 
 <div class={`min-h-screen transition-[filter,transform] duration-150 ease-out `}>
-    <Header variant="fixed" size="small" />
+	<Header variant="fixed" size="small" />
 	{@render children()}
-	<!-- render the routed page here -->
 </div>
 
 {#if $reloadWarningVisible}

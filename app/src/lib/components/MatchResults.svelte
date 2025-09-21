@@ -2,32 +2,36 @@
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
 	import { goto } from '$app/navigation';
 	import Graph from '$lib/components/Graph.svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { onDestroy } from 'svelte';
 	import type { MatchController, MatchState } from '$lib/match/match';
-	import { user, signInWithGoogle, setInitialRank, applyRatingDelta, increaseXp } from '$lib/stores/auth'
-    import { page } from '$app/stores';
+	import { supabase } from '$lib/supabaseClient';
+	import { user, signInWithGoogle, setInitialRank } from '$lib/stores/auth';
+	import { profile, refreshProfile } from '$lib/stores/profile';
 
 	export let match: MatchController;
-	
-	// Use auth store instead of prop
+
+	// Keep using the auth store for "signed in"
 	$: signedIn = !!$user;
+
+	$: elo = $profile?.rating ?? 67;
+	$: xp = $profile?.xp ?? 0;
 
 	let state: MatchState = get(match);
 	const unsubscribe = match.subscribe((value) => (state = value));
 	onDestroy(unsubscribe);
 
+	// ensure we have fresh profile once this mounts (no-op if already fresh)
+	onMount(() => {
+		void refreshProfile();
+	});
+
+	// ---- stats derived from match state ----
 	$: completedRounds = state.completed.filter((round) => round.index > 0);
 	$: wins = completedRounds.filter((round) => round.succeeded).length;
 	$: losses = completedRounds.length - wins;
 	$: matchOutcome =
-		state.outcome === 'dodge'
-			? 'Dodge'
-			: wins > losses
-				? 'Win'
-				: wins < losses
-					? 'Loss'
-					: 'Draw';
+		state.outcome === 'dodge' ? 'Dodge' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw';
 	$: lpDelta = state.totalPoints;
 
 	$: averageMs = completedRounds.length
@@ -125,54 +129,127 @@
 	] as const;
 
 	const PLACEMENT_CAP = RANK_VALUES.gold4;
+	const lsKey = (uid: string | null) => `mh:last:${uid ?? 'anon'}`;
+
+	function buildSignature(state: MatchState, uid: string | null) {
+		const rounds = state.completed.filter((r) => r.index > 0);
+		const firstStart = rounds[0]?.startedAt ?? state.startTime ?? 0;
+		const lastDone = state.endTime ?? rounds.at(-1)?.completedAt ?? 0;
+		return JSON.stringify({
+			uid,
+			rounds: rounds.length,
+			firstStart,
+			lastDone,
+			totalPoints: state.totalPoints,
+			timeLimitMs: state.timeLimitMs
+		});
+	}
+
+	function getOrCreateMatchId(signature: string, uid: string | null) {
+		try {
+			const key = lsKey(uid);
+			const saved = localStorage.getItem(key);
+			if (saved) {
+				const parsed = JSON.parse(saved);
+				if (parsed?.signature === signature && parsed?.match_id) {
+					return parsed.match_id as string; // reuse on reload
+				}
+			}
+			const match_id =
+				crypto?.randomUUID?.() ??
+				`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+			localStorage.setItem(key, JSON.stringify({ signature, match_id }));
+			return match_id;
+		} catch {
+			return (
+				crypto?.randomUUID?.() ??
+				`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+			);
+		}
+	}
 
 	$: projectedRankValue = completedRounds.length
 		? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
 		: null;
-	$: placementRankValue = projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP);
-	$: projectedRankValue !== null &&
-		console.log('Projected rank (avg ms):', {
-			averageMs,
-			projectedRankValue,
-			placementRankValue
-		});
+	$: placementRankValue =
+		projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP);
 
-    let triedInitialRank = false;
+	let triedInitialRank = false;
 
-    $: if (!triedInitialRank && state.status === 'complete' && $user && projectedRankValue !== null && placementRankValue !== null) {
-        triedInitialRank = true;
-        setInitialRank(projectedRankValue, placementRankValue)
-            .then(({ updated }) => {
-                if (updated) {
-                    console.log('Initial rank set successfully', {hiddenMmr: projectedRankValue, rating: placementRankValue});
-                } else {
-                    console.log('Initial rank already set');
-                }
-            })
-            .catch((error) => {
-                console.error('Failed to set initial rank', error);
-            });
-    }
+	$: if (
+		!triedInitialRank &&
+		state.status === 'complete' &&
+		$user &&
+		projectedRankValue !== null &&
+		placementRankValue !== null
+	) {
+		triedInitialRank = true;
+		setInitialRank(projectedRankValue, placementRankValue).catch((e) =>
+			console.error('Failed to set initial rank', e)
+		);
+	}
 
-    let updatedRating = false;
+	let wroteHistoryOnce = false;
 
-    $: if (!updatedRating && state.status === 'complete' && $user) {
-        updatedRating = true;
-        
-        (async () => {
-            try {
-                if (lpDelta !== 0) {
-                    const newRating = await applyRatingDelta(lpDelta);
-                    elo = newRating;
-                    const newXp = await increaseXp(10);
-                    xp = newXp;
-                }
-            } catch (error) {
-                console.error('Failed to update rating', error);
-            }
-        })();
-    }
+	async function writeHistoryIdempotent(): Promise<number | null> {
+		if (wroteHistoryOnce) return null;
+		if (state.status !== 'complete') return null;
 
+		const uid = $user?.id ?? null;
+
+		const signature = buildSignature(state, uid);
+		const match_id = getOrCreateMatchId(signature, uid);
+
+		// Use server-truth rating at the time of write
+		const startElo = $profile?.rating ?? 0;
+		const computedEndElo = startElo + (lpDelta ?? 0);
+
+		const row = {
+			match_id,
+			player_id: uid,
+			avg_speed: averageMs,
+			efficiency: averageKeys,
+			most_used: mostUsedKey?.key ?? null,
+			undos: undoCount,
+			apm: Math.round(apm),
+			reaction_time: averageReaction,
+			start_elo: startElo,
+			end_elo: computedEndElo,
+			lp_delta: lpDelta
+		};
+
+		const { data, error } = await supabase
+			.from('match_history')
+			.upsert([row], { onConflict: 'match_id' })
+			.select('end_elo')
+			.single();
+
+		if (error) {
+			console.error('match_history upsert failed', error);
+			return null;
+		}
+
+		wroteHistoryOnce = true;
+
+		// ---- keep UI in sync immediately, then reconcile with DB ----
+		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : computedEndElo;
+
+		// 1) Optimistic update: bump the profile store's rating now
+		if (typeof endElo === 'number') {
+			profile.update((p) => (p ? { ...p, rating: endElo } : p));
+		}
+
+		// 2) Fire a refresh so the store exactly matches what’s in DB
+		void refreshProfile();
+
+		return endElo;
+	}
+
+	$: if (state.status === 'complete') {
+		void writeHistoryIdempotent();
+	}
+
+	// graph data
 	$: roundDurations = completedRounds.map((r) => r.durationMs);
 	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
 	$: dashed = roundDurations.length
@@ -195,13 +272,10 @@
 		if (!signedIn) {
 			match.start();
 		}
-        triedInitialRank = false;
+		triedInitialRank = false;
 	};
 
 	const graphHeight = 200;
-    console.log('page.data', $page.data);
-	let elo = $page.data?.user?.rating ?? 67;
-    let xp = $page.data?.user?.xp ?? 0;
 </script>
 
 <div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
@@ -215,14 +289,13 @@
 							class="h-4 w-3 self-center text-neutral-400"
 							aria-hidden="true"
 						>
-							<!-- Heroicons solid: lock-closed -->
 							<path
 								fill="currentColor"
 								fill-rule="evenodd"
 								d="M12 1.5A5.25 5.25 0 0 0 6.75 6.75V9
-       A2.25 2.25 0 0 0 4.5 11.25v6A2.25 2.25 0 0 0 6.75 19.5h10.5
-       A2.25 2.25 0 0 0 19.5 17.25v-6A2.25 2.25 0 0 0 17.25 9V6.75
-       A5.25 5.25 0 0 0 12 1.5zm-3 7.5V6.75a3 3 0 1 1 6 0V9H9z"
+                   A2.25 2.25 0 0 0 4.5 11.25v6A2.25 2.25 0 0 0 6.75 19.5h10.5
+                   A2.25 2.25 0 0 0 19.5 17.25v-6A2.25 2.25 0 0 0 17.25 9V6.75
+                   A5.25 5.25 0 0 0 12 1.5zm-3 7.5V6.75a3 3 0 1 1 6 0V9H9z"
 								clip-rule="evenodd"
 							/>
 						</svg>
@@ -276,8 +349,8 @@
 
 		<div
 			class="mt-6 grid grid-cols-1 gap-x-8 gap-y-0 text-neutral-200
-	 sm:grid-cols-3 sm:gap-x-40
-         lg:grid-cols-6 lg:gap-x-8"
+        sm:grid-cols-3 sm:gap-x-40
+        lg:grid-cols-6 lg:gap-x-8"
 			aria-hidden={!signedIn}
 		>
 			<div class="items-center rounded-lg p-4">

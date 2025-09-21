@@ -1,5 +1,6 @@
-
-import { writable, type Writable } from 'svelte/store';
+import { get, writable, type Writable } from 'svelte/store';
+import { supabase } from '$lib/supabaseClient';
+import { user } from '$lib/stores/auth';
 
 export type MatchStatus = 'idle' | 'ready' | 'running' | 'complete';
 
@@ -24,22 +25,22 @@ export type HighlightSelection = LineSelection | CharSelection;
 
 export type MatchTarget =
   | {
-      kind: 'move';
-      row: number;
-      col: number;
-      sequence: string[];
-    }
+    kind: 'move';
+    row: number;
+    col: number;
+    sequence: string[];
+  }
   | {
-      kind: 'highlight';
-      selection: HighlightSelection;
-    }
+    kind: 'highlight';
+    selection: HighlightSelection;
+  }
   | {
-      kind: 'manipulate';
-      selection: HighlightSelection;
-      action: 'delete';
-      snapshot: string;
-      expectedDocument: string;
-    };
+    kind: 'manipulate';
+    selection: HighlightSelection;
+    action: 'delete';
+    snapshot: string;
+    expectedDocument: string;
+  };
 
 export type PlayerSelection = HighlightSelection;
 

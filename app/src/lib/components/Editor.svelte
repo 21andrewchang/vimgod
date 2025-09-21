@@ -1208,18 +1208,18 @@
 					<div
 						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
 					>
-						{#if showTimer}
-							<div class="relative flex items-center justify-center">
-								<CircularProgress
-									value={timerValue}
-									size={14}
-									stroke={1}
-									fill={timerFill}
-									border={timerBorder}
-								/>
-							</div>
-						{/if}
-						<span class="text-sm leading-none">{currentRoundDisplay}/{totalRoundsDisplay}</span>
+						<div class="relative flex items-center justify-center">
+							<CircularProgress
+								value={timerValue}
+								size={14}
+								stroke={1}
+								fill={timerFill}
+								border={timerBorder}
+							/>
+						</div>
+						<span class="text-sm leading-none text-neutral-200"
+							>{currentRoundDisplay}/{totalRoundsDisplay}</span
+						>
 					</div>
 					{#if warmupRoomActive}
 						<RoundGoalBadge labelOverride="ranked" />
@@ -1249,17 +1249,15 @@
 				></canvas>
 				{#if warmupRoomActive}
 					<div class="pointer-events-none absolute inset-0">
-						<div class="absolute inset-0 bg-black/80"></div>
+						<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
-								<div
-									class="rounded-full border border-white/25 px-6 py-3 font-mono text-xs uppercase tracking-[0.5em] text-white/80 shadow-[0_0_32px_rgba(255,255,255,0.25)] backdrop-blur-md"
-								>
+								<div class=" font-mono text-lg uppercase tracking-wider text-neutral-200">
 									move to start match
 								</div>
 							{:else if warmupState === 'countdown'}
 								{#each [warmupCountdownValue] as value (value)}
-									<div class="warmup-countdown">{value}</div>
+									<div class="font-mono text-5xl text-neutral-200">{value}</div>
 								{/each}
 							{/if}
 						</div>
@@ -1307,7 +1305,6 @@
 		color: rgba(255, 255, 255, 0.92);
 		text-shadow: 0 0 18px rgba(255, 255, 255, 0.45);
 		opacity: 0.9;
-		animation: warmupPulse 0.95s ease-out;
 	}
 
 	@keyframes warmupPulse {
