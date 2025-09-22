@@ -958,8 +958,7 @@
 			if (forceUndoRequired) {
 				ctx.globalAlpha = 0.15;
 			} else {
-				// Slower blink than undoBlink (undoBlink uses nowMs/50)
-				const slowPhase = (Math.sin(lastNowMs / 150) + 1) / 2; // 0..1 over ~300ms scale
+				const slowPhase = (Math.sin(lastNowMs / 150) + 1) / 2;
 				const MIN = 0.3,
 					MAX = 0.55;
 				ctx.globalAlpha = MIN + (MAX - MIN) * slowPhase;
