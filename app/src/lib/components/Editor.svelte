@@ -924,6 +924,8 @@
 		}
 	}
 
+	let lastNowMs = 0;
+
 	function drawTargetOverlay() {
 		const active = matchState.active;
 		if (!active) return;
@@ -934,6 +936,7 @@
 		const manipulationCleared = isManipulation
 			? serializeDocument() === target.expectedDocument
 			: false;
+
 		let roundCompleted = false;
 		if (matchState.status === 'running' && !forceUndoRequired) {
 			roundCompleted = match.evaluate({
@@ -942,16 +945,25 @@
 				manipulated: manipulationCleared
 			});
 		}
-
 		if (roundCompleted && isManipulation) return;
 
 		if (target.kind === 'move') {
 			const x = paddingX + 10 + target.col * CARET_STEP;
 			const rowTop = paddingY + (target.row - base) * lineHeight;
 			const caretH = Math.max(1, lineHeight - 1);
+
 			ctx.save();
 			ctx.fillStyle = forceUndoRequired ? 'rgb(156, 163, 175)' : 'rgb(194, 123, 255)';
-			ctx.globalAlpha = forceUndoRequired ? 0.15 : 0.5;
+
+			if (forceUndoRequired) {
+				ctx.globalAlpha = 0.15;
+			} else {
+				const slowPhase = (Math.sin(lastNowMs / 150) + 1) / 2;
+				const MIN = 0.3,
+					MAX = 0.55;
+				ctx.globalAlpha = MIN + (MAX - MIN) * slowPhase;
+			}
+
 			ctx.fillRect(Math.floor(x), Math.floor(rowTop), Math.ceil(charWidth), caretH);
 			ctx.restore();
 			return;
@@ -968,8 +980,10 @@
 			ctx.fillStyle = 'rgb(96, 165, 250)';
 			ctx.globalAlpha = 0.35;
 		}
+
 		const textStartX = paddingX + 10;
 		const targetSelection = target.selection;
+
 		if (targetSelection.type === 'line') {
 			const startRow = Math.max(targetSelection.startRow, base);
 			const endRow = Math.min(targetSelection.endRow, lines.length - 1);
@@ -1003,6 +1017,7 @@
 	function draw() {
 		clear();
 		const nowMs = performance.now();
+		lastNowMs = nowMs;
 		ctx.font = '16px monospace';
 
 		const limit = timeLimitMs;
@@ -1029,6 +1044,7 @@
 
 		drawTargetOverlay();
 		drawText();
+
 		const selection = vim.getSelection();
 		const base = viewBase();
 		const textStartX = paddingX + 10;
@@ -1083,7 +1099,7 @@
 		if (shouldDrawCaret) {
 			const { x } = caretXY();
 			const caretRowTop = paddingY + (cursor.row - base) * lineHeight;
-			const caretH = Math.max(1, lineHeight - 1); // avoid touching bottom edge
+			const caretH = Math.max(1, lineHeight - 1);
 			const caretColor = forceUndoRequired ? '#9CA3AF' : '#dddddd';
 			const caretAlpha = forceUndoRequired ? 0.12 + 0.4 * undoBlink : 0.85;
 			ctx.fillStyle = caretColor;
