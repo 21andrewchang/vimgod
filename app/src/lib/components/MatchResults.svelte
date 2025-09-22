@@ -283,7 +283,9 @@
 		<div class="flex items-center gap-16">
 			<div class="flex items-center justify-center">
 				{#if !signedIn}
-					<div class=" absolute flex flex-col items-center p-20 font-mono text-xs text-neutral-400">
+					<div
+						class=" absolute flex flex-col items-center p-20 px-0 font-mono text-xs text-neutral-400"
+					>
 						<svg
 							viewBox="0 0 24 24"
 							class="h-4 w-3 self-center text-neutral-400"
@@ -305,7 +307,7 @@
 						>
 							sign in
 						</button>
-						<div>to play ranked</div>
+						<div class="w-full">to play ranked</div>
 					</div>
 				{/if}
 
