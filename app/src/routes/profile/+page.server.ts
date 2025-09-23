@@ -145,8 +145,8 @@ export const load: PageServerLoad = async ({ locals }) => {
         date: match.created_at,
         result,
         eloDelta: match.lp_delta,
-        accuracy: Math.round((match.efficiency || 0) * 100), // Convert efficiency to percentage
-        durationSec: Math.round((match.avg_speed || 0) / 1000) // Convert ms to seconds
+        avgSpeed: match.avg_speed || 0, // Keep as milliseconds
+        apm: match.apm || 0
       };
     });
 

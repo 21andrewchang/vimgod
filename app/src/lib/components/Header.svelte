@@ -39,11 +39,6 @@
 		if (dropdownHiding) return;     // don't fight the closing animation
 		if (!showUserDropdown) {
 			showUserDropdown = true;
-			// focus first item after mount
-			requestAnimationFrame(() => {
-				const first = menuRef?.querySelector('[role="menuitem"]') as HTMLElement | null;
-				first?.focus();
-			});
 		}
 	}
 
@@ -217,20 +212,20 @@
           <div
             role="menuitem"
             tabindex="0"
-            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
+            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
             onclick={() => handleDropdownAction('profile')}
           >user profile</div>
           <div
             role="menuitem"
             tabindex="0"
-            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
+            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
             onclick={() => handleDropdownAction('settings')}
           >account settings</div>
           <hr class="border-neutral-700">
           <div
             role="menuitem"
             tabindex="0"
-            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none focus:bg-neutral-700/40"
+            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
             onclick={() => handleDropdownAction('signout')}
           >sign out</div>
         </div>

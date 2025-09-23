@@ -2,6 +2,8 @@
 	import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
 
+	const { fixed = true } = $props<{ fixed?: boolean }>();
+
 	// Keycap style
 	const cap =
 		'inline-flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-800 border border-[#313131] ' +
@@ -190,7 +192,7 @@
 
 <footer
 	bind:this={footerElement}
-	class="fixed bottom-0 left-0 right-0 z-[2] bg-transparent max-[740px]:hidden"
+	class="{fixed ? 'fixed bottom-0 left-0 right-0 z-[2]' : 'relative z-10'} max-[740px]:hidden"
 >
 	<div class="mx-auto px-6 py-4">
 		<div class="flex flex-col items-center justify-between gap-4 md:flex-row">
