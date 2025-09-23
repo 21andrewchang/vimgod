@@ -97,7 +97,7 @@
     import TopMotions from '$lib/components/TopMotions.svelte';
     import MotionsGrid from '$lib/components/MotionsGrid.svelte';
     import ContributionHeatmap from '$lib/components/ContributionHeatmap.svelte';
-    import MatchTable from '$lib/components/MatchTable.svelte';
+    import MatchHistory from '$lib/components/MatchHistory.svelte';
     import BgDarkTiles from '$lib/components/BgDarkTiles.svelte';
     import Footer from '$lib/components/Footer.svelte';
     import { lpForRating, rankIdFromRating, nextRankId, abbrevFromRankId, prettyRank, colorByRank } from '$lib/data/ranks';
@@ -171,7 +171,7 @@
     </section>
 
     <!-- Top motions -->
-    <section class="pb-16">
+    <section>
       <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">most used motions</h2>
       <TopMotions {motionCounts} limit={4} />
     </section>
@@ -184,14 +184,14 @@
     </section> -->
   
     <!-- Match history -->
-    <!-- <section>
-      <h2 class="text-lg font-semibold mb-2">Recent matches</h2>
-      <MatchTable {history} />
-    </section> -->
+    <section class="pb-16">
+        <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">match history</h2>
+      <MatchHistory {history} />
+    </section>
   </div>
   
   <!-- Animated background -->
 
 </div>
 
-<Footer />
+<Footer fixed={false} />
