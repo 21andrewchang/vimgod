@@ -56,10 +56,6 @@
 		if (dropdownHiding) return;
 		if (!showUserDropdown) {
 			showUserDropdown = true;
-			requestAnimationFrame(() => {
-				const first = menuRef?.querySelector('[role="menuitem"]') as HTMLElement | null;
-				first?.focus();
-			});
 		}
 	}
 	function startDropdownHideAnimation() {

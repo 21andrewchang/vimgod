@@ -126,36 +126,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
 
 
-    // Generate daily counts from actual match history
-    const dailyCounts: Record<string, number> = {};
-    
-    // Helper function to format date as YYYY-MM-DD in local timezone
-    const formatLocalDate = (date: Date): string => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-    
-    for (let d = 0; d < 112; d++) {
-      const day = new Date();
-      day.setDate(day.getDate() - d);
-      const iso = formatLocalDate(day);
-      dailyCounts[iso] = 0;
-    }
-
-    // Count matches per day - convert UTC timestamps to local timezone
-    if (matchHistory) {
-      matchHistory.forEach((match) => {
-        // Convert UTC timestamp to local timezone date
-        const utcDate = new Date(match.created_at);
-        const matchDate = formatLocalDate(utcDate);
-        
-        if (dailyCounts[matchDate] !== undefined) {
-          dailyCounts[matchDate]++;
-        }
-      });
-    }
+    // Send raw match history to client for client-side date processing
+    const rawMatchHistory = matchHistory || [];
 
     // Convert match history to history format
     const history = (matchHistory || []).map((match, index) => {
@@ -173,8 +145,8 @@ export const load: PageServerLoad = async ({ locals }) => {
         date: match.created_at,
         result,
         eloDelta: match.lp_delta,
-        accuracy: Math.round((match.efficiency || 0) * 100), // Convert efficiency to percentage
-        durationSec: Math.round((match.avg_speed || 0) / 1000) // Convert ms to seconds
+        avgSpeed: match.avg_speed || 0, // Keep as milliseconds
+        apm: match.apm || 0
       };
     });
 
@@ -214,7 +186,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       knownList: Array.from(known),
       motionCounts,
       motionsGrid,
-      dailyCounts,
+      rawMatchHistory,
       history,
       totals
     };

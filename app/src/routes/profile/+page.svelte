@@ -2,7 +2,40 @@
     import type { PageData } from './$types';
     const { data } = $props<{ data: PageData }>();
 
-    const { profileUser, motionsGrid, motionCounts, dailyCounts, history, totals } = data;
+    const { profileUser, motionsGrid, motionCounts, rawMatchHistory, history, totals } = data;
+
+    // Generate dailyCounts on client side using user's local timezone
+    const dailyCounts: Record<string, number> = {};
+    
+    // Helper function to format date as YYYY-MM-DD in user's local timezone
+    const formatLocalDate = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    
+    // Generate daily counts for the same range as heatmap (53 weeks = 371 days)
+    const heatmapDays = 53 * 7; // 371 days to match heatmap
+    for (let d = 0; d < heatmapDays; d++) {
+        const day = new Date();
+        day.setDate(day.getDate() - d);
+        const iso = formatLocalDate(day);
+        dailyCounts[iso] = 0;
+    }
+
+    // Count matches per day - convert UTC timestamps to user's local timezone
+    if (rawMatchHistory) {
+        rawMatchHistory.forEach((match: any) => {
+            // Parse UTC timestamp and convert to user's local timezone
+            const utcDate = new Date(match.created_at);
+            const matchDate = formatLocalDate(utcDate);
+            
+            if (dailyCounts[matchDate] !== undefined) {
+                dailyCounts[matchDate]++;
+            }
+        });
+    }
 
 	import StatCard from '$lib/components/StatCard.svelte';
 	import ProfileCard from '$lib/components/ProfileCard.svelte';
@@ -64,7 +97,7 @@
     import TopMotions from '$lib/components/TopMotions.svelte';
     import MotionsGrid from '$lib/components/MotionsGrid.svelte';
     import ContributionHeatmap from '$lib/components/ContributionHeatmap.svelte';
-    import MatchTable from '$lib/components/MatchTable.svelte';
+    import MatchHistory from '$lib/components/MatchHistory.svelte';
     import BgDarkTiles from '$lib/components/BgDarkTiles.svelte';
     import Footer from '$lib/components/Footer.svelte';
     import { lpForRating, rankIdFromRating, nextRankId, abbrevFromRankId, prettyRank, colorByRank } from '$lib/data/ranks';
@@ -138,7 +171,7 @@
     </section>
 
     <!-- Top motions -->
-    <section class="pb-16">
+    <section>
       <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">most used motions</h2>
       <TopMotions {motionCounts} limit={4} />
     </section>
@@ -151,14 +184,14 @@
     </section> -->
   
     <!-- Match history -->
-    <!-- <section>
-      <h2 class="text-lg font-semibold mb-2">Recent matches</h2>
-      <MatchTable {history} />
-    </section> -->
+    <section class="pb-16">
+        <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">match history</h2>
+      <MatchHistory {history} />
+    </section>
   </div>
   
   <!-- Animated background -->
 
 </div>
 
-<Footer />
+<Footer fixed={false} />
