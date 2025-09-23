@@ -4,10 +4,13 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 
-	const { variant = 'inline', size = 'large' } = $props<{
+	const { variant = 'inline', size = 'large', fixed = false } = $props<{
 		variant?: 'fixed' | 'inline';
 		size?: 'small' | 'large';
+		fixed?: boolean;
 	}>();
+
+	const effectiveVariant = $derived(fixed ? 'fixed' : variant);
 
 	let isHeaderHovered = $state(false);
 	let isUserIconHovered = $state(false); // keep for hover color only
@@ -109,13 +112,13 @@
 
 	// Dynamic classes based on variant and size
 	const containerClass = $derived(
-		variant === 'fixed'
+		effectiveVariant === 'fixed'
 			? 'fixed left-8 top-6 z-50 flex items-center justify-between w-full max-w-[calc(100vw-4rem)]'
-			: 'flex items-center justify-between'
+			: 'relative z-50 left-8 top-6 flex items-center justify-between w-full max-w-[calc(100vw-4rem)]'
 	);
 
 	const logoClass = $derived(
-		variant === 'fixed'
+		effectiveVariant === 'fixed'
 			? 'flex cursor-pointer items-center gap-2 max-[740px]:hidden'
 			: 'flex items-center gap-2 cursor-pointer'
 	);
@@ -163,7 +166,7 @@
 	</div>
 	
 	<!-- User Icon + Username Section -->
-    <div class="flex items-center" class:max-[740px]:hidden={variant === 'fixed'}>
+    <div class="flex items-center" class:max-[740px]:hidden={effectiveVariant === 'fixed'}>
         <div
         bind:this={iconRef}
         role="button"

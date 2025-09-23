@@ -277,7 +277,8 @@
 			reaction_time: averageReaction,
 			start_elo: startElo,
 			end_elo: computedEndElo,
-			lp_delta: lpDelta
+			lp_delta: lpDelta,
+			motion_counts: Object.keys(keyFrequency).length ? keyFrequency : {}
 		};
 
 		const { data, error } = await supabase
