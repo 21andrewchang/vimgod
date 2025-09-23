@@ -56,7 +56,7 @@
     const statItems = [
         // { label: 'rank', value: `${profileUser.elo}` },
         { label: 'wins', value: `${totals.wins} (${totals.winRate}%)` },
-        { label: 'avg accuracy', value: `${totals.avgAccuracy}%` }
+        { label: 'avg apm', value: `${totals.avgAPM}` }
         // { label: 'coverage', value: `${Math.round(totals.coverage * 100)}%` }
     ];
     

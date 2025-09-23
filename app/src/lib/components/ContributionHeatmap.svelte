@@ -20,15 +20,20 @@
     
     function handleCellMouseEnter(event: MouseEvent, cellData: { iso: string; value: number }) {
         const rect = (event.target as HTMLElement).getBoundingClientRect();
-        const date = new Date(cellData.iso);
-        const month = date.toLocaleDateString('en-US', { month: 'long' });
-        const day = date.getDate();
+        
+        // Parse the date in local timezone to avoid UTC conversion issues
+        const [year, month, day] = cellData.iso.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed
+        
+        const monthName = date.toLocaleDateString('en-US', { month: 'long' });
+        const dayNum = date.getDate();
+        
         
         tooltip = {
             show: true,
             x: rect.left + rect.width / 2,
             y: rect.top - 10,
-            text: `${cellData.value} games played on ${month} ${day}`
+            text: `${cellData.value} games played on ${monthName} ${dayNum}`
         };
     }
     
@@ -51,6 +56,15 @@
     const startDate = new Date(lastSunday);
     startDate.setDate(lastSunday.getDate() - ((weeks - 1) * 7));
     
+    
+    // Helper function to format date as YYYY-MM-DD in local timezone
+    const formatLocalDate = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     // Build the grid from start date, only including past dates
     for (let i = 0; i < weeks * 7; i++) {
       const d = new Date(startDate);
@@ -58,16 +72,19 @@
       
       // Only include dates that are today or in the past
       if (d <= today) {
-        const iso = d.toISOString().slice(0, 10);
-        cells.push({ iso, value: dailyCounts[iso] ?? 0 });
+        const iso = formatLocalDate(d);
+        const value = dailyCounts[iso] ?? 0;
+        
+        
+        cells.push({ iso, value });
       } else {
         // Stop adding cells for future dates
         break;
       }
     }
     
-    // Day labels for Mon, Wed, Fri
     const dayLabels = [' ', 'mon', ' ', 'wed', ' ', 'fri', ' '];
+    
     
     const cols = weeks, rows = 7, cell = 16, gap = 3.5;
     const width = (cell+gap)*cols, height = (cell+gap)*rows;

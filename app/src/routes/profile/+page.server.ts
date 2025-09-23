@@ -86,9 +86,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     const rankName = rank.split(' ')[0];
 
 
-    console.log('rankId', rankId);
-    console.log('rank', rank);
-    console.log('rankName', rankName);
+    // console.log('rankId', rankId);
+    // console.log('rank', rank);
+    // console.log('rankName', rankName);
 
     const appUser = {
       id: userData.id,
@@ -114,39 +114,89 @@ export const load: PageServerLoad = async ({ locals }) => {
       motionCounts[m] = (isKnown(m) ? 30 + Math.floor(Math.random() * 90) : Math.floor(Math.random() * 12));
     }
   
+    // Fetch match history from database
+    const { data: matchHistory, error: historyError } = await locals.supabase
+      .from('match_history')
+      .select('*')
+      .eq('player_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (historyError) {
+      console.error('Error fetching match history:', historyError);
+    }
+
+
+    // Generate daily counts from actual match history
     const dailyCounts: Record<string, number> = {};
+    
+    // Helper function to format date as YYYY-MM-DD in local timezone
+    const formatLocalDate = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
     for (let d = 0; d < 112; d++) {
       const day = new Date();
       day.setDate(day.getDate() - d);
-      const iso = day.toISOString().slice(0, 10);
-      const weekday = day.getDay();
-      const base = [0,2,3,3,2,1,0][weekday];
-      dailyCounts[iso] = Math.max(0, base + Math.floor(Math.random() * 2) - (weekday === 0 ? 1 : 0));
+      const iso = formatLocalDate(day);
+      dailyCounts[iso] = 0;
     }
-  
-    const history = Array.from({ length: 18 }).map((_, i) => {
-      const date = new Date(); date.setDate(date.getDate() - i);
-      const win = Math.random() > 0.3;
-      const eloDelta = win ? 12 + Math.floor(Math.random() * 10) : -(8 + Math.floor(Math.random() * 10));
+
+    // Count matches per day - convert UTC timestamps to local timezone
+    if (matchHistory) {
+      matchHistory.forEach((match) => {
+        // Convert UTC timestamp to local timezone date
+        const utcDate = new Date(match.created_at);
+        const matchDate = formatLocalDate(utcDate);
+        
+        if (dailyCounts[matchDate] !== undefined) {
+          dailyCounts[matchDate]++;
+        }
+      });
+    }
+
+    // Convert match history to history format
+    const history = (matchHistory || []).map((match, index) => {
+      let result: 'win' | 'loss' | 'draw';
+      if (match.lp_delta > 0) {
+        result = 'win';
+      } else if (match.lp_delta < 0) {
+        result = 'loss';
+      } else {
+        result = 'draw';
+      }
+      
       return {
-        id: `m-${i}`,
-        date: date.toISOString(),
-        result: win ? 'win' as const : 'loss' as const,
-        eloDelta,
-        accuracy: 88 + Math.floor(Math.random() * 8) - (win ? 0 : 4),
-        durationSec: 210 + Math.floor(Math.random() * 80)
+        id: match.match_id,
+        date: match.created_at,
+        result,
+        eloDelta: match.lp_delta,
+        accuracy: Math.round((match.efficiency || 0) * 100), // Convert efficiency to percentage
+        durationSec: Math.round((match.avg_speed || 0) / 1000) // Convert ms to seconds
       };
     });
-  
+
+    // Calculate totals from actual data
+    const wins = history.filter(h => h.result === 'win').length;
+    const losses = history.filter(h => h.result === 'loss').length;
+    const draws = history.filter(h => h.result === 'draw').length;
+    
+    // Calculate average APM from past 25 games (excluding dodged matches with apm = 0)
+    const recentMatches = matchHistory ? matchHistory.slice(0, 25) : [];
+    const validMatches = recentMatches.filter(match => match.apm && match.apm > 0);
+    const totalAPM = validMatches.reduce((sum, match) => sum + match.apm, 0);
+    
     const totals = {
       games: history.length,
-      wins: history.filter(h => h.result === 'win').length,
-      losses: history.filter(h => h.result === 'loss').length,
-      winRate: 0,
-      avgAccuracy: Math.round(history.reduce((s,h)=>s+(h.accuracy??0),0)/history.length),
+      wins,
+      losses,
+      draws,
+      winRate: history.length > 0 ? Math.round((wins / history.length) * 100) : 0,
+      avgAPM: validMatches.length > 0 ? Math.round(totalAPM / validMatches.length) : 0,
       coverage: cov
     };
-    totals.winRate = Math.round((totals.wins / Math.max(1, totals.games)) * 100);
   
     const motionsGrid = MOTIONS.map((m) => {
       const family = MOTION_FAMILY[m];

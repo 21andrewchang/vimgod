@@ -8,48 +8,88 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { user, signInWithGoogle, setInitialRank } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
+    import { Tween, prefersReducedMotion } from 'svelte/motion';
+    import { cubicOut } from 'svelte/easing';
+    import RollingNumber from '$lib/components/RollingNumber.svelte';
 
-	export let match: MatchController;
+	const { match } = $props<{ match: MatchController }>();
 
 	// Keep using the auth store for "signed in"
-	$: signedIn = !!$user;
+	const signedIn = $derived(!!$user);
 
-	$: elo = $profile?.rating ?? 67;
-	$: xp = $profile?.xp ?? 0;
+	const elo = $derived($profile?.rating ?? 67);
+	const xp = $derived($profile?.xp ?? 0);
+
+    const eloTween = new Tween<number>(0);
+    let eloAnimated = false;
+    let eloStartTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const START_DELAY_MS = 750;
+    const BASE_MS = 1200;
+    const EXTRA_PER_POINT = 140;
+    const MIN_MS = 1600;
+    const MAX_MS = 5000;
+    const DURATION_POWER = 0.6;
+
+    function clamp(n: number, min: number, max: number) {
+        return Math.min(Math.max(n, min), max);
+    }
+
+    function scheduleEloAnimation(start: number, end: number) {
+        eloTween.set(start, { duration: 0 });
+
+        if (prefersReducedMotion.current) {
+            eloTween.set(end, { duration: 0 });
+            return;
+        }
+
+        const duration = clamp(BASE_MS + Math.pow(Math.abs(end - start), DURATION_POWER) * EXTRA_PER_POINT, MIN_MS, MAX_MS);
+        
+        if (eloStartTimer) {
+            clearTimeout(eloStartTimer);
+        }
+
+        eloStartTimer = setTimeout(() => {
+            eloTween.set(end, { duration, easing: cubicOut });
+            eloStartTimer = null;
+        }, START_DELAY_MS);
+    }
 
 	let state: MatchState = get(match);
-	const unsubscribe = match.subscribe((value) => (state = value));
+	const unsubscribe = match.subscribe((value: MatchState) => (state = value));
 	onDestroy(unsubscribe);
 
 	// ensure we have fresh profile once this mounts (no-op if already fresh)
 	onMount(() => {
+        eloTween.set($profile?.rating ?? 0, { duration: 0 });
 		void refreshProfile();
 	});
 
 	// ---- stats derived from match state ----
-	$: completedRounds = state.completed.filter((round) => round.index > 0);
-	$: wins = completedRounds.filter((round) => round.succeeded).length;
-	$: losses = completedRounds.length - wins;
-	$: matchOutcome =
-		state.outcome === 'dodge' ? 'Dodge' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw';
-	$: lpDelta = state.totalPoints;
+	const completedRounds = $derived(state.completed.filter((round) => round.index > 0));
+	const wins = $derived(completedRounds.filter((round) => round.succeeded).length);
+	const losses = $derived(completedRounds.length - wins);
+	const matchOutcome = $derived(
+		state.outcome === 'dodge' ? 'Dodge' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw'
+	);
+	const lpDelta = $derived(state.totalPoints);
 
-	$: averageMs = completedRounds.length
+	const averageMs = $derived(completedRounds.length
 		? completedRounds.reduce((s, r) => s + r.durationMs, 0) / completedRounds.length
-		: 0;
+		: 0);
 
-	$: totalKeys = completedRounds.reduce((s, r) => s + r.keys.length, 0);
-	$: totalDurationMs = completedRounds.reduce((s, r) => s + r.durationMs, 0);
-	$: averageKeys = completedRounds.length ? totalKeys / completedRounds.length : 0;
-	$: apm = totalDurationMs > 0 ? (totalKeys / totalDurationMs) * 60000 : 0;
-	$: roundsWithKeys = completedRounds.filter((round) => round.keys.length > 0);
-	$: averageReaction = roundsWithKeys.length
+	const totalKeys = $derived(completedRounds.reduce((s, r) => s + r.keys.length, 0));
+	const totalDurationMs = $derived(completedRounds.reduce((s, r) => s + r.durationMs, 0));
+	const averageKeys = $derived(completedRounds.length ? totalKeys / completedRounds.length : 0);
+	const apm = $derived(totalDurationMs > 0 ? (totalKeys / totalDurationMs) * 60000 : 0);
+	const roundsWithKeys = $derived(completedRounds.filter((round) => round.keys.length > 0));
+	const averageReaction = $derived(roundsWithKeys.length
 		? roundsWithKeys.reduce(
 				(sum, round) => sum + Math.max(0, round.keys[0].at - round.startedAt),
 				0
 			) / roundsWithKeys.length
-		: 0;
-	$: undoCount = state.undoCount ?? 0;
+		: 0);
+	const undoCount = $derived(state.undoCount ?? 0);
 
 	const IGNORED_KEYS = new Set([
 		'Alt',
@@ -77,20 +117,20 @@
 		return true;
 	};
 
-	$: keyFrequency = completedRounds.reduce<Record<string, number>>((acc, round) => {
+	const keyFrequency = $derived(completedRounds.reduce<Record<string, number>>((acc, round) => {
 		round.keys.forEach((entry) => {
 			if (!isTrackableKey(entry.key)) return;
 			acc[entry.key] = (acc[entry.key] ?? 0) + 1;
 		});
 		return acc;
-	}, {});
-	$: mostUsedKey = Object.entries(keyFrequency).reduce<{ key: string; count: number } | null>(
+	}, {}));
+	const mostUsedKey = $derived(Object.entries(keyFrequency).reduce<{ key: string; count: number } | null>(
 		(current, [key, count]) => {
 			if (!current || count > current.count) return { key, count };
 			return current;
 		},
 		null
-	);
+	));
 
 	const RANK_VALUES = {
 		bronze4: 0,
@@ -168,26 +208,48 @@
 		}
 	}
 
-	$: projectedRankValue = completedRounds.length
+	const projectedRankValue = $derived(completedRounds.length
 		? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
-		: null;
-	$: placementRankValue =
-		projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP);
+		: null);
+	const placementRankValue = $derived(
+		projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP)
+	);
 
 	let triedInitialRank = false;
 
-	$: if (
-		!triedInitialRank &&
-		state.status === 'complete' &&
-		$user &&
-		projectedRankValue !== null &&
-		placementRankValue !== null
-	) {
-		triedInitialRank = true;
-		setInitialRank(projectedRankValue, placementRankValue).catch((e) =>
-			console.error('Failed to set initial rank', e)
-		);
-	}
+	$effect(() => {
+		if (
+			!triedInitialRank &&
+			state.status === 'complete' &&
+			$user &&
+			projectedRankValue !== null &&
+			placementRankValue !== null
+		) {
+			triedInitialRank = true;
+			setInitialRank(projectedRankValue, placementRankValue).catch((e) =>
+				console.error('Failed to set initial rank', e)
+			);
+		}
+	});
+
+    $effect(() => {
+        if (state.status === 'complete' && !eloAnimated) {
+            eloAnimated = true;
+
+            const startElo = $profile?.rating ?? 0;
+            const endElo = startElo + (lpDelta ?? 0);
+            scheduleEloAnimation(startElo, endElo);
+        }
+
+        if (state.status !== 'complete') {
+            eloAnimated = false;
+            if (eloStartTimer) {
+                clearTimeout(eloStartTimer);
+                eloStartTimer = null;
+            }
+            eloTween.set($profile?.rating ?? 0, { duration: 0 });
+        }
+    });
 
 	let wroteHistoryOnce = false;
 
@@ -245,16 +307,18 @@
 		return endElo;
 	}
 
-	$: if (state.status === 'complete') {
-		void writeHistoryIdempotent();
-	}
+	$effect(() => {
+		if (state.status === 'complete') {
+			void writeHistoryIdempotent();
+		}
+	});
 
 	// graph data
-	$: roundDurations = completedRounds.map((r) => r.durationMs);
-	$: samples = roundDurations.map((duration, index) => ({ x: index, y: duration }));
-	$: dashed = roundDurations.length
+	const roundDurations = $derived(completedRounds.map((r) => r.durationMs));
+	const samples = $derived(roundDurations.map((duration, index) => ({ x: index, y: duration })));
+	const dashed = $derived(roundDurations.length
 		? roundDurations.map((_, index) => ({ x: index, y: state.timeLimitMs }))
-		: null;
+		: null);
 
 	const formatPoints = (value: number) => {
 		const rounded = Math.round(value * 100) / 100;
@@ -273,6 +337,13 @@
 			match.start();
 		}
 		triedInitialRank = false;
+
+        eloAnimated = false;
+        if (eloStartTimer) {
+            clearTimeout(eloStartTimer);
+            eloStartTimer = null;
+        }
+        eloTween.set($profile?.rating ?? 0, { duration: 0 });
 	};
 
 	const graphHeight = 200;
@@ -320,7 +391,19 @@
 					<div>
 						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">ELO</div>
 						<div class="font-mono text-5xl text-slate-100 transition" class:opacity-60={!signedIn}>
-							{elo}
+							{Math.round(eloTween.current)}
+                            <!-- {#key state.endTime}
+                                <RollingNumber
+                                    from={$profile?.rating ?? 0}
+                                    to={($profile?.rating ?? 0) + (lpDelta ?? 0)}
+                                    minDigits={4}
+                                    delay={800}
+                                    baseDuration={1400}
+                                    stepMs={140}
+                                    stagger={90}
+                                    direction="auto"
+                                />
+                            {/key} -->
 						</div>
 					</div>
 

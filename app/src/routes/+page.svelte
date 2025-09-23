@@ -78,6 +78,12 @@
 	const finalizeDodge = (snapshot: DodgeSnapshot | null) => {
 		if (!snapshot) return;
 		match.replaceState(snapshot.state as MatchState);
+
+        try {
+            localStorage.removeItem(DODGE_STORAGE_KEY);
+        } catch (error) {
+            console.warn('failed to remove dodge snapshot', error);
+        }
 	};
 
 	const startNewMatch = () => {
