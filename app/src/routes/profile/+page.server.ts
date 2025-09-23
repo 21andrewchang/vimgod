@@ -137,7 +137,9 @@ export const load: PageServerLoad = async ({ locals }) => {
       return `${year}-${month}-${day}`;
     };
     
-    for (let d = 0; d < 112; d++) {
+    // Generate daily counts for the same range as heatmap (53 weeks = 371 days)
+    const heatmapDays = 53 * 7; // 371 days to match heatmap
+    for (let d = 0; d < heatmapDays; d++) {
       const day = new Date();
       day.setDate(day.getDate() - d);
       const iso = formatLocalDate(day);
