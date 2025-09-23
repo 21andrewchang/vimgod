@@ -5,6 +5,9 @@
     
     // Function to create separate keycaps for each keystroke
     function getKeycaps(motion: string): string[] {
+        if (motion === 'Escape') {
+            return ['esc'];
+        }
         // Handle {motion} patterns - split operator and {motion}
         if (motion.includes('{motion}')) {
             const operator = motion.replace('{motion}', '');

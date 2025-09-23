@@ -5,10 +5,13 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
-	const { variant = 'inline', size = 'large' } = $props<{
+	const { variant = 'inline', size = 'large', fixed = false } = $props<{
 		variant?: 'fixed' | 'inline';
 		size?: 'small' | 'large';
+		fixed?: boolean;
 	}>();
+
+	const effectiveVariant = $derived(fixed ? 'fixed' : variant);
 
 	let isHeaderHovered = $state(false);
 	let isUserIconHovered = $state(false);
@@ -124,16 +127,16 @@
 	});
 
 	const containerClass = $derived(
-		variant === 'fixed'
+		effectiveVariant === 'fixed'
 			? 'fixed left-8 top-6 z-50 flex items-center justify-between w-full max-w-[calc(100vw-4rem)]'
-			: 'flex items-center justify-between'
+			: 'relative z-50 left-8 top-6 flex items-center justify-between w-full max-w-[calc(100vw-4rem)]'
 	);
 
 	const logoClass = $derived(
-		variant === 'fixed'
-			? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-			: `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-	);
+    effectiveVariant === 'fixed'
+      ? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+      : `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+  );
 
 	const greaterThanClass = $derived(
 		size === 'small' ? 'text-2xl font-normal text-purple-400' : 'text-4xl font-normal'
@@ -297,6 +300,77 @@
 			{/if}
 		</div>
 	</div>
+	
+	<!-- User Icon + Username Section -->
+    <div class="flex items-center" class:max-[740px]:hidden={effectiveVariant === 'fixed'}>
+        <div
+        bind:this={iconRef}
+        role="button"
+        tabindex="0"
+        class="p-2 cursor-pointer relative flex items-center"
+        onclick={handleUserIconClick}
+        onkeydown={onTriggerKeydown}
+        onmouseenter={() => (isUserIconHovered = true)}
+        onmouseleave={() => (isUserIconHovered = false)}
+        aria-label={isAuthed ? 'User menu' : 'Sign in'}
+        aria-haspopup="menu"
+        aria-expanded={isAuthed && showUserDropdown ? 'true' : 'false'}
+        aria-controls="user-menu"
+        >
+        <!-- (svg + displayName unchanged) -->
+        <svg 
+        width="20" height="20" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        shape-rendering="geometricPrecision"
+        class="transition-colors duration-200"
+        style="color: {isUserIconHovered ? 'white' : 'rgba(255, 255, 255, 0.4)'};"
+    >
+        <path d="M20 21.5v-2.5a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2.5h16"/>
+        <circle cx="12" cy="7" r="4"/>
+    </svg>
+
+    {#if isAuthed}
+        <span
+            class="ml-2 text-[14px] text-neutral-300 font-mono max-w-[12rem] truncate transition-colors duration-200 leading-[1.2] py-[1px]"
+            style="color: {isUserIconHovered ? 'white' : 'rgba(255,255,255,0.4)'};"
+        >
+            {displayName}
+        </span>
+    {/if}
+  
+      {#if isAuthed && showUserDropdown}
+        <div
+          id="user-menu"
+          bind:this={menuRef}
+          class="user-dropdown absolute top-full right-0 mt-1 w-40 bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50 {dropdownHiding ? 'hiding' : ''}"
+          role="menu"
+          tabindex="-1"
+          style="font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+          onkeydown={onMenuKeydown}
+        >
+          <div
+            role="menuitem"
+            tabindex="0"
+            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
+            onclick={() => handleDropdownAction('profile')}
+          >user profile</div>
+          <div
+            role="menuitem"
+            tabindex="0"
+            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
+            onclick={() => handleDropdownAction('settings')}
+          >account settings</div>
+          <hr class="border-neutral-700">
+          <div
+            role="menuitem"
+            tabindex="0"
+            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
+            onclick={() => handleDropdownAction('signout')}
+          >sign out</div>
+        </div>
+      {/if}
+    </div>
+  </div>
 </div>
 
 <style>

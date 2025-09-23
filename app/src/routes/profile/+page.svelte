@@ -2,7 +2,7 @@
     import type { PageData } from './$types';
     const { data } = $props<{ data: PageData }>();
 
-    const { profileUser, motionsGrid, motionCounts, rawMatchHistory, history, totals } = data;
+    const { profileUser, motionsGrid, motionCounts, rawMatchHistory, history, totals, personalBests } = data;
 
     // Generate dailyCounts on client side using user's local timezone
     const dailyCounts: Record<string, number> = {};
@@ -92,6 +92,41 @@
         { label: 'avg apm', value: `${totals.avgAPM}` }
         // { label: 'coverage', value: `${Math.round(totals.coverage * 100)}%` }
     ];
+
+    const personalBestItems = [
+        {
+            label: 'fastest avg speed',
+            value: personalBests.fastestAvgSpeedMs !== null
+                ? `${(personalBests.fastestAvgSpeedMs / 1000).toFixed(2)}s`
+                : '—',
+            percentile: personalBests.fastestAvgSpeedPercentile
+        },
+        {
+            label: 'highest apm',
+            value: personalBests.highestApm !== null
+                ? `${Math.round(personalBests.highestApm)}`
+                : '—',
+            percentile: personalBests.highestApmPercentile
+        },
+        {
+            label: 'fastest reaction',
+            value: personalBests.fastestReactionMs !== null
+                ? `${Math.round(personalBests.fastestReactionMs)}ms`
+                : '—',
+            percentile: personalBests.fastestReactionPercentile
+        }
+    ];
+
+    const percentileBadgeStyle = (percentile: number | null): string => {
+        if (percentile !== null && percentile <= 5) {
+            return `background: linear-gradient(120deg, rgba(255,248,255,0.92), rgba(206,182,255,0.95), rgba(255,224,247,0.9));
+color: transparent;
+-webkit-background-clip: text;
+background-clip: text;
+text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4);
+`;        }
+        return "color:#c9ced6;";
+    };
     
     import RankBadge from '$lib/components/RankBadge.svelte';
     import TopMotions from '$lib/components/TopMotions.svelte';
@@ -109,7 +144,7 @@
 <div
   class="w-full relative overflow-hidden"
 >
-  <div class="relative z-[2] px-6 pt-24 pb-4 max-w-6xl mx-auto space-y-8">
+  <div class="relative z-[2] px-6 pt-16 pb-4 max-w-6xl mx-auto space-y-8">
     <!-- Stats row -->
     <div class="grid grid-cols-1 md:grid-cols-11 gap-4">
         <div class="md:col-span-5">
@@ -170,6 +205,27 @@
       <ContributionHeatmap {dailyCounts} weeks={53} />
     </section>
 
+    <!-- Personal bests -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">personal bests</h2>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {#each personalBestItems as item}
+          <StatCard label={item.label} value={item.value} class="pb-card-compact" >
+            <div
+              slot="corner"
+              class="absolute inset-y-0 right-3 flex items-center text-[12px] uppercase tracking-[0.12em]"
+              class:hidden={item.percentile === null}
+              style={`${percentileBadgeStyle(item.percentile)} font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;`}
+            >
+              {#if item.percentile !== null}
+                <span>top&nbsp;{item.percentile.toFixed(1)}%</span>
+              {/if}
+            </div>
+          </StatCard>
+        {/each}
+      </div>
+    </section>
+
     <!-- Top motions -->
     <section>
       <h2 class="text-lg font-semibold mb-2" style="color:#e8e8e8; font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">most used motions</h2>
@@ -195,3 +251,13 @@
 </div>
 
 <Footer fixed={false} />
+
+<style>
+  :global(.pb-card-compact .statcard-label) {
+    margin-bottom: 0.25rem;
+  }
+
+  :global(.pb-card-compact .statcard-value) {
+    margin-top: 0;
+  }
+</style>

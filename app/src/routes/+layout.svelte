@@ -4,6 +4,7 @@
 	import { browser } from '$app/environment';
 	import Header from '$lib/components/Header.svelte';
 	import { get, writable } from 'svelte/store';
+	import { page } from '$app/stores';
 	import { DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 	import type { DodgeSnapshot } from '$lib/reloadGuard';
 
@@ -246,7 +247,11 @@
 </svelte:head>
 
 <div class={`min-h-screen transition-[filter,transform] duration-150 ease-out `}>
-	<Header variant="fixed" size="small" />
+	{#if $page.url.pathname.startsWith('/profile')}
+		<Header size="small" />
+	{:else}
+		<Header fixed size="small" />
+	{/if}
 	{@render children()}
 </div>
 
