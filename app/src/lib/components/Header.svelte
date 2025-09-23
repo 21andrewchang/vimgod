@@ -38,7 +38,7 @@
 
 	/* page-aware logo interactivity */
 	const pathname = $derived($page.url?.pathname ?? '/');
-	const isHome = $derived(pathname === '/' || pathname === '');
+	const isHome = $derived(pathname === '/');
 	const isProfile = $derived(pathname.startsWith('/profile'));
 	const isTutorial = $derived(pathname.startsWith('/tutorial'));
 	const logoIsInteractive = $derived(isProfile || isTutorial);
@@ -155,9 +155,9 @@
 	<div class="flex flex-row items-center">
 		<div
 			class={logoClass}
-			{...logoIsInteractive
-				? { role: 'button', tabindex: '0', 'aria-label': 'Go to home page' }
-				: { role: 'img', tabindex: '-1', 'aria-label': 'vimgod' }}
+			role={logoIsInteractive ? 'button' : 'img'}
+			tabindex={logoIsInteractive ? 0 : -1}
+			aria-label={logoIsInteractive ? 'Go to home page' : 'vimgod'}
 			onmouseenter={handleHeaderMouseEnter}
 			onmouseleave={handleHeaderMouseLeave}
 			onclick={handleHeaderClick}
@@ -301,76 +301,6 @@
 		</div>
 	</div>
 	
-	<!-- User Icon + Username Section -->
-    <div class="flex items-center" class:max-[740px]:hidden={effectiveVariant === 'fixed'}>
-        <div
-        bind:this={iconRef}
-        role="button"
-        tabindex="0"
-        class="p-2 cursor-pointer relative flex items-center"
-        onclick={handleUserIconClick}
-        onkeydown={onTriggerKeydown}
-        onmouseenter={() => (isUserIconHovered = true)}
-        onmouseleave={() => (isUserIconHovered = false)}
-        aria-label={isAuthed ? 'User menu' : 'Sign in'}
-        aria-haspopup="menu"
-        aria-expanded={isAuthed && showUserDropdown ? 'true' : 'false'}
-        aria-controls="user-menu"
-        >
-        <!-- (svg + displayName unchanged) -->
-        <svg 
-        width="20" height="20" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-        shape-rendering="geometricPrecision"
-        class="transition-colors duration-200"
-        style="color: {isUserIconHovered ? 'white' : 'rgba(255, 255, 255, 0.4)'};"
-    >
-        <path d="M20 21.5v-2.5a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2.5h16"/>
-        <circle cx="12" cy="7" r="4"/>
-    </svg>
-
-    {#if isAuthed}
-        <span
-            class="ml-2 text-[14px] text-neutral-300 font-mono max-w-[12rem] truncate transition-colors duration-200 leading-[1.2] py-[1px]"
-            style="color: {isUserIconHovered ? 'white' : 'rgba(255,255,255,0.4)'};"
-        >
-            {displayName}
-        </span>
-    {/if}
-  
-      {#if isAuthed && showUserDropdown}
-        <div
-          id="user-menu"
-          bind:this={menuRef}
-          class="user-dropdown absolute top-full right-0 mt-1 w-40 bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50 {dropdownHiding ? 'hiding' : ''}"
-          role="menu"
-          tabindex="-1"
-          style="font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
-          onkeydown={onMenuKeydown}
-        >
-          <div
-            role="menuitem"
-            tabindex="0"
-            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
-            onclick={() => handleDropdownAction('profile')}
-          >user profile</div>
-          <div
-            role="menuitem"
-            tabindex="0"
-            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
-            onclick={() => handleDropdownAction('settings')}
-          >account settings</div>
-          <hr class="border-neutral-700">
-          <div
-            role="menuitem"
-            tabindex="0"
-            class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 hover:text-white hover:bg-neutral-700/60 transition-all duration-200 focus:outline-none"
-            onclick={() => handleDropdownAction('signout')}
-          >sign out</div>
-        </div>
-      {/if}
-    </div>
-  </div>
 </div>
 
 <style>
