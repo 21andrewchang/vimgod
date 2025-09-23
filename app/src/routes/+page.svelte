@@ -10,7 +10,9 @@
 	import { user } from '$lib/stores/auth';
 	import '$lib/stores/auth';
 
-	const match = createMatchController({ totalRounds: 20 });
+	let signedIn = false;
+	$: signedIn = Boolean($user);
+	const match = createMatchController({ totalRounds: signedIn ? 20 : 10 });
 
 	if (browser) {
 		const stored = localStorage.getItem(DODGE_STORAGE_KEY);
@@ -40,8 +42,6 @@
 	const reloadGuard = getContext<ReloadGuardContext | undefined>('reload-guard');
 
 	const shouldProtectStatuses = new Set<MatchState['status']>(['ready', 'running']);
-	let signedIn = false;
-	$: signedIn = Boolean($user);
 
 	const cloneRounds = (rounds: MatchState['completed']) =>
 		rounds.map((round) => ({
@@ -78,12 +78,6 @@
 	const finalizeDodge = (snapshot: DodgeSnapshot | null) => {
 		if (!snapshot) return;
 		match.replaceState(snapshot.state as MatchState);
-
-        try {
-            localStorage.removeItem(DODGE_STORAGE_KEY);
-        } catch (error) {
-            console.warn('failed to remove dodge snapshot', error);
-        }
 	};
 
 	const startNewMatch = () => {

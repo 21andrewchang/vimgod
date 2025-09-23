@@ -1,0 +1,4 @@
+purple represents movement
+basic movement is h - left, j - down, k - up, l - right
+
+move to the purple box using hjkl
