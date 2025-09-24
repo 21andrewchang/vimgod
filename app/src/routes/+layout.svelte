@@ -5,7 +5,7 @@
 	import Header from '$lib/components/Header.svelte';
 	import { get, writable } from 'svelte/store';
 	import { page } from '$app/stores';
-	import { DODGE_STORAGE_KEY } from '$lib/reloadGuard';
+import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 	import type { DodgeSnapshot } from '$lib/reloadGuard';
 
 	import { supabase } from '$lib/supabaseClient';
@@ -216,7 +216,14 @@ const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 		persistReloadSnapshot(snapshot);
 
 		if (snapshotFinalizer) {
-			snapshotFinalizer(snapshot);
+			const nextSnapshot = snapshot;
+			try {
+				snapshotFinalizer(nextSnapshot);
+			} finally {
+				if (browser) {
+					clearDodgeSnapshot();
+				}
+			}
 			hideReloadWarning();
 			return;
 		}
