@@ -3,7 +3,7 @@
 	import Tutorial from '$lib/components/Tutorial.svelte';
 	import { user, signInWithGoogle } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
-	import { prettyRank } from '$lib/data/ranks';
+	import { levelFromXP } from '$lib/utils';
 	import type { RankId } from '$lib/data/ranks';
 	import { onMount } from 'svelte';
 
@@ -132,8 +132,10 @@
 
 	// Auth + progression gating
 	const signedIn = $derived(!!$user);
-	const level = $derived(Math.floor(($profile?.xp ?? 0) / 100) + 1);
+	const level = $derived(levelFromXP($profile.xp ? $profile.xp : 0).level);
+	console.log($profile.xp);
 	const rating = $derived($profile?.rating ?? 0);
+	$inspect(rating);
 
 	const levelByLabel: Record<string, number> = {
 		'basic movement': 1,

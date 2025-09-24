@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-    import { browser } from '$app/environment';
+	import { browser } from '$app/environment';
 
-	const { fixed = true, minimal = false } = $props<{ fixed?: boolean, minimal?: boolean }>();
+	const { fixed = true, minimal = false } = $props<{ fixed?: boolean; minimal?: boolean }>();
 
 	// Keycap style
 	const cap =
@@ -14,14 +14,12 @@
 		{
 			name: 'github',
 			url: 'https://github.com/21andrewchang/vimgod',
-			icon:
-				'M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z'
+			icon: 'M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z'
 		},
 		{
 			name: 'twitter',
 			url: 'https://twitter.com/yourusername',
-			icon:
-				'M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z'
+			icon: 'M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z'
 		},
 		{
 			name: 'contact',
@@ -42,8 +40,8 @@
 	let twitterActive = $state(false);
 
 	// Safe zone + grace
-	const SAFE_MARGIN = 2;   // px padding around the corridor
-	const HIDE_DELAY = 0;  // ms delay before closing
+	const SAFE_MARGIN = 2; // px padding around the corridor
+	const HIDE_DELAY = 0; // ms delay before closing
 
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastPointer = { x: 0, y: 0 };
@@ -117,12 +115,12 @@
 			tryScheduleHide();
 		}
 	}
-    onMount(() => {
-        if (!browser) return;
-        const handler = (e: PointerEvent) => onPointerMove(e);
-        document.addEventListener('pointermove', handler, { passive: true });
-        return () => document.removeEventListener('pointermove', handler);
-    });
+	onMount(() => {
+		if (!browser) return;
+		const handler = (e: PointerEvent) => onPointerMove(e);
+		document.addEventListener('pointermove', handler, { passive: true });
+		return () => document.removeEventListener('pointermove', handler);
+	});
 
 	// Geometry helpers
 	function getRect(el: Element | null) {
@@ -202,7 +200,9 @@
 					{#if link.name === 'twitter'}
 						<div
 							bind:this={twitterTextRef}
-							class="animated-underline flex items-center gap-2 font-mono text-xs transition-colors duration-200 cursor-pointer {twitterActive ? 'twitter-hovered' : ''}"
+							class="animated-underline flex cursor-pointer items-center gap-2 font-mono text-xs transition-colors duration-200 {twitterActive
+								? 'twitter-hovered'
+								: ''}"
 							style="color: {twitterActive ? 'white' : 'rgba(255, 255, 255, 0.4)'};"
 							onmouseenter={handleTwitterMouseEnter}
 							onmouseleave={handleTwitterMouseLeave}
@@ -210,7 +210,13 @@
 							aria-expanded={twitterTooltip.show ? 'true' : 'false'}
 							aria-controls="twitter-tooltip"
 						>
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="transition-colors duration-200">
+							<svg
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="currentColor"
+								class="transition-colors duration-200"
+							>
 								<path d={link.icon} />
 							</svg>
 							{link.name}
@@ -223,9 +229,16 @@
 							class="animated-underline flex items-center gap-2 font-mono text-xs transition-colors duration-200"
 							style="color: rgba(255, 255, 255, 0.4);"
 							onmouseenter={(e) => ((e.target as HTMLElement).style.color = 'white')}
-							onmouseleave={(e) => ((e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.4)')}
+							onmouseleave={(e) =>
+								((e.target as HTMLElement).style.color = 'rgba(255, 255, 255, 0.4)')}
 						>
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="transition-colors duration-200">
+							<svg
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="currentColor"
+								class="transition-colors duration-200"
+							>
 								<path d={link.icon} />
 							</svg>
 							{link.name}
@@ -236,31 +249,33 @@
 
 			<!-- Center shortcuts -->
 			{#if !minimal}
-			<div class="absolute bottom-16 left-1/2 -translate-x-1/2">
-				<div class="flex items-center gap-16 text-[10px]">
-					<div class="group flex gap-2">
-						<kbd class={cap}>h</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.4);">left</span>
-					</div>
-					<div class="group flex gap-2">
-						<kbd class={cap}>j</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.4);">down</span>
-					</div>
-					<div class="group flex gap-2">
-						<kbd class={cap}>k</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.4);">up</span>
-					</div>
-					<div class="group flex gap-2">
-						<kbd class={cap}>l</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
-						<span class="font-mono" style="color: rgba(255,255,255,0.4);">right</span>
+				<div class="absolute bottom-16 left-1/2 -translate-x-1/2">
+					<div class="flex items-center gap-16 text-[10px]">
+						<div class="group flex gap-2">
+							<kbd class={cap}>h</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+							<span class="font-mono" style="color: rgba(255,255,255,0.4);">left</span>
+						</div>
+						<div class="group flex gap-2">
+							<kbd class={cap}>j</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+							<span class="font-mono" style="color: rgba(255,255,255,0.4);">down</span>
+						</div>
+						<div class="group flex gap-2">
+							<kbd class={cap}>k</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+							<span class="font-mono" style="color: rgba(255,255,255,0.4);">up</span>
+						</div>
+						<div class="group flex gap-2">
+							<kbd class={cap}>l</kbd><span style="color: rgba(255,255,255,0.4);">–</span>
+							<span class="font-mono" style="color: rgba(255,255,255,0.4);">right</span>
+						</div>
 					</div>
 				</div>
-			</div>
 			{/if}
 
 			<!-- Copyright -->
 			<div>
-				<p class="font-mono text-xs" style="color: rgba(255, 255, 255, 0.4);">© 2025 vimgod. All rights reserved.</p>
+				<p class="font-mono text-xs" style="color: rgba(255, 255, 255, 0.4);">
+					© 2025 vimgod. All rights reserved.
+				</p>
 			</div>
 		</div>
 	</div>
@@ -270,7 +285,9 @@
 		<div
 			id="twitter-tooltip"
 			bind:this={twitterBubbleRef}
-			class="twitter-bubble absolute z-[9999] rounded-md border border-neutral-700 bg-neutral-800 px-4 py-3 text-neutral-200 shadow-lg {twitterTooltip.hiding ? 'hiding' : ''}"
+			class="twitter-bubble absolute z-[9999] rounded-md border border-neutral-700 bg-neutral-800 px-4 py-3 text-neutral-200 shadow-lg {twitterTooltip.hiding
+				? 'hiding'
+				: ''}"
 			style="
 				left: {twitterTooltip.x}px;
 				top: {twitterTooltip.y}px;
@@ -299,12 +316,16 @@
 </footer>
 
 <style>
-	.animated-underline { position: relative; }
+	.animated-underline {
+		position: relative;
+	}
 	.animated-underline::after {
 		content: '';
 		position: absolute;
-		bottom: -2px; left: 0;
-		width: 0; height: 1px;
+		bottom: -2px;
+		left: 0;
+		width: 0;
+		height: 1px;
 		background-color: currentColor;
 		transition: width 0.2s ease-out;
 	}
@@ -314,7 +335,9 @@
 		text-decoration: none;
 	}
 	.animated-underline:hover::after,
-	.animated-underline.twitter-hovered::after { width: 100%; }
+	.animated-underline.twitter-hovered::after {
+		width: 100%;
+	}
 
 	.twitter-bubble {
 		transform-origin: center bottom;
@@ -324,11 +347,23 @@
 		animation: bubbleShrink 0.1s ease-in forwards;
 	}
 	@keyframes bubbleExpand {
-		0% { transform: translateX(-50%) translateY(-100%) scale(0.3); opacity: 0; }
-		100% { transform: translateX(-50%) translateY(-100%) scale(1); opacity: 1; }
+		0% {
+			transform: translateX(-50%) translateY(-100%) scale(0.3);
+			opacity: 0;
+		}
+		100% {
+			transform: translateX(-50%) translateY(-100%) scale(1);
+			opacity: 1;
+		}
 	}
 	@keyframes bubbleShrink {
-		0% { transform: translateX(-50%) translateY(-100%) scale(1); opacity: 1; }
-		100% { transform: translateX(-50%) translateY(-100%) scale(0.3); opacity: 0; }
+		0% {
+			transform: translateX(-50%) translateY(-100%) scale(1);
+			opacity: 1;
+		}
+		100% {
+			transform: translateX(-50%) translateY(-100%) scale(0.3);
+			opacity: 0;
+		}
 	}
 </style>
