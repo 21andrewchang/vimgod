@@ -305,12 +305,12 @@
 													/>
 												</svg>
 												{#if detail.showSignIn}
-													<div class="relative h-[1.8rem] w-[10.5rem] overflow-hidden">
+													<div class="relative w-[10.5rem] overflow-hidden">
 														<div
 															class="flex flex-col items-center gap-0.5 text-center transition-transform duration-200 ease-out group-hover:-translate-y-full"
 														>
 															{#each detail.lines as line}
-																<span class="whitespace-nowrap leading-[1.1rem]">{line}</span>
+																<span class=" whitespace-nowrap leading-[1.1rem]">{line}</span>
 															{/each}
 														</div>
 														<div
