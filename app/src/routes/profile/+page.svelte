@@ -203,7 +203,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
                     </div>
 
                     <div class="w-full bg-zinc-800/60 rounded-full h-2 overflow-hidden">
-                        <div class="h-2 rounded-full bg-pearlescent shiny-glow" style={`width:${lpPercent}%;`} />
+                        <div class="h-2 rounded-full bg-pearlescent shiny-glow" style={`width:${lpPercent}%;`}></div>
                     </div>
                   </svelte:fragment>
                 </StatCard>

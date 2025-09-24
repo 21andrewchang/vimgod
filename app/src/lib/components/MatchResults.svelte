@@ -317,28 +317,39 @@
 			return;
 		}
 
-		const profileXp = $profile?.xp ?? 0;
+	const profileXp = $profile?.xp ?? 0;
 
-		if (state.status === 'complete') {
-			if (!xpAnimationRan) {
-				xpAnimationRan = true;
-				xpBaseline = profileXp;
-				const targetXp = xpBaseline + MATCH_XP_REWARD;
-				xpTween.set(xpBaseline, { duration: 0 });
-				if (prefersReducedMotion.current) {
-					xpTween.set(targetXp, { duration: 0 });
-				} else {
-					xpTween.set(targetXp, { duration: 700, easing: cubicOut });
-				}
-			} else if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
-				xpBaseline = profileXp;
-				xpTween.set(profileXp, { duration: 0 });
-			}
+	if (state.status !== 'complete') {
+		xpAnimationRan = false;
+		xpBaseline = profileXp;
+		xpTween.set(xpBaseline, { duration: 0 });
+		return;
+	}
+
+	if (state.outcome === 'dodge') {
+		xpAnimationRan = false;
+		xpBaseline = profileXp;
+		xpTween.set(profileXp, { duration: 0 });
+		return;
+	}
+
+	if (!xpAnimationRan) {
+		xpAnimationRan = true;
+		xpBaseline = profileXp;
+		const targetXp = xpBaseline + MATCH_XP_REWARD;
+		xpTween.set(xpBaseline, { duration: 0 });
+		if (prefersReducedMotion.current) {
+			xpTween.set(targetXp, { duration: 0 });
 		} else {
-			xpAnimationRan = false;
-			xpBaseline = profileXp;
-			xpTween.set(xpBaseline, { duration: 0 });
+			xpTween.set(targetXp, { duration: 700, easing: cubicOut });
 		}
+		return;
+	}
+
+	if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
+		xpBaseline = profileXp;
+		xpTween.set(profileXp, { duration: 0 });
+	}
 	});
 
 	$effect(() => {
@@ -431,8 +442,7 @@
 
 		wroteHistoryOnce = true;
 
-
-		// Award XP for completed ranked matches (skip dodges)
+	// Award XP for completed ranked matches (skip dodges)
 		if (signedIn && state.outcome !== 'dodge') {
 			try {
 				const updatedXp = await increaseXp(10);
