@@ -2,6 +2,7 @@
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
 	import Graph from '$lib/components/Graph.svelte';
 	import { onDestroy, onMount } from 'svelte';
+	import { scale } from 'svelte/transition';
 	import { get } from 'svelte/store';
 	import type { MatchController, MatchState } from '$lib/match/match';
 	import { supabase } from '$lib/supabaseClient';
@@ -9,7 +10,6 @@
 	import { profile, refreshProfile } from '$lib/stores/profile';
 	import { Tween, prefersReducedMotion } from 'svelte/motion';
 	import { cubicOut } from 'svelte/easing';
-	import { scale, fly } from 'svelte/transition';
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
 	import { levelFromXP } from '$lib/utils';
 
@@ -28,11 +28,12 @@
 	let xpBaseline = 0;
 	let xpAnimationRan = false;
 	let visibleLevel = xpStats.level;
-	let upcomingLevel = visibleLevel + 1;
+	let slideLevels: [number, number] = [visibleLevel, visibleLevel + 1];
 	let hasInitialLevel = false;
-	let showLevelTransition = false;
-	let levelTransitionKey = 0;
-	let levelTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+	let levelSliding = false;
+	let levelSlideKey = 0;
+	let levelSlideTimer: ReturnType<typeof setTimeout> | null = null;
+	const LEVEL_SLIDE_DURATION = 240;
 	const MATCH_XP_REWARD = 10;
 
 	function computeXpStats(current: number) {
@@ -79,14 +80,14 @@
 
 	let state: MatchState = get(match);
 	const unsubscribe = match.subscribe((value: MatchState) => (state = value));
-onDestroy(unsubscribe);
+	onDestroy(unsubscribe);
 
-onDestroy(() => {
-	if (levelTransitionTimer) {
-		clearTimeout(levelTransitionTimer);
-		levelTransitionTimer = null;
-	}
-});
+	onDestroy(() => {
+		if (levelSlideTimer) {
+			clearTimeout(levelSlideTimer);
+			levelSlideTimer = null;
+		}
+	});
 
 	// ensure we have fresh profile once this mounts (no-op if already fresh)
 	onMount(() => {
@@ -295,9 +296,9 @@ onDestroy(() => {
 		xpTween.set(xpBaseline, { duration: 0 });
 		xpAnimationRan = false;
 		visibleLevel = xpStats.level;
-		upcomingLevel = visibleLevel + 1;
+		slideLevels = [visibleLevel, visibleLevel + 1];
 		hasInitialLevel = true;
-		showLevelTransition = false;
+		levelSliding = false;
 	});
 
 	$effect(() => {
@@ -306,12 +307,12 @@ onDestroy(() => {
 			xpAnimationRan = false;
 			xpTween.set(0, { duration: 0 });
 			visibleLevel = 0;
-			upcomingLevel = 1;
+			slideLevels = [0, 1];
 			hasInitialLevel = false;
-			showLevelTransition = false;
-			if (levelTransitionTimer) {
-				clearTimeout(levelTransitionTimer);
-				levelTransitionTimer = null;
+			levelSliding = false;
+			if (levelSlideTimer) {
+				clearTimeout(levelSlideTimer);
+				levelSlideTimer = null;
 			}
 			return;
 		}
@@ -342,32 +343,47 @@ onDestroy(() => {
 
 	$effect(() => {
 		const currentLevel = xpStats.level;
+
 		if (!hasInitialLevel) {
 			visibleLevel = currentLevel;
-			upcomingLevel = currentLevel + 1;
+			slideLevels = [currentLevel, currentLevel + 1];
 			hasInitialLevel = true;
 			return;
 		}
 
-		if (currentLevel > visibleLevel) {
-			visibleLevel = currentLevel;
-			upcomingLevel = currentLevel + 1;
-			showLevelTransition = true;
-			levelTransitionKey += 1;
-			if (levelTransitionTimer) {
-				clearTimeout(levelTransitionTimer);
+		if (state.status !== 'complete') {
+			if (currentLevel !== visibleLevel) {
+				visibleLevel = currentLevel;
+				slideLevels = [currentLevel, currentLevel + 1];
 			}
-			levelTransitionTimer = setTimeout(() => {
-				showLevelTransition = false;
-				levelTransitionTimer = null;
-			}, 320);
+			levelSliding = false;
+			if (levelSlideTimer) {
+				clearTimeout(levelSlideTimer);
+				levelSlideTimer = null;
+			}
+			return;
+		}
+
+		if (currentLevel > visibleLevel && !levelSliding) {
+			slideLevels = [visibleLevel, currentLevel];
+			levelSliding = true;
+			levelSlideKey += 1;
+			if (levelSlideTimer) {
+				clearTimeout(levelSlideTimer);
+			}
+			levelSlideTimer = setTimeout(() => {
+				visibleLevel = currentLevel;
+				slideLevels = [visibleLevel, visibleLevel + 1];
+				levelSliding = false;
+				levelSlideTimer = null;
+			}, LEVEL_SLIDE_DURATION);
 		} else if (currentLevel < visibleLevel) {
 			visibleLevel = currentLevel;
-			upcomingLevel = currentLevel + 1;
-			showLevelTransition = false;
-			if (levelTransitionTimer) {
-				clearTimeout(levelTransitionTimer);
-				levelTransitionTimer = null;
+			slideLevels = [currentLevel, currentLevel + 1];
+			levelSliding = false;
+			if (levelSlideTimer) {
+				clearTimeout(levelSlideTimer);
+				levelSlideTimer = null;
 			}
 		}
 	});
@@ -472,11 +488,13 @@ onDestroy(() => {
 		xpBaseline = resetXp;
 		xpTween.set(resetXp, { duration: 0 });
 		xpAnimationRan = false;
-		showLevelTransition = false;
-		if (levelTransitionTimer) {
-			clearTimeout(levelTransitionTimer);
-			levelTransitionTimer = null;
+		if (levelSlideTimer) {
+			clearTimeout(levelSlideTimer);
+			levelSlideTimer = null;
 		}
+		visibleLevel = xpStats.level;
+		slideLevels = [visibleLevel, visibleLevel + 1];
+		levelSliding = false;
 	};
 
 	const graphHeight = 200;
@@ -488,20 +506,11 @@ onDestroy(() => {
 			<div
 				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
 			>
-			{#if showLevelTransition}
-				{#key levelTransitionKey}
-					<span
-						class="text-xs text-white"
-						in:scale={{ start: 0.85, duration: 220, easing: cubicOut }}
-						out:fly={{ y: -10, duration: 160, easing: cubicOut }}
-						data-next-level={upcomingLevel}
-					>
-						Lv {visibleLevel}
-					</span>
-				{/key}
-			{:else}
-				<span class="text-xs text-white" data-next-level={upcomingLevel}>Lv {visibleLevel}</span>
-			{/if}
+				{#if xpStats.level === slideLevels[1]}
+					<div in:scale={{ start: 0.4, duration: 150 }}>Lvl {xpStats.level}</div>
+				{:else}
+					<span>Lvl {xpStats.level}</span>
+				{/if}
 				<span class="ml-auto text-[10px] text-neutral-500"
 					>{Math.round(xpStats.experience)} / {xpStats.maxExperience}</span
 				>
@@ -633,3 +642,29 @@ onDestroy(() => {
 		</div>
 	{/if}
 </div>
+
+<style>
+	.level-roller {
+		height: 1.2rem;
+		overflow: hidden;
+		position: relative;
+		width: fit-content;
+	}
+
+	.level-track {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		transform: translateY(0);
+		transition: transform 0.22s ease-out;
+	}
+
+	.level-roller.is-animating .level-track {
+		transform: translateY(-100%);
+	}
+
+	.level-track span {
+		display: block;
+		line-height: 1.1rem;
+	}
+</style>
