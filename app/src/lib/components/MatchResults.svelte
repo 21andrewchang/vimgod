@@ -430,15 +430,12 @@
 
 		wroteHistoryOnce = true;
 
-		// ---- keep UI in sync immediately, then reconcile with DB ----
 		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : computedEndElo;
 
-		// 1) Optimistic update: bump the profile store's rating now
 		if (typeof endElo === 'number') {
 			profile.update((p) => (p ? { ...p, rating: endElo } : p));
 		}
 
-		// 2) Fire a refresh so the store exactly matches what’s in DB
 		void refreshProfile();
 
 		return endElo;
@@ -546,7 +543,7 @@
 							/>
 						</svg>
 						<button
-							on:click={signInWithGoogle}
+							onclick={signInWithGoogle}
 							class="z-50 underline transition hover:text-neutral-200"
 						>
 							sign in
@@ -565,18 +562,6 @@
 						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">ELO</div>
 						<div class="font-mono text-5xl text-slate-100 transition" class:opacity-60={!signedIn}>
 							{Math.round(eloTween.current)}
-							<!-- {#key state.endTime}
-                                <RollingNumber
-                                    from={$profile?.rating ?? 0}
-                                    to={($profile?.rating ?? 0) + (lpDelta ?? 0)}
-                                    minDigits={4}
-                                    delay={800}
-                                    baseDuration={1400}
-                                    stepMs={140}
-                                    stagger={90}
-                                    direction="auto"
-                                />
-                            {/key} -->
 						</div>
 					</div>
 
