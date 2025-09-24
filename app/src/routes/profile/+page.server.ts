@@ -78,7 +78,9 @@ export const load: PageServerLoad = async ({ locals }) => {
         userData = inserted.data;
     }
 
-    const displayName = userData.name ?? user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'Player';
+    const normalizedName = userData.name?.trim() || null;
+    const fallbackName = user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'Player';
+    const displayName = normalizedName ?? fallbackName;
     const xp = userData.xp ?? 0;
     const { level, experience, maxExperience } = levelFromXP(xp);
     const rankId = rankIdFromRating(userData.rating ?? 1500);
@@ -265,8 +267,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       };
     });
   
-    return {
-      profileUser: appUser,
+  return {
+      profileUser: {
+        ...appUser,
+        displayName: normalizedName,
+        fallbackName
+      },
       mastery,
       knownList: Array.from(known),
       motionCounts,

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { onMount, setContext } from 'svelte';
+	import { onMount, setContext, tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import Header from '$lib/components/Header.svelte';
 	import { get, writable } from 'svelte/store';
@@ -10,7 +10,10 @@
 
 	import { supabase } from '$lib/supabaseClient';
 	import { user } from '$lib/stores/auth';
-	import { profile, refreshProfile } from '$lib/stores/profile';
+import { refreshProfile } from '$lib/stores/profile';
+import { invalidate } from '$app/navigation';
+
+	type UsernameAvailability = 'unknown' | 'checking' | 'available' | 'unavailable';
 
 	let { children } = $props();
 
@@ -26,6 +29,149 @@
 	/* NEW: realtime channel + unsub handle */
 	let usersChannel: ReturnType<typeof supabase.channel> | null = null;
 	let unsubAuth: (() => void) | null = null;
+
+	/* onboarding username prompt */
+	let showUsernameModal = $state(false);
+	let usernameInput = $state('');
+	let usernameError = $state('');
+	let submittingUsername = $state(false);
+	let usernameInputRef: HTMLInputElement | null = null;
+	let usernameAvailability: UsernameAvailability = $state('unknown');
+let availabilityHover = $state(false);
+let usernameCheckVersion = 0;
+let lastCheckedUsername = '';
+
+const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
+	const currentUserId = $derived($page.data?.user?.id ?? null);
+
+	$effect(() => {
+		const needed = requiresUsername;
+		if (needed && !showUsernameModal) {
+			showUsernameModal = true;
+			usernameInput = '';
+			usernameError = '';
+		} else if (!needed && showUsernameModal) {
+			showUsernameModal = false;
+		}
+	});
+
+	$effect(() => {
+		if (!browser) return;
+		if (!showUsernameModal) {
+			document.body.style.overflow = '';
+			return;
+		}
+		document.body.style.overflow = 'hidden';
+		void tick().then(() => {
+			const input = usernameInputRef;
+			if (input && typeof input.focus === 'function') {
+				input.focus();
+			}
+		});
+	});
+
+	function sanitizeUsername(value: string): string {
+		return value.replace(/[^A-Za-z0-9._]/g, '').slice(0, 16);
+	}
+
+	async function checkUsernameAvailability(candidate: string) {
+		const normalized = candidate.trim();
+		const currentVersion = ++usernameCheckVersion;
+		if (!normalized) {
+			usernameAvailability = 'unknown';
+			lastCheckedUsername = '';
+			return;
+		}
+		if (normalized === lastCheckedUsername && usernameAvailability !== 'checking') {
+			return;
+		}
+		usernameAvailability = 'checking';
+		try {
+			const { data, error } = await supabase
+				.from('users')
+				.select('id')
+				.ilike('name', normalized)
+				.limit(1);
+			if (currentVersion !== usernameCheckVersion) return;
+			if (error) throw error;
+			const exists = Array.isArray(data) && data.length > 0;
+			usernameAvailability = exists ? 'unavailable' : 'available';
+			lastCheckedUsername = normalized;
+		} catch (err) {
+			console.error('Failed to check username availability', err);
+			if (currentVersion === usernameCheckVersion) {
+				usernameAvailability = 'unknown';
+			}
+		}
+	}
+
+	function getAvailabilityMessage(state: UsernameAvailability): string {
+		switch (state) {
+			case 'available':
+				return 'username is available';
+			case 'unavailable':
+				return 'username is unavailable';
+			case 'checking':
+				return 'checking availability…';
+			default:
+				return '';
+		}
+	}
+
+	function handleUsernameInput(event: Event) {
+		const target = event.target as HTMLInputElement;
+		usernameInput = sanitizeUsername(target.value);
+		if (usernameError) usernameError = '';
+		void checkUsernameAvailability(usernameInput);
+	}
+
+	async function submitUsername() {
+		if (submittingUsername) return;
+		const trimmed = usernameInput.trim();
+		if (!trimmed) {
+			usernameError = 'Username is required.';
+			usernameAvailability = 'unavailable';
+			return;
+		}
+		if (trimmed.length > 16) {
+			usernameError = 'Username must be 16 characters or fewer.';
+			usernameAvailability = 'unavailable';
+			return;
+		}
+		if (!/^[A-Za-z0-9._]+$/.test(trimmed)) {
+			usernameError = 'Only letters, numbers, periods, and underscores are allowed.';
+			usernameAvailability = 'unavailable';
+			return;
+		}
+		if (usernameAvailability !== 'available') {
+			usernameError = 'Username is unavailable.';
+			return;
+		}
+		const uid = currentUserId;
+		if (!uid) {
+			usernameError = 'Unable to determine user ID.';
+			return;
+		}
+		submittingUsername = true;
+		try {
+			const { error } = await supabase
+				.from('users')
+				.update({ name: trimmed })
+				.eq('id', uid)
+				.select('id')
+				.single();
+			if (error) throw error;
+			await refreshProfile();
+			await invalidate('app:user');
+			showUsernameModal = false;
+			usernameInput = '';
+		} catch (err) {
+			console.error('Failed to set username', err);
+			usernameError = 'Failed to save username. Please try again.';
+		} finally {
+			submittingUsername = false;
+		}
+	}
 
 	function clearCountdown() {
 		if (countdownTimer) {
@@ -246,7 +392,10 @@
 	/>
 </svelte:head>
 
-<div class={`min-h-screen transition-[filter,transform] duration-150 ease-out `}>
+<div
+	class={`min-h-screen transition-[filter,transform] duration-150 ease-out `}
+	class:blur-sm={showUsernameModal}
+>
 	{#if $page.url.pathname.startsWith('/profile')}
 		<Header size="small" />
 	{:else}
@@ -264,5 +413,90 @@
 			</p>
 			<p class="text-xs opacity-70">press [esc] to continue</p>
 		</div>
+	</div>
+{/if}
+
+{#if showUsernameModal}
+	<div class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+		<form
+			class="relative w-[90%] max-w-sm rounded-xl border border-dashed border-[#3f3f48] bg-[#0a0a0a] p-6 shadow-2xl transition-all duration-300"
+			on:submit|preventDefault={submitUsername}
+		>
+			<h2 class="text-lg font-semibold text-neutral-100" style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+				choose a username
+			</h2>
+			<p class="mt-2 text-sm text-neutral-400" style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+				your username can include letters, numbers, periods, and underscores (max 16 characters).
+			</p>
+			<div class="mt-4">
+				<div class="relative">
+					<input
+						type="text"
+						class="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 pr-10 text-sm text-neutral-100 outline-none transition focus:border-neutral-400 focus:ring-0"
+						autocomplete="off"
+						spellcheck={false}
+						maxlength={16}
+						value={usernameInput}
+						on:input={handleUsernameInput}
+						bind:this={usernameInputRef}
+						style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+					/>
+					{#if usernameAvailability !== 'unknown'}
+						<button
+							type="button"
+							class="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full text-sm font-bold transition focus:outline-none"
+							style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+							on:mouseenter={() => (availabilityHover = true)}
+							on:mouseleave={() => (availabilityHover = false)}
+							aria-label={getAvailabilityMessage(usernameAvailability) || 'username status'}
+						>
+							{#if usernameAvailability === 'available'}
+								<span class="relative block h-4 w-4">
+									<span class="absolute left-[55%] top-0 h-full w-[2px] -translate-x-1/2 rotate-45 rounded-full bg-emerald-400" />
+									<span class="absolute left-[18%] bottom-[3px] h-[2px] w-[50%] -translate-x-2/3 -translate-y-1/2 -rotate-135 rounded-full bg-emerald-400" />
+								</span>
+							{:else if usernameAvailability === 'unavailable'}
+								<span class="relative block h-4 w-4">
+									<span class="absolute left-1/2 top-1/2 h-[2px] w-full -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-rose-400" />
+									<span class="absolute left-1/2 top-1/2 h-[2px] w-full -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-rose-400" />
+								</span>
+							{:else}
+								<span class="flex items-center gap-[3px]">
+									<span class="h-0.5 w-0.5 rounded-full bg-neutral-400 animate-[pulse_1.2s_ease-in-out_infinite]" />
+									<span class="h-0.5 w-0.5 rounded-full bg-neutral-400 animate-[pulse_1.2s_ease-in-out_infinite]" style="animation-delay:0.15s;" />
+									<span class="h-0.5 w-0.5 rounded-full bg-neutral-400 animate-[pulse_1.2s_ease-in-out_infinite]" style="animation-delay:0.3s;" />
+								</span>
+							{/if}
+						</button>
+						{#if availabilityHover && getAvailabilityMessage(usernameAvailability)}
+							{@const availabilityText = getAvailabilityMessage(usernameAvailability)}
+							<div
+								class="absolute right-0 mt-2 w-max max-w-[220px] rounded border border-neutral-700 bg-[#0a0a0a] px-3 py-1 text-xs text-neutral-300 shadow-lg"
+								style="top:calc(100% + 0.25rem); font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+							>
+								{availabilityText}
+							</div>
+						{/if}
+					{/if}
+				</div>
+				{#if usernameError}
+					<p class="mt-2 text-xs text-rose-400" style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+						{usernameError}
+					</p>
+				{/if}
+			</div>
+		<button
+			type="submit"
+			class="mt-5 inline-flex w-full items-center justify-center rounded bg-neutral-200 px-3 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-400"
+			style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+			disabled={
+				submittingUsername ||
+				!usernameInput.trim() ||
+				usernameAvailability !== 'available'
+			}
+		>
+				{submittingUsername ? 'saving...' : 'save username'}
+			</button>
+		</form>
 	</div>
 {/if}
