@@ -1,6 +1,5 @@
 <script lang="ts">
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
-	import { goto } from '$app/navigation';
 	import Graph from '$lib/components/Graph.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
@@ -8,60 +7,90 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { user, signInWithGoogle, setInitialRank } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
-    import { Tween, prefersReducedMotion } from 'svelte/motion';
-    import { cubicOut } from 'svelte/easing';
-    import RollingNumber from '$lib/components/RollingNumber.svelte';
+	import { Tween, prefersReducedMotion } from 'svelte/motion';
+	import { cubicOut } from 'svelte/easing';
+	import { scale, fly } from 'svelte/transition';
+	import RollingNumber from '$lib/components/RollingNumber.svelte';
+	import { levelFromXP } from '$lib/utils';
 
 	const { match } = $props<{ match: MatchController }>();
 
-	// Keep using the auth store for "signed in"
 	const signedIn = $derived(!!$user);
 
 	const elo = $derived($profile?.rating ?? 67);
-	const xp = $derived($profile?.xp ?? 0);
 
-    const eloTween = new Tween<number>(0);
-    let eloAnimated = false;
-    let eloStartTimer: ReturnType<typeof setTimeout> | null = null;
+	const eloTween = new Tween<number>(0);
+	let eloAnimated = false;
+	let eloStartTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const START_DELAY_MS = 750;
-    const BASE_MS = 1200;
-    const EXTRA_PER_POINT = 140;
-    const MIN_MS = 1600;
-    const MAX_MS = 5000;
-    const DURATION_POWER = 0.6;
+	const xpTween = new Tween<number>(0);
+	const xpStats = $derived(computeXpStats(xpTween.current));
+	let xpBaseline = 0;
+	let xpAnimationRan = false;
+	let visibleLevel = xpStats.level;
+	let upcomingLevel = visibleLevel + 1;
+	let hasInitialLevel = false;
+	let showLevelTransition = false;
+	let levelTransitionKey = 0;
+	let levelTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+	const MATCH_XP_REWARD = 10;
 
-    function clamp(n: number, min: number, max: number) {
-        return Math.min(Math.max(n, min), max);
-    }
+	function computeXpStats(current: number) {
+		const { level, experience, maxExperience } = levelFromXP(current);
+		const percent =
+			maxExperience > 0 ? Math.min(100, Math.max(0, (experience / maxExperience) * 100)) : 0;
+		return { level, experience, maxExperience, percent };
+	}
 
-    function scheduleEloAnimation(start: number, end: number) {
-        eloTween.set(start, { duration: 0 });
+	const START_DELAY_MS = 750;
+	const BASE_MS = 1200;
+	const EXTRA_PER_POINT = 140;
+	const MIN_MS = 1600;
+	const MAX_MS = 5000;
+	const DURATION_POWER = 0.6;
 
-        if (prefersReducedMotion.current) {
-            eloTween.set(end, { duration: 0 });
-            return;
-        }
+	function clamp(n: number, min: number, max: number) {
+		return Math.min(Math.max(n, min), max);
+	}
 
-        const duration = clamp(BASE_MS + Math.pow(Math.abs(end - start), DURATION_POWER) * EXTRA_PER_POINT, MIN_MS, MAX_MS);
-        
-        if (eloStartTimer) {
-            clearTimeout(eloStartTimer);
-        }
+	function scheduleEloAnimation(start: number, end: number) {
+		eloTween.set(start, { duration: 0 });
 
-        eloStartTimer = setTimeout(() => {
-            eloTween.set(end, { duration, easing: cubicOut });
-            eloStartTimer = null;
-        }, START_DELAY_MS);
-    }
+		if (prefersReducedMotion.current) {
+			eloTween.set(end, { duration: 0 });
+			return;
+		}
+
+		const duration = clamp(
+			BASE_MS + Math.pow(Math.abs(end - start), DURATION_POWER) * EXTRA_PER_POINT,
+			MIN_MS,
+			MAX_MS
+		);
+
+		if (eloStartTimer) {
+			clearTimeout(eloStartTimer);
+		}
+
+		eloStartTimer = setTimeout(() => {
+			eloTween.set(end, { duration, easing: cubicOut });
+			eloStartTimer = null;
+		}, START_DELAY_MS);
+	}
 
 	let state: MatchState = get(match);
 	const unsubscribe = match.subscribe((value: MatchState) => (state = value));
-	onDestroy(unsubscribe);
+onDestroy(unsubscribe);
+
+onDestroy(() => {
+	if (levelTransitionTimer) {
+		clearTimeout(levelTransitionTimer);
+		levelTransitionTimer = null;
+	}
+});
 
 	// ensure we have fresh profile once this mounts (no-op if already fresh)
 	onMount(() => {
-        eloTween.set($profile?.rating ?? 0, { duration: 0 });
+		eloTween.set($profile?.rating ?? 0, { duration: 0 });
 		void refreshProfile();
 	});
 
@@ -74,21 +103,25 @@
 	);
 	const lpDelta = $derived(state.totalPoints);
 
-	const averageMs = $derived(completedRounds.length
-		? completedRounds.reduce((s, r) => s + r.durationMs, 0) / completedRounds.length
-		: 0);
+	const averageMs = $derived(
+		completedRounds.length
+			? completedRounds.reduce((s, r) => s + r.durationMs, 0) / completedRounds.length
+			: 0
+	);
 
 	const totalKeys = $derived(completedRounds.reduce((s, r) => s + r.keys.length, 0));
 	const totalDurationMs = $derived(completedRounds.reduce((s, r) => s + r.durationMs, 0));
 	const averageKeys = $derived(completedRounds.length ? totalKeys / completedRounds.length : 0);
 	const apm = $derived(totalDurationMs > 0 ? (totalKeys / totalDurationMs) * 60000 : 0);
 	const roundsWithKeys = $derived(completedRounds.filter((round) => round.keys.length > 0));
-	const averageReaction = $derived(roundsWithKeys.length
-		? roundsWithKeys.reduce(
-				(sum, round) => sum + Math.max(0, round.keys[0].at - round.startedAt),
-				0
-			) / roundsWithKeys.length
-		: 0);
+	const averageReaction = $derived(
+		roundsWithKeys.length
+			? roundsWithKeys.reduce(
+					(sum, round) => sum + Math.max(0, round.keys[0].at - round.startedAt),
+					0
+				) / roundsWithKeys.length
+			: 0
+	);
 	const undoCount = $derived(state.undoCount ?? 0);
 
 	const IGNORED_KEYS = new Set([
@@ -117,20 +150,24 @@
 		return true;
 	};
 
-	const keyFrequency = $derived(completedRounds.reduce<Record<string, number>>((acc, round) => {
-		round.keys.forEach((entry) => {
-			if (!isTrackableKey(entry.key)) return;
-			acc[entry.key] = (acc[entry.key] ?? 0) + 1;
-		});
-		return acc;
-	}, {}));
-	const mostUsedKey = $derived(Object.entries(keyFrequency).reduce<{ key: string; count: number } | null>(
-		(current, [key, count]) => {
-			if (!current || count > current.count) return { key, count };
-			return current;
-		},
-		null
-	));
+	const keyFrequency = $derived(
+		completedRounds.reduce<Record<string, number>>((acc, round) => {
+			round.keys.forEach((entry) => {
+				if (!isTrackableKey(entry.key)) return;
+				acc[entry.key] = (acc[entry.key] ?? 0) + 1;
+			});
+			return acc;
+		}, {})
+	);
+	const mostUsedKey = $derived(
+		Object.entries(keyFrequency).reduce<{ key: string; count: number } | null>(
+			(current, [key, count]) => {
+				if (!current || count > current.count) return { key, count };
+				return current;
+			},
+			null
+		)
+	);
 
 	const RANK_VALUES = {
 		bronze4: 0,
@@ -208,9 +245,11 @@
 		}
 	}
 
-	const projectedRankValue = $derived(completedRounds.length
-		? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
-		: null);
+	const projectedRankValue = $derived(
+		completedRounds.length
+			? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
+			: null
+	);
 	const placementRankValue = $derived(
 		projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP)
 	);
@@ -232,24 +271,106 @@
 		}
 	});
 
-    $effect(() => {
-        if (state.status === 'complete' && !eloAnimated) {
-            eloAnimated = true;
+	$effect(() => {
+		if (state.status === 'complete' && !eloAnimated) {
+			eloAnimated = true;
 
-            const startElo = $profile?.rating ?? 0;
-            const endElo = startElo + (lpDelta ?? 0);
-            scheduleEloAnimation(startElo, endElo);
-        }
+			const startElo = $profile?.rating ?? 0;
+			const endElo = startElo + (lpDelta ?? 0);
+			scheduleEloAnimation(startElo, endElo);
+		}
 
-        if (state.status !== 'complete') {
-            eloAnimated = false;
-            if (eloStartTimer) {
-                clearTimeout(eloStartTimer);
-                eloStartTimer = null;
-            }
-            eloTween.set($profile?.rating ?? 0, { duration: 0 });
-        }
-    });
+		if (state.status !== 'complete') {
+			eloAnimated = false;
+			if (eloStartTimer) {
+				clearTimeout(eloStartTimer);
+				eloStartTimer = null;
+			}
+			eloTween.set($profile?.rating ?? 0, { duration: 0 });
+		}
+	});
+
+	onMount(() => {
+		xpBaseline = $profile?.xp ?? 0;
+		xpTween.set(xpBaseline, { duration: 0 });
+		xpAnimationRan = false;
+		visibleLevel = xpStats.level;
+		upcomingLevel = visibleLevel + 1;
+		hasInitialLevel = true;
+		showLevelTransition = false;
+	});
+
+	$effect(() => {
+		if (!signedIn) {
+			xpBaseline = 0;
+			xpAnimationRan = false;
+			xpTween.set(0, { duration: 0 });
+			visibleLevel = 0;
+			upcomingLevel = 1;
+			hasInitialLevel = false;
+			showLevelTransition = false;
+			if (levelTransitionTimer) {
+				clearTimeout(levelTransitionTimer);
+				levelTransitionTimer = null;
+			}
+			return;
+		}
+
+		const profileXp = $profile?.xp ?? 0;
+
+		if (state.status === 'complete') {
+			if (!xpAnimationRan) {
+				xpAnimationRan = true;
+				xpBaseline = profileXp;
+				const targetXp = xpBaseline + MATCH_XP_REWARD;
+				xpTween.set(xpBaseline, { duration: 0 });
+				if (prefersReducedMotion.current) {
+					xpTween.set(targetXp, { duration: 0 });
+				} else {
+					xpTween.set(targetXp, { duration: 700, easing: cubicOut });
+				}
+			} else if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
+				xpBaseline = profileXp;
+				xpTween.set(profileXp, { duration: 0 });
+			}
+		} else {
+			xpAnimationRan = false;
+			xpBaseline = profileXp;
+			xpTween.set(xpBaseline, { duration: 0 });
+		}
+	});
+
+	$effect(() => {
+		const currentLevel = xpStats.level;
+		if (!hasInitialLevel) {
+			visibleLevel = currentLevel;
+			upcomingLevel = currentLevel + 1;
+			hasInitialLevel = true;
+			return;
+		}
+
+		if (currentLevel > visibleLevel) {
+			visibleLevel = currentLevel;
+			upcomingLevel = currentLevel + 1;
+			showLevelTransition = true;
+			levelTransitionKey += 1;
+			if (levelTransitionTimer) {
+				clearTimeout(levelTransitionTimer);
+			}
+			levelTransitionTimer = setTimeout(() => {
+				showLevelTransition = false;
+				levelTransitionTimer = null;
+			}, 320);
+		} else if (currentLevel < visibleLevel) {
+			visibleLevel = currentLevel;
+			upcomingLevel = currentLevel + 1;
+			showLevelTransition = false;
+			if (levelTransitionTimer) {
+				clearTimeout(levelTransitionTimer);
+				levelTransitionTimer = null;
+			}
+		}
+	});
 
 	let wroteHistoryOnce = false;
 
@@ -316,9 +437,11 @@
 	// graph data
 	const roundDurations = $derived(completedRounds.map((r) => r.durationMs));
 	const samples = $derived(roundDurations.map((duration, index) => ({ x: index, y: duration })));
-	const dashed = $derived(roundDurations.length
-		? roundDurations.map((_, index) => ({ x: index, y: state.timeLimitMs }))
-		: null);
+	const dashed = $derived(
+		roundDurations.length
+			? roundDurations.map((_, index) => ({ x: index, y: state.timeLimitMs }))
+			: null
+	);
 
 	const formatPoints = (value: number) => {
 		const rounded = Math.round(value * 100) / 100;
@@ -338,18 +461,59 @@
 		}
 		triedInitialRank = false;
 
-        eloAnimated = false;
-        if (eloStartTimer) {
-            clearTimeout(eloStartTimer);
-            eloStartTimer = null;
-        }
-        eloTween.set($profile?.rating ?? 0, { duration: 0 });
+		eloAnimated = false;
+		if (eloStartTimer) {
+			clearTimeout(eloStartTimer);
+			eloStartTimer = null;
+		}
+		eloTween.set($profile?.rating ?? 0, { duration: 0 });
+
+		const resetXp = $profile?.xp ?? 0;
+		xpBaseline = resetXp;
+		xpTween.set(resetXp, { duration: 0 });
+		xpAnimationRan = false;
+		showLevelTransition = false;
+		if (levelTransitionTimer) {
+			clearTimeout(levelTransitionTimer);
+			levelTransitionTimer = null;
+		}
 	};
 
 	const graphHeight = 200;
 </script>
 
 <div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
+	{#if signedIn}
+		<div class="mb-12 w-full">
+			<div
+				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
+			>
+			{#if showLevelTransition}
+				{#key levelTransitionKey}
+					<span
+						class="text-xs text-white"
+						in:scale={{ start: 0.85, duration: 220, easing: cubicOut }}
+						out:fly={{ y: -10, duration: 160, easing: cubicOut }}
+						data-next-level={upcomingLevel}
+					>
+						Lv {visibleLevel}
+					</span>
+				{/key}
+			{:else}
+				<span class="text-xs text-white" data-next-level={upcomingLevel}>Lv {visibleLevel}</span>
+			{/if}
+				<span class="ml-auto text-[10px] text-neutral-500"
+					>{Math.round(xpStats.experience)} / {xpStats.maxExperience}</span
+				>
+			</div>
+			<div class="relative mt-2 h-px w-full overflow-hidden rounded-full bg-neutral-900/70">
+				<div
+					class="absolute inset-0 left-0 bg-white shadow-[0_0_6px_rgba(255,255,255,0.65)]"
+					style={`width:${xpStats.percent}%;`}
+				></div>
+			</div>
+		</div>
+	{/if}
 	{#if state.status === 'complete'}
 		<div class="flex items-center gap-16">
 			<div class="flex items-center justify-center">
@@ -392,7 +556,7 @@
 						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">ELO</div>
 						<div class="font-mono text-5xl text-slate-100 transition" class:opacity-60={!signedIn}>
 							{Math.round(eloTween.current)}
-                            <!-- {#key state.endTime}
+							<!-- {#key state.endTime}
                                 <RollingNumber
                                     from={$profile?.rating ?? 0}
                                     to={($profile?.rating ?? 0) + (lpDelta ?? 0)}

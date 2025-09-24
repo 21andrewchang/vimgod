@@ -249,7 +249,12 @@
 				<div
 					class="flex items-center gap-2 rounded-2xl bg-black/60 px-4 py-2 font-mono text-xs text-neutral-200 shadow-xl backdrop-blur-md"
 				>
-					<img src="/cards.svg" alt="" class="h-3 w-3 opacity-80" aria-hidden="true" />
+					<svg viewBox="0 0 24 24" class="h-3 w-3 text-neutral-200" aria-hidden="true">
+						<path
+							fill="currentColor"
+							d="M12 1.5A5.25 5.25 0 0 0 6.75 6.75V9A2.25 2.25 0 0 0 4.5 11.25v6A2.25 2.25 0 0 0 6.75 19.5h10.5A2.25 2.25 0 0 0 19.5 17.25v-6A2.25 2.25 0 0 0 17.25 9V6.75A5.25 5.25 0 0 0 12 1.5zm-3 7.5V6.75a3 3 0 1 1 6 0V9Z"
+						/>
+					</svg>
 					<button
 						class="underline decoration-dotted underline-offset-2 hover:text-neutral-100"
 						onclick={signInWithGoogle}>sign in</button
@@ -299,20 +304,33 @@
 														d="M12 1.5A5.25 5.25 0 0 0 6.75 6.75V9A2.25 2.25 0 0 0 4.5 11.25v6A2.25 2.25 0 0 0 6.75 19.5h10.5A2.25 2.25 0 0 0 19.5 17.25v-6A2.25 2.25 0 0 0 17.25 9V6.75A5.25 5.25 0 0 0 12 1.5zm-3 7.5V6.75a3 3 0 1 1 6 0V9Z"
 													/>
 												</svg>
-												<div class="flex flex-col items-center gap-0.5 text-center">
-													{#each detail.lines as line}
-														<span class="whitespace-nowrap leading-[1.2rem]">{line}</span>
-													{/each}
-													{#if detail.showSignIn}
-														<button
-															type="button"
-															class="pointer-events-auto whitespace-nowrap leading-[1.2rem] underline decoration-dotted underline-offset-2 hover:text-neutral-100 focus:outline-none focus-visible:text-neutral-100"
-															onclick={signInWithGoogle}
+												{#if detail.showSignIn}
+													<div class="relative h-[1.8rem] w-[10.5rem] overflow-hidden">
+														<div
+															class="flex flex-col items-center gap-0.5 text-center transition-transform duration-200 ease-out group-hover:-translate-y-full"
 														>
-															Sign in to unlock
-														</button>
-													{/if}
-												</div>
+															{#each detail.lines as line}
+																<span class="whitespace-nowrap leading-[1.1rem]">{line}</span>
+															{/each}
+														</div>
+														<div
+															class="absolute inset-0 flex translate-y-full items-center justify-center text-center transition-transform duration-200 ease-out group-hover:translate-y-0"
+														>
+															<button
+																class="pointer-events-auto whitespace-nowrap leading-[1.1rem] underline decoration-dotted underline-offset-2 hover:text-neutral-100 focus:outline-none focus-visible:text-neutral-100"
+																onclick={signInWithGoogle}
+															>
+																Sign in to unlock
+															</button>
+														</div>
+													</div>
+												{:else}
+													<div class="flex flex-col items-center gap-0.5 text-center">
+														{#each detail.lines as line}
+															<span class="whitespace-nowrap leading-[1.1rem]">{line}</span>
+														{/each}
+													</div>
+												{/if}
 											</div>
 										{/each}
 									</div>
