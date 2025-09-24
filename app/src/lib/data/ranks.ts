@@ -1,5 +1,5 @@
-export type RankName = 
-    | 'Unranked' | 'Iron' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum' 
+export type RankName =
+    | 'Unranked' | 'Iron' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum'
     | 'Diamond' | 'Nova' | 'Supernova' | 'Singularity';
 
 export const RANKS: RankName[] = [
@@ -33,15 +33,15 @@ const RANK_VALUES = {
 } as const;
 
 export const colorByRank: Record<string, string> = {
-    Unranked:'bg-neutral-300 text-neutral-800',
-    Bronze:'bg-amber-700 text-white',
-    Silver:'bg-slate-300 text-slate-900',
-    Gold:'bg-amber-200 text-yellow-700',
-    Platinum:'bg-teal-200 text-teal-600',
-    Diamond:'bg-indigo-300 text-blue-700',
-    Nova:'bg-rose-300 text-rose-600',
-    Supernova:'bg-violet-500 text-violet-50',
-    Singularity:'bg-pearlescent shiny-glow text-neutral-900'
+    Unranked: 'bg-neutral-300 text-neutral-800',
+    Bronze: 'bg-amber-700 text-white',
+    Silver: 'bg-slate-300 text-slate-900',
+    Gold: 'bg-amber-200 text-yellow-700',
+    Platinum: 'bg-teal-200 text-teal-600',
+    Diamond: 'bg-indigo-300 text-blue-700',
+    Nova: 'bg-rose-300 text-rose-600',
+    Supernova: 'bg-violet-500 text-violet-50',
+    Singularity: 'bg-pearlescent shiny-glow text-neutral-900'
 };
 
 export const FAMILY_MOTIONS = {
@@ -51,55 +51,55 @@ export const FAMILY_MOTIONS = {
         'i', 'I', 'a', 'A', 'o', 'O', 'gi',
         'v', 'V', 'ctrl-v', 'gv'
     ],
-  
+
     // basic movement (hjkl)
     basicMovement: [
-      'h', 'j', 'k', 'l'
+        'h', 'j', 'k', 'l'
     ],
-  
+
     // horizontal movement (w, b, $, ^)
     horizontalMovement: [
-      'w', 'b', 'e', 'ge', 'W', 'B', 'E',
-      '0', '^', '$', '|',
-      'f{char}', 'F{char}', 't{char}', 'T{char}', ';', ','
+        'w', 'b', 'e', 'ge', 'W', 'B', 'E',
+        '0', '^', '$', '|',
+        'f{char}', 'F{char}', 't{char}', 'T{char}', ';', ','
     ],
-  
+
     // vertical movement ( {, }, %, gg, G )
     verticalMovement: [
-      '{', '}', '%', 'gg', 'G',
-      'H', 'M', 'L',
-      'ctrl-d', 'ctrl-u', 'ctrl-f', 'ctrl-b',
-      'zz', 'zt', 'zb'
+        '{', '}', '%', 'gg', 'G',
+        'H', 'M', 'L',
+        'ctrl-d', 'ctrl-u', 'ctrl-f', 'ctrl-b',
+        'zz', 'zt', 'zb'
     ],
-  
+
     // commands (d, c, y, v, x)
     commands: [
-      'd', 'c', 'y', 'x',
-      'r', '~', 'J',
-      's', 'S', 'C', 'D', 'Y',
-      'p', 'P'
+        'd', 'c', 'y', 'x',
+        'r', '~', 'J',
+        's', 'S', 'C', 'D', 'Y',
+        'p', 'P'
     ],
-  
+
     // undo/redo (u, Ctrl-r)
     undoRedo: [
-      'u', 'ctrl-r'
+        'u', 'ctrl-r'
     ],
-  
+
     // searching (/, *, #, n, N)
     searching: [
-      '/', '*', '#', 'n', 'N'
+        '/', '*', '#', 'n', 'N'
     ],
-  
+
     // combos (command count motion, numbered hjkl)
     combos: [
-      '{count}',
-      'count-hjkl',
-      'd{motion}', 'c{motion}', 'y{motion}',
-      'g~{motion}', 'gu{motion}', 'gU{motion}',
-      'df{char}', 'dt{char}', 'cf{char}', 'ct{char}',
-      'viw', 'ciw', 'daw', 
-      'iW', 'aW', 'ip', 'ap', 'is', 'as', 'it', 'at', 'i"', 'a"', "i'", "a'",
-      '.'
+        '{count}',
+        'count-hjkl',
+        'd{motion}', 'c{motion}', 'y{motion}',
+        'g~{motion}', 'gu{motion}', 'gU{motion}',
+        'df{char}', 'dt{char}', 'cf{char}', 'ct{char}',
+        'viw', 'ciw', 'daw',
+        'iW', 'aW', 'ip', 'ap', 'is', 'as', 'it', 'at', 'i"', 'a"', "i'", "a'",
+        '.'
     ]
 } as const;
 
@@ -116,9 +116,9 @@ export const FAMILY_LABEL: Record<FamilyKey, string> = {
     searching: 'Searching',
     combos: 'Combos'
 };
-  
+
 export const MOTIONS: Motion[] = (Object.keys(FAMILY_MOTIONS) as FamilyKey[])
-  .flatMap((k) => [...FAMILY_MOTIONS[k]]);
+    .flatMap((k) => [...FAMILY_MOTIONS[k]]);
 
 export const FAMILY_WEIGHT: Record<FamilyKey, number> = {
     modes: 20,
@@ -134,9 +134,9 @@ export const FAMILY_WEIGHT: Record<FamilyKey, number> = {
 export const MOTION_WEIGHT: Record<Motion, number> = (() => {
     const out = new Map<Motion, number>();
     (Object.keys(FAMILY_MOTIONS) as FamilyKey[]).forEach((fam) => {
-      const motions = FAMILY_MOTIONS[fam];
-      const per = FAMILY_WEIGHT[fam] / motions.length;
-      motions.forEach((m) => out.set(m, per));
+        const motions = FAMILY_MOTIONS[fam];
+        const per = FAMILY_WEIGHT[fam] / motions.length;
+        motions.forEach((m) => out.set(m, per));
     });
 
     return Object.fromEntries(out) as any as Record<Motion, number>;
@@ -210,9 +210,9 @@ export function knownSet(mastery: Mastery, params?: KnownParams): Set<Motion> {
 export function coverage(M: Mastery): number {
     let num = 0, den = 0;
     for (const m of MOTIONS) {
-      const w = MOTION_WEIGHT[m];
-      den += w;
-      num += w * Math.min(1, M[m] ?? 0);
+        const w = MOTION_WEIGHT[m];
+        den += w;
+        num += w * Math.min(1, M[m] ?? 0);
     }
     return den ? num / den : 0;
 }
@@ -220,12 +220,12 @@ export function coverage(M: Mastery): number {
 export function coverageByFamily(mastery: Mastery): Record<FamilyKey, number> {
     const out = {} as Record<FamilyKey, number>;
     (Object.keys(FAMILY_MOTIONS) as FamilyKey[]).forEach((fam) => {
-      const motions = FAMILY_MOTIONS[fam];
-      const wFam = FAMILY_WEIGHT[fam];
-      if (wFam <= 0) { out[fam] = 0; return; }
-      const share = wFam / motions.length;
-      const num = motions.reduce((s, m) => s + share * Math.min(1, mastery[m] ?? 0), 0);
-      out[fam] = num / wFam;
+        const motions = FAMILY_MOTIONS[fam];
+        const wFam = FAMILY_WEIGHT[fam];
+        if (wFam <= 0) { out[fam] = 0; return; }
+        const share = wFam / motions.length;
+        const num = motions.reduce((s, m) => s + share * Math.min(1, mastery[m] ?? 0), 0);
+        out[fam] = num / wFam;
     });
     return out;
 }
@@ -233,7 +233,7 @@ export function coverageByFamily(mastery: Mastery): Record<FamilyKey, number> {
 export function meetsDiamondFloors(M: Mastery): boolean {
     const famCov = coverageByFamily(M);
     for (const [fam, min] of Object.entries(DIAMOND_FAMILY_FLOORS) as [FamilyKey, number][]) {
-      if ((famCov[fam] ?? 0) < min) return false;
+        if ((famCov[fam] ?? 0) < min) return false;
     }
     return true;
 }
@@ -241,28 +241,28 @@ export function meetsDiamondFloors(M: Mastery): boolean {
 export type RankId = keyof typeof RANK_VALUES;
 
 const ORDER: RankId[] = Object.entries(RANK_VALUES)
-  .sort((a, b) => a[1] - b[1])
-  .map(([k]) => k as RankId);
+    .sort((a, b) => a[1] - b[1])
+    .map(([k]) => k as RankId);
 
 export function rankIdFromRating(rating: number): RankId {
-  let current = ORDER[0];
-  for (const key of ORDER) {
-    if (rating >= RANK_VALUES[key]) current = key;
-    else break;
-  }
-  return current;
+    let current = ORDER[0];
+    for (const key of ORDER) {
+        if (rating >= RANK_VALUES[key]) current = key;
+        else break;
+    }
+    return current;
 }
 
 export function lpForRating(rating: number) {
     let current: RankId = ORDER[0];
     for (const id of ORDER) {
-      if (rating >= RANK_VALUES[id]) current = id;
-      else break;
+        if (rating >= RANK_VALUES[id]) current = id;
+        else break;
     }
     const i = ORDER.indexOf(current);
     const floor = RANK_VALUES[current];
     const next = i < ORDER.length - 1 ? RANK_VALUES[ORDER[i + 1]] : null;
-    const span = next ? next - floor : null; // e.g., 100 for most subtiers, 200 for Nova→Supernova
+    const span = next ? next - floor : null;
     const lp = Math.max(0, rating - floor);
     return { rankId: current, floor, next, span, lp };
 }
@@ -270,16 +270,16 @@ export function lpForRating(rating: number) {
 function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 export function prettyRank(rankId: RankId): string {
-  if (rankId === 'nova' || rankId === 'supernova' || rankId === 'singularity') {
+    if (rankId === 'nova' || rankId === 'supernova' || rankId === 'singularity') {
+        return cap(rankId);
+    }
+    const m = rankId.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
+    if (m) {
+        const tierRoman = { '1': 'I', '2': 'II', '3': 'III', '4': 'IV' } as const;
+        return `${cap(m[1])} ${tierRoman[m[2] as keyof typeof tierRoman]}`;
+    }
+    // Fallback
     return cap(rankId);
-  }
-  const m = rankId.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
-  if (m) {
-    const tierRoman = { '1': 'I', '2': 'II', '3': 'III', '4': 'IV' } as const;
-    return `${cap(m[1])} ${tierRoman[m[2] as keyof typeof tierRoman]}`;
-  }
-  // Fallback
-  return cap(rankId);
 }
 
 export function nextRankId(current: RankId): RankId | null {
@@ -294,7 +294,7 @@ export function abbrevFromRankId(id: RankId): string {
     if (id === 'singularity') return 'SG';
     const m = id.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
     if (m) {
-        const map: Record<string,string> = { bronze:'B', silver:'S', gold:'G', platinum:'P', diamond:'D' };
+        const map: Record<string, string> = { bronze: 'B', silver: 'S', gold: 'G', platinum: 'P', diamond: 'D' };
         return `${map[m[1].toLowerCase()]}${m[2]}`;
     }
     return id;
@@ -308,30 +308,30 @@ export interface RankInputs {
 
 export function rankFromInputs(inputs: RankInputs): RankName {
     const cov = coverage(inputs.mastery);
-  
+
     // Pre-Diamond tiers by coverage
     if (cov < COVERAGE_THRESHOLDS.Iron) return 'Unranked';
     if (cov < COVERAGE_THRESHOLDS.Bronze) return 'Iron';
     if (cov < COVERAGE_THRESHOLDS.Silver) return 'Bronze';
     if (cov < COVERAGE_THRESHOLDS.Gold) return 'Silver';
     if (cov < COVERAGE_THRESHOLDS.Platinum) return 'Gold';
-  
+
     if (cov < COVERAGE_THRESHOLDS.Diamond || !meetsDiamondFloors(inputs.mastery)) return 'Platinum';
-  
+
     const skill = inputs.skillIndex ?? 0;
     if (skill < SKILL_THRESHOLDS.Nova) return 'Diamond';
     if (skill < SKILL_THRESHOLDS.Supernova) return 'Nova';
     if (skill < SKILL_THRESHOLDS.Singularity) return 'Supernova';
-  
+
     const stable = inputs.skillStdDev === undefined ||
-                   inputs.skillStdDev <= SKILL_THRESHOLDS.SingularityStabilityMaxStdDev;
+        inputs.skillStdDev <= SKILL_THRESHOLDS.SingularityStabilityMaxStdDev;
     return stable ? 'Singularity' : 'Supernova';
 }
 
 export function efficiencyBlend(kUser: number, kOptGlobal: number, kOptKnown: number, rank: RankName): number {
     const clamp = (x: number) => Math.max(0, Math.min(1, x));
     const E_global = clamp(kOptGlobal / Math.max(1, kUser));
-    const E_known  = clamp(kOptKnown  / Math.max(1, kUser));
+    const E_known = clamp(kOptKnown / Math.max(1, kUser));
     const lambda = EFFICIENCY_LAMBDA_BY_RANK[rank] ?? 0;
     return clamp(lambda * E_global + (1 - lambda) * E_known);
 }
@@ -339,9 +339,9 @@ export function efficiencyBlend(kUser: number, kOptGlobal: number, kOptKnown: nu
 export function familiesVisibleAt(rank: RankName): FamilyKey[] {
     const idx = RANKS.indexOf(rank);
     return (Object.keys(FAMILY_UNLOCK_RANK) as FamilyKey[])
-      .filter(f => RANKS.indexOf(FAMILY_UNLOCK_RANK[f]) <= idx);
+        .filter(f => RANKS.indexOf(FAMILY_UNLOCK_RANK[f]) <= idx);
 }
-  
+
 export const MOTION_FAMILY = Object.fromEntries(
     (Object.keys(FAMILY_MOTIONS) as FamilyKey[]).flatMap(f =>
         FAMILY_MOTIONS[f].map(m => [m as Motion, f] as const)

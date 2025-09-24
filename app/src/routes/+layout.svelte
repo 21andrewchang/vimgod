@@ -10,8 +10,8 @@
 
 	import { supabase } from '$lib/supabaseClient';
 	import { user } from '$lib/stores/auth';
-import { refreshProfile } from '$lib/stores/profile';
-import { invalidate } from '$app/navigation';
+	import { refreshProfile } from '$lib/stores/profile';
+	import { invalidate } from '$app/navigation';
 
 	type UsernameAvailability = 'unknown' | 'checking' | 'available' | 'unavailable';
 
@@ -37,11 +37,11 @@ import { invalidate } from '$app/navigation';
 	let submittingUsername = $state(false);
 	let usernameInputRef: HTMLInputElement | null = null;
 	let usernameAvailability: UsernameAvailability = $state('unknown');
-let availabilityHover = $state(false);
-let usernameCheckVersion = 0;
-let lastCheckedUsername = '';
+	let availabilityHover = $state(false);
+	let usernameCheckVersion = 0;
+	let lastCheckedUsername = '';
 
-const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
+	const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 	const currentUserId = $derived($page.data?.user?.id ?? null);
 
 	$effect(() => {
@@ -417,15 +417,23 @@ const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 {/if}
 
 {#if showUsernameModal}
-	<div class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+	<div
+		class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+	>
 		<form
 			class="relative w-[90%] max-w-sm rounded-xl border border-dashed border-[#3f3f48] bg-[#0a0a0a] p-6 shadow-2xl transition-all duration-300"
 			on:submit|preventDefault={submitUsername}
 		>
-			<h2 class="text-lg font-semibold text-neutral-100" style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+			<h2
+				class="text-lg font-semibold text-neutral-100"
+				style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+			>
 				choose a username
 			</h2>
-			<p class="mt-2 text-sm text-neutral-400" style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+			<p
+				class="mt-2 text-sm text-neutral-400"
+				style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+			>
 				your username can include letters, numbers, periods, and underscores (max 16 characters).
 			</p>
 			<div class="mt-4">
@@ -444,7 +452,7 @@ const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 					{#if usernameAvailability !== 'unknown'}
 						<button
 							type="button"
-							class="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full text-sm font-bold transition focus:outline-none"
+							class="absolute right-2 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full text-sm font-bold transition focus:outline-none"
 							style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
 							on:mouseenter={() => (availabilityHover = true)}
 							on:mouseleave={() => (availabilityHover = false)}
@@ -452,19 +460,35 @@ const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 						>
 							{#if usernameAvailability === 'available'}
 								<span class="relative block h-4 w-4">
-									<span class="absolute left-[55%] top-0 h-full w-[2px] -translate-x-1/2 rotate-45 rounded-full bg-emerald-400" />
-									<span class="absolute left-[18%] bottom-[3px] h-[2px] w-[50%] -translate-x-2/3 -translate-y-1/2 -rotate-135 rounded-full bg-emerald-400" />
+									<span
+										class="absolute left-[55%] top-0 h-full w-[2px] -translate-x-1/2 rotate-45 rounded-full bg-emerald-400"
+									/>
+									<span
+										class="-rotate-135 absolute bottom-[3px] left-[18%] h-[2px] w-[50%] -translate-x-2/3 -translate-y-1/2 rounded-full bg-emerald-400"
+									/>
 								</span>
 							{:else if usernameAvailability === 'unavailable'}
 								<span class="relative block h-4 w-4">
-									<span class="absolute left-1/2 top-1/2 h-[2px] w-full -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-rose-400" />
-									<span class="absolute left-1/2 top-1/2 h-[2px] w-full -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-rose-400" />
+									<span
+										class="absolute left-1/2 top-1/2 h-[2px] w-full -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-rose-400"
+									/>
+									<span
+										class="absolute left-1/2 top-1/2 h-[2px] w-full -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-rose-400"
+									/>
 								</span>
 							{:else}
 								<span class="flex items-center gap-[3px]">
-									<span class="h-0.5 w-0.5 rounded-full bg-neutral-400 animate-[pulse_1.2s_ease-in-out_infinite]" />
-									<span class="h-0.5 w-0.5 rounded-full bg-neutral-400 animate-[pulse_1.2s_ease-in-out_infinite]" style="animation-delay:0.15s;" />
-									<span class="h-0.5 w-0.5 rounded-full bg-neutral-400 animate-[pulse_1.2s_ease-in-out_infinite]" style="animation-delay:0.3s;" />
+									<span
+										class="h-0.5 w-0.5 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-neutral-400"
+									/>
+									<span
+										class="h-0.5 w-0.5 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-neutral-400"
+										style="animation-delay:0.15s;"
+									/>
+									<span
+										class="h-0.5 w-0.5 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-neutral-400"
+										style="animation-delay:0.3s;"
+									/>
 								</span>
 							{/if}
 						</button>
@@ -480,21 +504,22 @@ const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 					{/if}
 				</div>
 				{#if usernameError}
-					<p class="mt-2 text-xs text-rose-400" style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
+					<p
+						class="mt-2 text-xs text-rose-400"
+						style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+					>
 						{usernameError}
 					</p>
 				{/if}
 			</div>
-		<button
-			type="submit"
-			class="mt-5 inline-flex w-full items-center justify-center rounded bg-neutral-200 px-3 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-400"
-			style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
-			disabled={
-				submittingUsername ||
-				!usernameInput.trim() ||
-				usernameAvailability !== 'available'
-			}
-		>
+			<button
+				type="submit"
+				class="mt-5 inline-flex w-full items-center justify-center rounded bg-neutral-200 px-3 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-400"
+				style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+				disabled={submittingUsername ||
+					!usernameInput.trim() ||
+					usernameAvailability !== 'available'}
+			>
 				{submittingUsername ? 'saving...' : 'save username'}
 			</button>
 		</form>
