@@ -18,7 +18,7 @@
   
 <div
     bind:this={cardElement}
-    class="relative border border-dashed h-full transition-all duration-300 dark:border-zinc-700 border-zinc-400"
+    class={`relative border border-dashed h-full transition-all duration-300 dark:border-zinc-700 border-zinc-400 ${className}`.trim()}
     style="background:#0a0a0a; position: relative;"
     role="presentation"
     onmouseenter={handleMouseEnter}
@@ -35,18 +35,18 @@
     <CardIcon class="-bottom-2 -left-2" />
     <CardIcon class="-bottom-2 -right-2" />
 
-    <div class="absolute top-3 right-3 z-20">
+    <div class="absolute inset-y-0 right-3 z-20 flex items-center">
         <slot name="corner" />
     </div>
   
     <div class="p-4 flex flex-col justify-center h-full relative z-10 item-center">
       {#if value !== undefined}
-        <div class="mt-2 mb-2 text-[11px] tracking-[0.08em]" style="color:#c9ced6; font-family:
+        <div class="statcard-label mt-2 mb-2 text-[11px] tracking-[0.08em]" style="color:#c9ced6; font-family:
             'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;">
             {label}
         </div>
         <div
-            class="mt-1 text-[1.30rem] font-light"
+            class="statcard-value mt-1 text-[1.30rem] font-light"
             style="color:#e8e8e8; font-family:
             'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
         >
@@ -54,7 +54,7 @@
         </div>
       {:else}
         <div
-            class="mt-2 text-[11px] tracking-[0.08em]"
+            class="statcard-label mt-2 text-[11px] tracking-[0.08em]"
             style="top: 1px; color:#c9ced6; font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
         >
             {label}

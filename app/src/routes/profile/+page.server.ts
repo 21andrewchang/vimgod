@@ -78,7 +78,9 @@ export const load: PageServerLoad = async ({ locals }) => {
         userData = inserted.data;
     }
 
-    const displayName = userData.name ?? user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'Player';
+    const normalizedName = userData.name?.trim() || null;
+    const fallbackName = user.user_metadata?.name ?? user.email?.split('@')[0] ?? 'Player';
+    const displayName = normalizedName ?? fallbackName;
     const xp = userData.xp ?? 0;
     const { level, experience, maxExperience } = levelFromXP(xp);
     const rankId = rankIdFromRating(userData.rating ?? 1500);
@@ -109,11 +111,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     const known = knownSet(mastery);
     const isKnown = (m: Motion) => known.has(m);
   
-    const motionCounts: Record<string, number> = {};
-    for (const m of MOTIONS) {
-      motionCounts[m] = (isKnown(m) ? 30 + Math.floor(Math.random() * 90) : Math.floor(Math.random() * 12));
-    }
-  
     // Fetch match history from database
     const { data: matchHistory, error: historyError } = await locals.supabase
       .from('match_history')
@@ -125,12 +122,103 @@ export const load: PageServerLoad = async ({ locals }) => {
       console.error('Error fetching match history:', historyError);
     }
 
+    const { data: globalMatchData, error: globalError } = await locals.supabase
+      .from('match_history')
+      .select('avg_speed, apm, reaction_time, is_dodge');
+
+    if (globalError) {
+      console.error('Error fetching global match metrics:', globalError);
+    }
+
+    const globalAvgSpeedValues = (globalMatchData ?? [])
+      .filter((match) => match?.is_dodge !== true)
+      .map((match) => (typeof match.avg_speed === 'number' ? match.avg_speed : null))
+      .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+    const globalApmValues = (globalMatchData ?? [])
+      .filter((match) => match?.is_dodge !== true)
+      .map((match) => (typeof match.apm === 'number' ? match.apm : null))
+      .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+    const globalReactionValues = (globalMatchData ?? [])
+      .filter((match) => match?.is_dodge !== true)
+      .map((match) => (typeof match.reaction_time === 'number' ? match.reaction_time : null))
+      .filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+
 
     // Send raw match history to client for client-side date processing
     const rawMatchHistory = matchHistory || [];
 
-    // Convert match history to history format
-    const history = (matchHistory || []).map((match, index) => {
+    // Work with the 50 most recent matches consistently
+    const recentMatches = (matchHistory || []).slice(0, 50);
+
+    const personalBests = (() => {
+      const allMatches = matchHistory ?? [];
+
+      const fastestAvgSpeed = allMatches.reduce<number | null>((best, match) => {
+        if (match?.is_dodge) return best;
+        const value = typeof match.avg_speed === 'number' ? match.avg_speed : null;
+        if (value === null || !Number.isFinite(value) || value <= 0) return best;
+        return best === null || value < best ? value : best;
+      }, null);
+
+      const highestApm = allMatches.reduce<number | null>((best, match) => {
+        if (match?.is_dodge) return best;
+        const value = typeof match.apm === 'number' ? match.apm : null;
+        if (value === null || !Number.isFinite(value) || value <= 0) return best;
+        return best === null || value > best ? value : best;
+      }, null);
+
+      const fastestReaction = allMatches.reduce<number | null>((best, match) => {
+        if (match?.is_dodge) return best;
+        const value = typeof match.reaction_time === 'number' ? match.reaction_time : null;
+        if (value === null || !Number.isFinite(value) || value <= 0) return best;
+        return best === null || value < best ? value : best;
+      }, null);
+
+      const percentile = (
+        bestValue: number | null,
+        values: number[],
+        direction: 'lower' | 'higher'
+      ): number | null => {
+        if (bestValue === null || values.length === 0) return null;
+        const total = values.length;
+        const count = values.reduce((acc, val) => {
+          if (!Number.isFinite(val) || val <= 0) return acc;
+          if (direction === 'lower') {
+            return acc + (val <= bestValue ? 1 : 0);
+          }
+          return acc + (val >= bestValue ? 1 : 0);
+        }, 0);
+        if (count === 0) return null;
+        const percent = (count / total) * 100;
+        const clamped = Math.min(100, Math.max(0, percent));
+        return clamped;
+      };
+
+      return {
+        fastestAvgSpeedMs: fastestAvgSpeed,
+        fastestAvgSpeedPercentile: percentile(fastestAvgSpeed, globalAvgSpeedValues, 'lower'),
+        highestApm,
+        highestApmPercentile: percentile(highestApm, globalApmValues, 'higher'),
+        fastestReactionMs: fastestReaction,
+        fastestReactionPercentile: percentile(fastestReaction, globalReactionValues, 'lower')
+      } as const;
+    })();
+
+    // Aggregate motion counts from recent matches (motion_counts column)
+    const motionCounts: Record<string, number> = {};
+    for (const m of MOTIONS) motionCounts[m] = 0;
+    for (const match of recentMatches) {
+      if (match?.is_dodge) continue;
+      const counts = match.motion_counts as Record<string, number> | null | undefined;
+      if (!counts || typeof counts !== 'object') continue;
+      for (const [motion, value] of Object.entries(counts)) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+        motionCounts[motion] = (motionCounts[motion] ?? 0) + value;
+      }
+    }
+
+    // Convert match history to history format (limit to 50 most recent matches)
+    const history = recentMatches.map((match, index) => {
       let result: 'win' | 'loss' | 'draw';
       if (match.lp_delta > 0) {
         result = 'win';
@@ -156,8 +244,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     const draws = history.filter(h => h.result === 'draw').length;
     
     // Calculate average APM from past 25 games (excluding dodged matches with apm = 0)
-    const recentMatches = matchHistory ? matchHistory.slice(0, 25) : [];
-    const validMatches = recentMatches.filter(match => match.apm && match.apm > 0);
+    const validMatches = recentMatches.filter(match => !match?.is_dodge && match.apm && match.apm > 0);
     const totalAPM = validMatches.reduce((sum, match) => sum + match.apm, 0);
     
     const totals = {
@@ -180,14 +267,19 @@ export const load: PageServerLoad = async ({ locals }) => {
       };
     });
   
-    return {
-      profileUser: appUser,
+  return {
+      profileUser: {
+        ...appUser,
+        displayName: normalizedName,
+        fallbackName
+      },
       mastery,
       knownList: Array.from(known),
       motionCounts,
       motionsGrid,
       rawMatchHistory,
       history,
-      totals
+      totals,
+      personalBests
     };
 };

@@ -64,8 +64,8 @@
                             <span class={m.result==='win' ? 'text-emerald-400' : m.result==='loss' ? 'text-rose-400' : 'text-yellow-400'}>{m.result}</span>
                         </td>
                         <td class="p-3 text-right text-xs">
-                            <span class={m.eloDelta>=0 ? 'text-emerald-400' : 'text-rose-400'}>
-                                {m.eloDelta>=0 ? '+' : ''}{m.eloDelta}
+                            <span class={m.result === 'draw' ? 'text-yellow-400' : m.eloDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                {m.eloDelta >= 0 ? '+' : ''}{m.eloDelta}
                             </span>
                         </td>
                         <td class="p-3 text-right text-xs" style="color:#e8e8e8;">{m.avgSpeed ? `${(m.avgSpeed / 1000).toFixed(2)}s` : '—'}</td>

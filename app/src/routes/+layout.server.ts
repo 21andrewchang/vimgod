@@ -18,12 +18,16 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
     .eq('id', user.id)
     .maybeSingle();
 
+  const rawDbName = typeof row?.name === 'string' ? row.name : null;
+  const normalizedDbName = rawDbName?.trim() || null;
+  const hasDbName = normalizedDbName !== null;
   // Prefer DB name, then Auth metadata, then email local-part
-  const name =
-    row?.name ??
+  const fallbackName =
     user.user_metadata?.name ??
     user.email?.split('@')[0] ??
     'Player';
+
+  const name = hasDbName ? normalizedDbName : fallbackName;
 
   return {
     user: {
@@ -33,6 +37,7 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
       rating: row?.rating ?? null,
       hidden_mmr: row?.hidden_mmr ?? null,
       xp: row?.xp ?? 0, // handy if you want it globally
+      requiresUsername: !hasDbName,
     }
   };
 };

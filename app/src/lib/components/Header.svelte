@@ -5,10 +5,13 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
-	const { variant = 'inline', size = 'large' } = $props<{
+	const { variant = 'inline', size = 'large', fixed = false } = $props<{
 		variant?: 'fixed' | 'inline';
 		size?: 'small' | 'large';
+		fixed?: boolean;
 	}>();
+
+	const effectiveVariant = $derived(fixed ? 'fixed' : variant);
 
 	let isHeaderHovered = $state(false);
 	let isUserIconHovered = $state(false);
@@ -35,7 +38,7 @@
 
 	/* page-aware logo interactivity */
 	const pathname = $derived($page.url?.pathname ?? '/');
-	const isHome = $derived(pathname === '/' || pathname === '');
+	const isHome = $derived(pathname === '/');
 	const isProfile = $derived(pathname.startsWith('/profile'));
 	const isMotions = $derived(pathname.startsWith('/motions'));
 	const logoIsInteractive = $derived(isProfile || isMotions);
@@ -124,16 +127,16 @@
 	});
 
 	const containerClass = $derived(
-		variant === 'fixed'
+		effectiveVariant === 'fixed'
 			? 'fixed left-8 top-6 z-50 flex items-center justify-between w-full max-w-[calc(100vw-4rem)]'
-			: 'flex items-center justify-between'
+			: 'relative z-50 left-8 top-6 flex items-center justify-between w-full max-w-[calc(100vw-4rem)]'
 	);
 
 	const logoClass = $derived(
-		variant === 'fixed'
-			? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-			: `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-	);
+    effectiveVariant === 'fixed'
+      ? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+      : `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+  );
 
 	const greaterThanClass = $derived(
 		size === 'small' ? 'text-2xl font-normal text-purple-400' : 'text-4xl font-normal'
@@ -152,9 +155,9 @@
 	<div class="flex flex-row items-center">
 		<div
 			class={logoClass}
-			{...logoIsInteractive
-				? { role: 'button', tabindex: '0', 'aria-label': 'Go to home page' }
-				: { role: 'img', tabindex: '-1', 'aria-label': 'vimgod' }}
+			role={logoIsInteractive ? 'button' : 'img'}
+			tabindex={logoIsInteractive ? 0 : -1}
+			aria-label={logoIsInteractive ? 'Go to home page' : 'vimgod'}
 			onmouseenter={handleHeaderMouseEnter}
 			onmouseleave={handleHeaderMouseLeave}
 			onclick={handleHeaderClick}
@@ -283,6 +286,7 @@
 			{/if}
 		</div>
 	</div>
+	
 </div>
 
 <style>
