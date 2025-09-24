@@ -12,7 +12,7 @@
 
 	let signedIn = false;
 	$: signedIn = Boolean($user);
-	const match = createMatchController({ totalRounds: signedIn ? 20 : 10 });
+	const match = createMatchController({ totalRounds: 20 });
 
 	if (browser) {
 		const stored = localStorage.getItem(DODGE_STORAGE_KEY);

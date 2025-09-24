@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
 
-	const { fixed = true } = $props<{ fixed?: boolean }>();
+	const { fixed = true, minimal = false } = $props<{ fixed?: boolean, minimal?: boolean }>();
 
 	// Keycap style
 	const cap =
@@ -235,6 +235,7 @@
 			</div>
 
 			<!-- Center shortcuts -->
+			{#if !minimal}
 			<div class="absolute bottom-16 left-1/2 -translate-x-1/2">
 				<div class="flex items-center gap-16 text-[10px]">
 					<div class="group flex gap-2">
@@ -255,6 +256,7 @@
 					</div>
 				</div>
 			</div>
+			{/if}
 
 			<!-- Copyright -->
 			<div>
