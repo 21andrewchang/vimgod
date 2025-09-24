@@ -1,15 +1,16 @@
 <script lang="ts">
-	import '../app.css';
-	import { onMount, setContext, tick } from 'svelte';
-	import { browser } from '$app/environment';
-	import Header from '$lib/components/Header.svelte';
-	import { get, writable } from 'svelte/store';
-	import { page } from '$app/stores';
+import '../app.css';
+import { onMount, setContext, tick } from 'svelte';
+import { browser } from '$app/environment';
+import Header from '$lib/components/Header.svelte';
+import Footer from '$lib/components/Footer.svelte';
+import { get, writable } from 'svelte/store';
+import { page } from '$app/stores';
 import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
-	import type { DodgeSnapshot } from '$lib/reloadGuard';
+import type { DodgeSnapshot } from '$lib/reloadGuard';
 
-	import { supabase } from '$lib/supabaseClient';
-	import { user } from '$lib/stores/auth';
+import { supabase } from '$lib/supabaseClient';
+import { user } from '$lib/stores/auth';
 import { refreshProfile } from '$lib/stores/profile';
 import { invalidate } from '$app/navigation';
 
@@ -409,6 +410,11 @@ const requiresUsername = $derived(Boolean($page.data?.user?.requiresUsername));
 		<Header fixed size="small" />
 	{/if}
 	{@render children()}
+	{#if $page.url.pathname.startsWith('/profile')}
+		<Footer />
+	{:else}
+		<Footer fixed minimal={false} />
+	{/if}
 </div>
 
 {#if $reloadWarningVisible}

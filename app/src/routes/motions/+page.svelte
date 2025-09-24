@@ -1,6 +1,7 @@
 <script lang="ts">
-	import Footer from '$lib/components/Footer.svelte';
-	import Tutorial from '$lib/components/Tutorial.svelte';
+import Footer from '$lib/components/Footer.svelte';
+import TutorialEditor, { type TutorialStep } from '$lib/components/TutorialEditor.svelte';
+import tutorialText from '$lib/tutorial.svelte.txt?raw';
 	import { user, signInWithGoogle } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
 	import { prettyRank } from '$lib/data/ranks';
@@ -160,17 +161,17 @@
 		Undo: 22
 	};
 
-	const rankRequirements: Record<string, { rankId: RankId; rating: number }> = {
-		'select line': { rankId: 'Platinum 4', rating: 1200 },
-		'select in word': { rankId: 'Platinum 4', rating: 1200 },
-		'select in ()': { rankId: 'Platinum 4', rating: 1200 },
-		'select in <>': { rankId: 'Platinum 4', rating: 1200 },
-		delete: { rankId: 'Diamond 4', rating: 1600 },
-		'delete in ()': { rankId: 'Diamond 4', rating: 1600 },
-		'delete in <>': { rankId: 'Diamond 4', rating: 1600 },
-		'delete line': { rankId: 'Diamond 4', rating: 1600 },
-		Undo: { rankId: 'Diamond 4', rating: 1600 }
-	};
+  const rankRequirements: Record<string, { rankId: RankId; rating: number }> = {
+    'select line': { rankId: 'platinum4', rating: 1200 },
+    'select in word': { rankId: 'platinum4', rating: 1200 },
+    'select in ()': { rankId: 'platinum4', rating: 1200 },
+    'select in <>': { rankId: 'platinum4', rating: 1200 },
+    delete: { rankId: 'diamond4', rating: 1600 },
+    'delete in ()': { rankId: 'diamond4', rating: 1600 },
+    'delete in <>': { rankId: 'diamond4', rating: 1600 },
+    'delete line': { rankId: 'diamond4', rating: 1600 },
+    Undo: { rankId: 'diamond4', rating: 1600 }
+  };
 
 	const requiredLevelFor = (c: Combo): number => levelByLabel[c.label] ?? 2;
 
@@ -394,11 +395,13 @@
 				</span>
 			</div>
 		</div>
-	{:else}
-		<Tutorial />
-	{/if}
+{:else}
+	<TutorialEditor
+		initialText={tutorialText}
+		steps={[] as TutorialStep[]}
+	/>
+{/if}
 
-	<Footer minimal={true} />
 </main>
 
 <style>

@@ -267,7 +267,6 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 
 </div>
 
-<Footer fixed={false} />
 
 <style>
   :global(.pb-card-compact .statcard-label) {

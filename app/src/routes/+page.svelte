@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Footer from '$lib/components/Footer.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
@@ -128,7 +127,6 @@ onMount(() => {
 	{:else}
 		<MatchResults {match} />
 	{/if}
-	<Footer />
 </main>
 
 <style>

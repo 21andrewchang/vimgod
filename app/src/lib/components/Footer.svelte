@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
     import { browser } from '$app/environment';
 
-	const { fixed = true, minimal = false } = $props<{ fixed?: boolean, minimal?: boolean }>();
+const { fixed = false, minimal = false } = $props<{ fixed?: boolean, minimal?: boolean }>();
 
 	// Keycap style
 	const cap =
