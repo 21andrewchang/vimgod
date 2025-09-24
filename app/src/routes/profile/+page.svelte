@@ -39,6 +39,23 @@
 
 	import StatCard from '$lib/components/StatCard.svelte';
 	import ProfileCard from '$lib/components/ProfileCard.svelte';
+	import { page } from '$app/stores';
+
+    const normalizeName = (value?: string | null) => {
+        if (typeof value !== 'string') return null;
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+    };
+
+const layoutUser = $derived($page.data?.user ?? null);
+
+const profileDisplayName = $derived<string>(
+    normalizeName(layoutUser?.name) ??
+    normalizeName(profileUser.displayName ?? profileUser.name ?? null) ??
+    normalizeName(layoutUser?.user_metadata?.name ?? null) ??
+    layoutUser?.email?.split?.('@')[0] ??
+    'Player'
+);
 
     const rating = profileUser.elo ?? 0;
 
@@ -149,7 +166,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
     <div class="grid grid-cols-1 md:grid-cols-11 gap-4">
         <div class="md:col-span-5">
             <ProfileCard 
-                userName={profileUser.name} 
+                userName={profileDisplayName} 
                 rank={profileUser.rank}
                 rankName={profileUser.rankName}
                 level={profileUser.level}

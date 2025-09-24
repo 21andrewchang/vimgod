@@ -6,7 +6,7 @@
 	import { get } from 'svelte/store';
 	import type { MatchController, MatchState } from '$lib/match/match';
 	import { supabase } from '$lib/supabaseClient';
-	import { user, signInWithGoogle, setInitialRank } from '$lib/stores/auth';
+	import { user, signInWithGoogle, setInitialRank, increaseXp } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
     import { Tween, prefersReducedMotion } from 'svelte/motion';
     import { cubicOut } from 'svelte/easing';
@@ -293,6 +293,16 @@
 		}
 
 		wroteHistoryOnce = true;
+
+		// Award XP for completed ranked matches (skip dodges)
+		if (signedIn && state.outcome !== 'dodge') {
+			try {
+				const updatedXp = await increaseXp(10);
+				profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
+			} catch (xpErr) {
+				console.error('Failed to award XP', xpErr);
+			}
+		}
 
 		// ---- keep UI in sync immediately, then reconcile with DB ----
 		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : computedEndElo;
