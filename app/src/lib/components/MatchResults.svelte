@@ -8,6 +8,7 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { user, signInWithGoogle, setInitialRank, increaseXp } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
+	import { matchStatus } from '$lib/stores/matchStatus';
 	import { Tween, prefersReducedMotion } from 'svelte/motion';
 	import { cubicOut } from 'svelte/easing';
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
@@ -94,9 +95,11 @@
 			clearTimeout(levelSlideTimer);
 			levelSlideTimer = null;
 		}
+		matchStatus.set('idle');
 	});
 
 	onMount(() => {
+		matchStatus.set('complete');
 		eloTween.set($profile?.rating ?? 0, { duration: 0 });
 		void refreshProfile();
 	});

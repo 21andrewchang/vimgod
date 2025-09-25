@@ -42,7 +42,6 @@
 
 	/* page-aware logo interactivity */
 	const pathname = $derived($page.url?.pathname ?? '/');
-	const isHome = $derived(pathname === '/');
 	const isProfile = $derived(pathname.startsWith('/profile'));
 	const isMotions = $derived(pathname.startsWith('/motions'));
 	const logoIsInteractive = $derived(isProfile || isMotions);
@@ -194,11 +193,9 @@
 		</div>
 	</div>
 
-	<div class="items-center text-center font-mono text-xs text-white/20">Platinum 4</div>
-
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
 			onclick={() => goto('/motions')}
 			aria-label="Open motions combos"
 		>
@@ -299,6 +296,27 @@
 	}
 	.user-dropdown.hiding {
 		animation: dropdownShrink 0.1s ease-in forwards;
+	}
+
+	.rank-display {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		width: fit-content;
+	}
+	.rank-progress {
+		height: 1px;
+		width: 100%;
+		background: rgba(255, 255, 255, 0.12);
+		position: relative;
+		overflow: hidden;
+		border-radius: 9999px;
+	}
+	.rank-progress__fill {
+		position: absolute;
+		inset: 0;
+		background: #666;
 	}
 
 	@keyframes dropdownExpand {

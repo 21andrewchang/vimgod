@@ -7,6 +7,7 @@
 	import { browser } from '$app/environment';
 	import { supabase } from '$lib/supabaseClient';
 	import { user } from '$lib/stores/auth';
+	import { matchStatus } from '$lib/stores/matchStatus';
 	import { createVimController, type Cursor, type Mode } from '$lib/vim/vim';
 	import RoundGoalBadge from '$lib/components/RoundGoalBadge.svelte';
 	import type {
@@ -1159,6 +1160,7 @@
 		signedIn = Boolean(get(user));
 		unsubscribeMatch = match.subscribe((value) => {
 			matchState = value;
+			matchStatus.set(value.status);
 			if (signedIn && value.status === 'idle' && warmupState !== 'countdown') {
 				enterWarmup();
 			}
@@ -1206,6 +1208,7 @@
 	});
 
 	onDestroy(() => {
+		matchStatus.set('idle');
 		if (!browser) return;
 		unsubscribeMatch?.();
 		unsubscribeUser?.();
