@@ -175,7 +175,6 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 
 <BgDarkTiles />
 
-
 <div class="relative w-full overflow-hidden">
 	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pb-4 pt-16">
 		<!-- Stats row -->
@@ -193,30 +192,41 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 			<div class="flex gap-4 md:col-span-6">
 				<div class="min-w-[120px] flex-[1.4]">
 					<StatCard label="rank" class="w-full">
-						<svelte:fragment slot="corner">
-						</svelte:fragment>
-            
+						<svelte:fragment slot="corner"></svelte:fragment>
+
 						<svelte:fragment slot="footer">
-							<div class="mb-2 flex w-full justify-between">
-								<div class="flex items-center gap-1 font-mono text-xs">
-									<span class={currentTextClass}>{abbrevFromRankId(rankId)}</span>
-									{#if nextId}
-										<span class="text-white">→</span>
-										<span class={nextTextClass}>{abbrevFromRankId(nextId)}</span>
-									{/if}
+							{#if profileUser.rank !== 'Unranked'}
+								<div class="mb-2 flex w-full justify-between">
+									<div class="flex items-center gap-1 font-mono text-xs">
+										<span class={currentTextClass}>{abbrevFromRankId(rankId)}</span>
+										{#if nextId}
+											<span class="text-white">→</span>
+											<span class={nextTextClass}>{abbrevFromRankId(nextId)}</span>
+										{/if}
+									</div>
+
+									<div class="text-right font-mono text-xs" style="color:#c9ced6;">
+										{lpMax ? `${lp}/${lpMax} LP` : `${lp}+ LP`}
+									</div>
 								</div>
 
-								<div class="text-right font-mono text-xs" style="color:#c9ced6;">
-									{lpMax ? `${lp}/${lpMax} LP` : `${lp}+ LP`}
+								<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-800/60">
+									<div
+										class="bg-pearlescent shiny-glow h-2 rounded-full"
+										style={`width:${lpPercent}%;`}
+									/>
 								</div>
-							</div>
-
-							<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-800/60">
-								<div
-									class="bg-pearlescent shiny-glow h-2 rounded-full"
-									style={`width:${lpPercent}%;`}
-								/>
-							</div>
+							{:else}
+								<div class="mb-2 text-center font-mono text-xs text-[#c9ced6]">
+									4/5 placements completed
+								</div>
+								<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-800/60">
+									<div
+										class="bg-pearlescent shiny-glow h-2 rounded-full"
+										style={`width:${lpPercent}%;`}
+									/>
+								</div>
+							{/if}
 						</svelte:fragment>
 					</StatCard>
 				</div>
@@ -297,4 +307,3 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 		margin-top: 0;
 	}
 </style>
-
