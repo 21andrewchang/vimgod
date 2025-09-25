@@ -329,7 +329,7 @@
 
 		const profileXp = $profile?.xp ?? 0;
 
-		if (state.status === 'complete') {
+		if (state.status === 'complete' && state.outcome !== 'dodge') {
 			if (!xpAnimationRan) {
 				xpAnimationRan = true;
 				xpBaseline = profileXp;
