@@ -2,7 +2,7 @@
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
 	import Graph from '$lib/components/Graph.svelte';
 	import { onDestroy, onMount } from 'svelte';
-	import { scale } from 'svelte/transition';
+	import { scale, slide } from 'svelte/transition';
 	import { get } from 'svelte/store';
 	import type { MatchController, MatchState } from '$lib/match/match';
 	import { supabase } from '$lib/supabaseClient';
@@ -12,12 +12,17 @@
 	import { cubicOut } from 'svelte/easing';
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
 	import { levelFromXP } from '$lib/utils';
+	import { lpForRating, rankIdFromRating, prettyRank } from '$lib/data/ranks';
 
 	const { match } = $props<{ match: MatchController }>();
 
 	const signedIn = $derived(!!$user);
 
 	const elo = $derived($profile?.rating ?? 67);
+
+	const startRank = prettyRank(rankIdFromRating(elo));
+	const rankId = $derived(rankIdFromRating(elo));
+	const rank = $derived(prettyRank(rankId));
 
 	const eloTween = new Tween<number>(0);
 	let eloAnimated = false;
@@ -43,7 +48,7 @@
 		return { level, experience, maxExperience, percent };
 	}
 
-	const START_DELAY_MS = 750;
+	const START_DELAY_MS = 2000;
 	const BASE_MS = 1200;
 	const EXTRA_PER_POINT = 140;
 	const MIN_MS = 1600;
@@ -55,12 +60,9 @@
 	}
 
 	function scheduleEloAnimation(start: number, end: number) {
+		console.log('start: ', start);
+		console.log('start: ', end);
 		eloTween.set(start, { duration: 0 });
-
-		if (prefersReducedMotion.current) {
-			eloTween.set(end, { duration: 0 });
-			return;
-		}
 
 		const duration = clamp(
 			BASE_MS + Math.pow(Math.abs(end - start), DURATION_POWER) * EXTRA_PER_POINT,
@@ -78,6 +80,12 @@
 		}, START_DELAY_MS);
 	}
 
+	function twoDigits(n: number) {
+		const mod = ((Math.floor(n) % 100) + 100) % 100;
+		console.log('elo: ', mod);
+		return String(mod).padStart(2, '0');
+	}
+
 	let state: MatchState = get(match);
 	const unsubscribe = match.subscribe((value: MatchState) => (state = value));
 	onDestroy(unsubscribe);
@@ -89,7 +97,6 @@
 		}
 	});
 
-	// ensure we have fresh profile once this mounts (no-op if already fresh)
 	onMount(() => {
 		eloTween.set($profile?.rating ?? 0, { duration: 0 });
 		void refreshProfile();
@@ -100,7 +107,7 @@
 	const wins = $derived(completedRounds.filter((round) => round.succeeded).length);
 	const losses = $derived(completedRounds.length - wins);
 	const matchOutcome = $derived(
-		state.outcome === 'dodge' ? 'Dodge' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw'
+		state.outcome === 'dodge' ? 'Dodge ' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw'
 	);
 	const lpDelta = $derived(state.totalPoints);
 
@@ -276,8 +283,11 @@
 		if (state.status === 'complete' && !eloAnimated) {
 			eloAnimated = true;
 
-			const startElo = $profile?.rating ?? 0;
-			const endElo = startElo + (lpDelta ?? 0);
+			const startElo = lpForRating(elo).lp ?? 0;
+			let endElo = startElo + (lpDelta ?? 0);
+
+			console.log('start: ', startElo);
+			console.log('end: ', endElo);
 			scheduleEloAnimation(startElo, endElo);
 		}
 
@@ -287,7 +297,7 @@
 				clearTimeout(eloStartTimer);
 				eloStartTimer = null;
 			}
-			eloTween.set($profile?.rating ?? 0, { duration: 0 });
+			eloTween.set(lpForRating(elo).lp ?? 0, { duration: 0 });
 		}
 	});
 
@@ -319,27 +329,19 @@
 
 	const profileXp = $profile?.xp ?? 0;
 
-	if (state.status !== 'complete') {
-		xpAnimationRan = false;
-		xpBaseline = profileXp;
-		xpTween.set(xpBaseline, { duration: 0 });
-		return;
-	}
-
-	if (state.outcome === 'dodge') {
-		xpAnimationRan = false;
-		xpBaseline = profileXp;
-		xpTween.set(profileXp, { duration: 0 });
-		return;
-	}
-
-	if (!xpAnimationRan) {
-		xpAnimationRan = true;
-		xpBaseline = profileXp;
-		const targetXp = xpBaseline + MATCH_XP_REWARD;
-		xpTween.set(xpBaseline, { duration: 0 });
-		if (prefersReducedMotion.current) {
-			xpTween.set(targetXp, { duration: 0 });
+		if (state.status === 'complete' && state.outcome !== 'dodge') {
+			if (!xpAnimationRan) {
+				xpAnimationRan = true;
+				xpBaseline = profileXp;
+				const targetXp = xpBaseline + MATCH_XP_REWARD;
+				xpTween.set(xpBaseline, { duration: 0 });
+				setTimeout(() => {
+					xpTween.set(targetXp, { duration: 1000, easing: cubicOut });
+				}, 10);
+			} else if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
+				xpBaseline = profileXp;
+				xpTween.set(profileXp, { duration: 0 });
+			}
 		} else {
 			xpTween.set(targetXp, { duration: 700, easing: cubicOut });
 		}
@@ -442,7 +444,6 @@
 
 		wroteHistoryOnce = true;
 
-	// Award XP for completed ranked matches (skip dodges)
 		if (signedIn && state.outcome !== 'dodge') {
 			try {
 				const updatedXp = await increaseXp(10);
@@ -478,11 +479,21 @@
 			: null
 	);
 
-	const formatPoints = (value: number) => {
+	type Sign = '+' | '-' | '';
+
+	export const formatPoints = (value: number): { sign: Sign; number: string } => {
 		const rounded = Math.round(value * 100) / 100;
-		const formatted = Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(2);
-		return `${rounded > 0 ? '+' : ''}${formatted}`;
+
+		// sign: always '+' or '-' for nonzero; '' for exact zero
+		const sign: Sign = rounded > 0 ? '+' : rounded < 0 || Object.is(rounded, -0) ? '-' : '';
+
+		// magnitude without sign
+		const mag = Math.abs(rounded);
+		const number = Number.isInteger(mag) ? mag.toString() : mag.toFixed(2);
+
+		return { sign, number };
 	};
+
 	const formatSeconds = (value: number) => `${(value / 1000).toFixed(2)}s`;
 	const formatNumber = (value: number, digits = 1) => {
 		if (!Number.isFinite(value)) return digits > 0 ? `0.${'0'.repeat(digits)}` : '0';
@@ -519,14 +530,14 @@
 	const graphHeight = 200;
 </script>
 
-<div class="w-full max-w-7xl rounded-xl px-20 py-4 text-white shadow-lg backdrop-blur">
+<div class="mb-12 w-full max-w-7xl rounded-xl px-20 text-white shadow-lg backdrop-blur">
 	{#if signedIn}
 		<div class="mb-12 w-full">
 			<div
 				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
 			>
 				{#if xpStats.level === slideLevels[1]}
-					<div in:scale={{ start: 0.4, duration: 150 }}>Lvl {xpStats.level}</div>
+					<div in:scale={{ start: 0.4, duration: 100 }}>Lvl {xpStats.level}</div>
 				{:else}
 					<span>Lvl {xpStats.level}</span>
 				{/if}
@@ -536,15 +547,15 @@
 			</div>
 			<div class="relative mt-2 h-px w-full overflow-hidden rounded-full bg-neutral-900/70">
 				<div
-					class="absolute inset-0 left-0 bg-white shadow-[0_0_6px_rgba(255,255,255,0.65)]"
+					class="absolute inset-0 left-0 bg-neutral-500"
 					style={`width:${xpStats.percent}%;`}
 				></div>
 			</div>
 		</div>
 	{/if}
 	{#if state.status === 'complete'}
-		<div class="flex items-center gap-16">
-			<div class="flex items-center justify-center">
+		<div class=" flex items-center gap-16">
+			<div class="mb-2 flex items-center justify-center">
 				{#if !signedIn}
 					<div
 						class=" absolute flex flex-col items-center p-20 px-0 font-mono text-xs text-neutral-400"
@@ -575,15 +586,62 @@
 				{/if}
 
 				<div
-					class="relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
+					class="w-30 relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
 					class:blur-sm={!signedIn}
 					class:opacity-50={!signedIn}
 					aria-hidden={!signedIn}
 				>
 					<div>
-						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">ELO</div>
-						<div class="font-mono text-5xl text-slate-100 transition" class:opacity-60={!signedIn}>
-							{Math.round(eloTween.current)}
+						<div
+							class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
+						>
+							{#if eloTween.current > 100 || eloTween.current < 0}
+								<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
+							{:else}
+								<div>{startRank}</div>
+							{/if}
+							{#if startRank !== rank}
+								{#if lpDelta < 0}
+									<svg
+										class="mb-0.5 h-2 w-2 rotate-180 text-red-400"
+										viewBox="0 0 12 12"
+										fill="none"
+										aria-hidden="true"
+									>
+										<path
+											d="M2 7 L6 3 L10 7"
+											stroke="currentColor"
+											stroke-width="1"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								{:else}
+									<svg
+										viewBox="0 0 12 12"
+										fill="none"
+										class="h-2 w-2 text-emerald-300"
+										aria-hidden="true"
+									>
+										<path
+											d="M2 7 L6 3 L10 7"
+											stroke="currentColor"
+											stroke-width="1"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								{/if}
+							{/if}
+						</div>
+						<div class="flex flex-row items-end gap-2">
+							<div
+								class="font-mono text-5xl text-slate-100 transition"
+								class:opacity-60={!signedIn}
+							>
+								{twoDigits(Math.round(eloTween.current))}
+							</div>
+							<div class="mb-1 font-mono text-xs text-neutral-600">LP</div>
 						</div>
 					</div>
 
@@ -591,24 +649,36 @@
 						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
 							{matchOutcome}
 						</div>
-						<div
-							class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
-							class:opacity-60={!signedIn}
-						>
-							{formatPoints(lpDelta)}
-						</div>
-						{#if state.outcome === 'dodge'}
-							<div class="mt-2 font-mono text-[0.7rem] uppercase tracking-widest text-rose-300">
-								dodge penalty applied ({formatPoints(Math.abs(lpDelta) * -1)} lp)
+						<div class="flex flex-row items-center gap-1">
+							<div
+								class={`font-mono text-2xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+								class:opacity-60={!signedIn}
+							>
+								{formatPoints(lpDelta).sign}
 							</div>
-						{/if}
+							<div
+								class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+								class:opacity-60={!signedIn}
+							>
+								{formatPoints(lpDelta).number}
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
-
-			<!-- RIGHT: graph -->
-			<div class="flex h-full min-w-0 flex-1 items-center">
-				<Graph {samples} target={dashed} height={graphHeight} yMin={0} />
+			<div class="relative flex h-full min-w-0 flex-1 items-center">
+				{#if matchOutcome === 'Dodge '}
+					<div class="pointer-events-none absolute inset-0 z-10 grid place-items-center">
+						<div class="z-50 mb-6 font-mono text-xs text-neutral-400">stats not available</div>
+					</div>
+				{/if}
+				<div
+					class="flex h-full min-w-0 flex-1 items-center"
+					class:blur-[2px]={matchOutcome === 'Dodge '}
+					class:opacity-80={matchOutcome === 'Dodge '}
+				>
+					<Graph {samples} target={dashed} height={graphHeight} yMin={0} />
+				</div>
 			</div>
 		</div>
 
@@ -620,27 +690,37 @@
 		>
 			<div class="items-center rounded-lg p-4">
 				<div class=" font-mono text-xs text-neutral-400">avg speed</div>
-				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageMs)}</div>
+				<div class="mt-1 font-mono text-2xl">
+					{matchOutcome === 'Dodge ' ? '-' : formatSeconds(averageMs)}
+				</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">efficiency</div>
-				<div class="mt-1 font-mono text-2xl">{formatNumber(averageKeys, 1)}</div>
+				<div class="mt-1 font-mono text-2xl">
+					{matchOutcome === 'Dodge ' ? '-' : formatNumber(averageKeys, 1)}
+				</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">most used</div>
-				<div class="mt-1 font-mono text-2xl">{mostUsedKey ? mostUsedKey.key : '—'}</div>
+				<div class="mt-1 font-mono text-2xl">
+					{matchOutcome === 'Dodge ' ? '-' : (mostUsedKey?.key ?? '-')}
+				</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">undos</div>
-				<div class="mt-1 font-mono text-2xl">{undoCount}</div>
+				<div class="mt-1 font-mono text-2xl">{matchOutcome === 'Dodge ' ? '-' : undoCount}</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">apm</div>
-				<div class="mt-1 font-mono text-2xl">{formatNumber(apm, 0)}</div>
+				<div class="mt-1 font-mono text-2xl">
+					{matchOutcome === 'Dodge ' ? '-' : formatNumber(apm, 0)}
+				</div>
 			</div>
 			<div class="items-center rounded-lg p-4">
 				<div class="font-mono text-xs text-neutral-400">reaction time</div>
-				<div class="mt-1 font-mono text-2xl">{formatSeconds(averageReaction)}</div>
+				<div class="mt-1 font-mono text-2xl">
+					{matchOutcome === 'Dodge ' ? '-' : formatSeconds(averageReaction)}
+				</div>
 			</div>
 		</div>
 
