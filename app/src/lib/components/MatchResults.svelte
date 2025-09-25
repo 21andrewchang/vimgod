@@ -45,10 +45,12 @@
 		const { level, experience, maxExperience } = levelFromXP(current);
 		const percent =
 			maxExperience > 0 ? Math.min(100, Math.max(0, (experience / maxExperience) * 100)) : 0;
+		console.log('xpTween', current);
+		console.log('xp', experience);
 		return { level, experience, maxExperience, percent };
 	}
 
-	const START_DELAY_MS = 2000;
+	const START_DELAY_MS = 200;
 	const BASE_MS = 1200;
 	const EXTRA_PER_POINT = 140;
 	const MIN_MS = 1600;
@@ -60,8 +62,6 @@
 	}
 
 	function scheduleEloAnimation(start: number, end: number) {
-		console.log('start: ', start);
-		console.log('start: ', end);
 		eloTween.set(start, { duration: 0 });
 
 		const duration = clamp(
@@ -82,7 +82,6 @@
 
 	function twoDigits(n: number) {
 		const mod = ((Math.floor(n) % 100) + 100) % 100;
-		console.log('elo: ', mod);
 		return String(mod).padStart(2, '0');
 	}
 
@@ -102,12 +101,17 @@
 		void refreshProfile();
 	});
 
-	// ---- stats derived from match state ----
 	const completedRounds = $derived(state.completed.filter((round) => round.index > 0));
 	const wins = $derived(completedRounds.filter((round) => round.succeeded).length);
 	const losses = $derived(completedRounds.length - wins);
 	const matchOutcome = $derived(
-		state.outcome === 'dodge' ? 'Dodge ' : wins > losses ? 'Win' : wins < losses ? 'Loss' : 'Draw'
+		state.outcome === 'dodge'
+			? 'Dodge '
+			: wins > losses
+				? 'Victory'
+				: wins < losses
+					? 'Defeat'
+					: 'Draw'
 	);
 	const lpDelta = $derived(state.totalPoints);
 
@@ -273,6 +277,8 @@
 			placementRankValue !== null
 		) {
 			triedInitialRank = true;
+			console.log('projected: ', projectedRankValue);
+			console.log('placement: ', placementRankValue);
 			setInitialRank(projectedRankValue, placementRankValue).catch((e) =>
 				console.error('Failed to set initial rank', e)
 			);
@@ -286,8 +292,6 @@
 			const startElo = lpForRating(elo).lp ?? 0;
 			let endElo = startElo + (lpDelta ?? 0);
 
-			console.log('start: ', startElo);
-			console.log('end: ', endElo);
 			scheduleEloAnimation(startElo, endElo);
 		}
 
@@ -335,17 +339,16 @@
 				xpBaseline = profileXp;
 				const targetXp = xpBaseline + MATCH_XP_REWARD;
 				xpTween.set(xpBaseline, { duration: 0 });
-				setTimeout(() => {
-					xpTween.set(targetXp, { duration: 1000, easing: cubicOut });
-				}, 10);
+				// xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 3000 });
 			} else if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
 				xpBaseline = profileXp;
 				xpTween.set(profileXp, { duration: 0 });
 			}
-		} else {
-			const targetXp = xpBaseline + MATCH_XP_REWARD;
-			xpTween.set(targetXp, { duration: 700, easing: cubicOut });
 		}
+		// } else {
+		// 	const targetXp = xpBaseline + MATCH_XP_REWARD;
+		// 	xpTween.set(targetXp, { duration: 700, easing: cubicOut });
+		// }
 		return;
 	});
 
@@ -529,7 +532,7 @@
 	{#if signedIn}
 		<div class="mb-12 w-full">
 			<div
-				class="flex w-full items-center font-mono text-[11px] tracking-[0.28em] text-neutral-400 uppercase"
+				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
 			>
 				{#if xpStats.level === slideLevels[1]}
 					<div in:scale={{ start: 0.4, duration: 100 }}>Lvl {xpStats.level}</div>
@@ -581,14 +584,14 @@
 				{/if}
 
 				<div
-					class="relative box-border flex h-full w-30 flex-col justify-between gap-10 rounded-md transition select-none"
+					class="w-30 relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
 					class:blur-sm={!signedIn}
 					class:opacity-50={!signedIn}
 					aria-hidden={!signedIn}
 				>
 					<div>
 						<div
-							class="flex items-center gap-1 font-mono text-xs tracking-widest text-neutral-400 uppercase"
+							class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
 						>
 							{#if eloTween.current > 100 || eloTween.current < 0}
 								<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
@@ -641,22 +644,25 @@
 					</div>
 
 					<div>
-						<div class="font-mono text-xs tracking-widest text-neutral-400 uppercase">
+						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
 							{matchOutcome}
 						</div>
-						<div class="flex flex-row items-center gap-1">
-							<div
-								class={`font-mono text-2xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
-								class:opacity-60={!signedIn}
-							>
-								{formatPoints(lpDelta).sign}
+						<div class="flex flex-row items-end gap-2">
+							<div class="flex items-center gap-0.5">
+								<div
+									class={`font-mono text-2xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+									class:opacity-60={!signedIn}
+								>
+									{formatPoints(lpDelta).sign}
+								</div>
+								<div
+									class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+									class:opacity-60={!signedIn}
+								>
+									{formatPoints(lpDelta).number}
+								</div>
 							</div>
-							<div
-								class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
-								class:opacity-60={!signedIn}
-							>
-								{formatPoints(lpDelta).number}
-							</div>
+							<div class="mb-1 font-mono text-xs text-neutral-600">LP</div>
 						</div>
 					</div>
 				</div>
