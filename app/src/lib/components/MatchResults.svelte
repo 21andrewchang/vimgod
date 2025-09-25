@@ -20,7 +20,7 @@
 
 	const elo = $derived($profile?.rating ?? 67);
 
-	const startRank = rankIdFromRating(elo);
+	const startRank = prettyRank(rankIdFromRating(elo));
 	const rankId = $derived(rankIdFromRating(elo));
 	const rank = $derived(prettyRank(rankId));
 
@@ -60,6 +60,8 @@
 	}
 
 	function scheduleEloAnimation(start: number, end: number) {
+		console.log('start: ', start);
+		console.log('start: ', end);
 		eloTween.set(start, { duration: 0 });
 
 		const duration = clamp(
@@ -80,6 +82,7 @@
 
 	function twoDigits(n: number) {
 		const mod = ((Math.floor(n) % 100) + 100) % 100;
+		console.log('elo: ', mod);
 		return String(mod).padStart(2, '0');
 	}
 
@@ -283,6 +286,8 @@
 			const startElo = lpForRating(elo).lp ?? 0;
 			let endElo = startElo + (lpDelta ?? 0);
 
+			console.log('start: ', startElo);
+			console.log('end: ', endElo);
 			scheduleEloAnimation(startElo, endElo);
 		}
 
@@ -469,11 +474,21 @@
 			: null
 	);
 
-	const formatPoints = (value: number) => {
+	type Sign = '+' | '-' | '';
+
+	export const formatPoints = (value: number): { sign: Sign; number: string } => {
 		const rounded = Math.round(value * 100) / 100;
-		const formatted = Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(2);
-		return `${rounded > 0 ? '+' : ''}${formatted}`;
+
+		// sign: always '+' or '-' for nonzero; '' for exact zero
+		const sign: Sign = rounded > 0 ? '+' : rounded < 0 || Object.is(rounded, -0) ? '-' : '';
+
+		// magnitude without sign
+		const mag = Math.abs(rounded);
+		const number = Number.isInteger(mag) ? mag.toString() : mag.toFixed(2);
+
+		return { sign, number };
 	};
+
 	const formatSeconds = (value: number) => `${(value / 1000).toFixed(2)}s`;
 	const formatNumber = (value: number, digits = 1) => {
 		if (!Number.isFinite(value)) return digits > 0 ? `0.${'0'.repeat(digits)}` : '0';
@@ -575,8 +590,10 @@
 						<div
 							class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
 						>
-							{#if rank !== startRank}
-								<div in:scale={{ start: 0.4, duration: 1000, delay: 1000 }}>{rank}</div>
+							{#if eloTween.current > 100 || eloTween.current < 0}
+								<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
+							{:else}
+								<div>{startRank}</div>
 							{/if}
 							{#if startRank !== rank}
 								{#if lpDelta < 0}
@@ -627,11 +644,19 @@
 						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
 							{matchOutcome}
 						</div>
-						<div
-							class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
-							class:opacity-60={!signedIn}
-						>
-							{formatPoints(lpDelta)}
+						<div class="flex flex-row items-center gap-1">
+							<div
+								class={`font-mono text-2xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+								class:opacity-60={!signedIn}
+							>
+								{formatPoints(lpDelta).sign}
+							</div>
+							<div
+								class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+								class:opacity-60={!signedIn}
+							>
+								{formatPoints(lpDelta).number}
+							</div>
 						</div>
 					</div>
 				</div>
