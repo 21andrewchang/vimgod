@@ -327,7 +327,7 @@
 			return;
 		}
 
-	const profileXp = $profile?.xp ?? 0;
+		const profileXp = $profile?.xp ?? 0;
 
 		if (state.status === 'complete' && state.outcome !== 'dodge') {
 			if (!xpAnimationRan) {
@@ -343,15 +343,10 @@
 				xpTween.set(profileXp, { duration: 0 });
 			}
 		} else {
+			const targetXp = xpBaseline + MATCH_XP_REWARD;
 			xpTween.set(targetXp, { duration: 700, easing: cubicOut });
 		}
 		return;
-	}
-
-	if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
-		xpBaseline = profileXp;
-		xpTween.set(profileXp, { duration: 0 });
-	}
 	});
 
 	$effect(() => {
@@ -534,7 +529,7 @@
 	{#if signedIn}
 		<div class="mb-12 w-full">
 			<div
-				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
+				class="flex w-full items-center font-mono text-[11px] tracking-[0.28em] text-neutral-400 uppercase"
 			>
 				{#if xpStats.level === slideLevels[1]}
 					<div in:scale={{ start: 0.4, duration: 100 }}>Lvl {xpStats.level}</div>
@@ -586,14 +581,14 @@
 				{/if}
 
 				<div
-					class="w-30 relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
+					class="relative box-border flex h-full w-30 flex-col justify-between gap-10 rounded-md transition select-none"
 					class:blur-sm={!signedIn}
 					class:opacity-50={!signedIn}
 					aria-hidden={!signedIn}
 				>
 					<div>
 						<div
-							class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
+							class="flex items-center gap-1 font-mono text-xs tracking-widest text-neutral-400 uppercase"
 						>
 							{#if eloTween.current > 100 || eloTween.current < 0}
 								<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
@@ -646,7 +641,7 @@
 					</div>
 
 					<div>
-						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
+						<div class="font-mono text-xs tracking-widest text-neutral-400 uppercase">
 							{matchOutcome}
 						</div>
 						<div class="flex flex-row items-center gap-1">
