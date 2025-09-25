@@ -175,6 +175,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 
 <BgDarkTiles />
 
+
 <div class="relative w-full overflow-hidden">
 	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pb-4 pt-16">
 		<!-- Stats row -->
@@ -192,15 +193,9 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 			<div class="flex gap-4 md:col-span-6">
 				<div class="min-w-[120px] flex-[1.4]">
 					<StatCard label="rank" class="w-full">
-						<!-- Top-right badge with extra padding handled in the card -->
 						<svelte:fragment slot="corner">
-							<!-- <RankBadge rank={profileUser.rank} /> -->
 						</svelte:fragment>
-
-						<!-- (Optional) main content area can be empty or show rating -->
-						<!-- <div class="text-neutral-300 text-sm">Rating {profileUser.elo}</div> -->
-
-						<!-- Footer: LP label (right) + progress bar at the bottom -->
+            
 						<svelte:fragment slot="footer">
 							<div class="mb-2 flex w-full justify-between">
 								<div class="flex items-center gap-1 font-mono text-xs">

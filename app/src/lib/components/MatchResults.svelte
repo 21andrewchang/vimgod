@@ -327,7 +327,7 @@
 			return;
 		}
 
-		const profileXp = $profile?.xp ?? 0;
+	const profileXp = $profile?.xp ?? 0;
 
 		if (state.status === 'complete' && state.outcome !== 'dodge') {
 			if (!xpAnimationRan) {
@@ -343,10 +343,15 @@
 				xpTween.set(profileXp, { duration: 0 });
 			}
 		} else {
-			xpAnimationRan = false;
-			xpBaseline = profileXp;
-			xpTween.set(xpBaseline, { duration: 0 });
+			xpTween.set(targetXp, { duration: 700, easing: cubicOut });
 		}
+		return;
+	}
+
+	if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
+		xpBaseline = profileXp;
+		xpTween.set(profileXp, { duration: 0 });
+	}
 	});
 
 	$effect(() => {
