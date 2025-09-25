@@ -19,7 +19,7 @@
 		<Singularity />
 	{:else if rank === 'Unranked'}
 		<div
-			class="font-regular rounded-xl border border-white/20 bg-neutral-900 px-3 py-1 text-sm text-neutral-200"
+			class="font-regular rounded-xl bg-neutral-800 px-3 py-1 text-sm text-neutral-300"
 			style="font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
 		>
 			{rank}

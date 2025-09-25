@@ -34,7 +34,7 @@ const RANK_VALUES = {
 
 export const colorByRank: Record<string, string> = {
     Unranked: 'bg-neutral-300 text-neutral-800',
-    Bronze: 'bg-amber-700 text-white',
+    Bronze: 'bg-yellow-900 text-white/60',
     Silver: 'bg-slate-300 text-slate-900',
     Gold: 'bg-amber-200 text-yellow-700',
     Platinum: 'bg-teal-200 text-teal-600',

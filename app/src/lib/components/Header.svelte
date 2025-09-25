@@ -5,7 +5,11 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
-	const { variant = 'inline', size = 'large', fixed = false } = $props<{
+	const {
+		variant = 'inline',
+		size = 'large',
+		fixed = false
+	} = $props<{
 		variant?: 'fixed' | 'inline';
 		size?: 'small' | 'large';
 		fixed?: boolean;
@@ -133,10 +137,10 @@
 	);
 
 	const logoClass = $derived(
-    effectiveVariant === 'fixed'
-      ? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-      : `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-  );
+		effectiveVariant === 'fixed'
+			? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+			: `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+	);
 
 	const greaterThanClass = $derived(
 		size === 'small' ? 'text-2xl font-normal text-purple-400' : 'text-4xl font-normal'
@@ -190,7 +194,8 @@
 		</div>
 	</div>
 
-	<!-- Right: Motions icon + User -->
+	<div class="items-center text-center font-mono text-xs text-white/20">Platinum 4</div>
+
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
 			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
@@ -205,7 +210,6 @@
 			/>
 		</button>
 
-		<!-- User Icon + Username -->
 		<div
 			bind:this={iconRef}
 			role="button"
@@ -286,7 +290,6 @@
 			{/if}
 		</div>
 	</div>
-	
 </div>
 
 <style>

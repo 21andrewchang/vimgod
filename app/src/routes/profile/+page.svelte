@@ -88,10 +88,9 @@
 
 		if (!textToken) return 'text-neutral-300';
 
-		// Static mapping of lighter text colors (100 intensity levels lighter)
 		const lighterTextColors: Record<string, string> = {
 			'text-neutral-800': 'text-neutral-300',
-			'text-white': 'text-neutral-200',
+			'text-white/60': 'text-yellow-800',
 			'text-slate-900': 'text-slate-400',
 			'text-yellow-700': 'text-yellow-400',
 			'text-teal-600': 'text-teal-400',
