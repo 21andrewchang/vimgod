@@ -232,10 +232,9 @@
 	}
 
 	const PLACEMENT_MATCH_GOAL = 5;
-	let placementMatchCount = 0;
+	const placementMatchCount = $derived(Math.min(PLACEMENT_MATCH_GOAL, $profile?.placements ?? 0));
 
 	function formatPlacementProgress(count: number): string {
-		console.log('from function: ', count);
 		const clamped = Math.min(PLACEMENT_MATCH_GOAL, Math.max(0, count));
 		const display = clamped === 0 ? 1 : clamped;
 		return `${display} / ${PLACEMENT_MATCH_GOAL}`;
@@ -419,46 +418,52 @@
 		let startElo: number | null = currentRating;
 		let endEloToStore: number | null = null;
 		let lpDeltaToStore: number | null = null;
+		let nextPlacementCount = 0;
 
 		if (isPlacementMatch) {
-			type PlacementMatch = { avg_speed: number | null; is_dodge: boolean | null };
+			type PlacementMatch = {
+				avg_speed: number | null;
+				is_dodge: boolean | null;
+				end_elo: number | null;
+			};
 			const { data: placementHistory, error: placementError } = await supabase
 				.from('match_history')
-				.select('avg_speed, is_dodge')
+				.select('avg_speed, is_dodge, end_elo')
 				.eq('player_id', uid)
-				.is('end_elo', null)
 				.neq('match_id', match_id)
-				.order('created_at', { ascending: true });
+				.order('created_at', { ascending: true })
+				.limit(25);
 
 			if (placementError) {
 				console.error('Failed to load placement history', placementError);
 			}
 
 			const historyRows = (placementHistory as PlacementMatch[] | null) ?? [];
-			const nonDodgeMatches = historyRows.filter((match) => match?.is_dodge !== true);
+			const placementRows = historyRows.filter((match) => match?.end_elo === null);
+			const nonDodgeMatches = placementRows.filter((match) => match?.is_dodge !== true);
 			const priorCount = nonDodgeMatches.length;
-			placementMatchCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + (isDodge ? 0 : 1));
-			console.log('count: ', placementMatchCount);
+			nextPlacementCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + (isDodge ? 0 : 1));
 
 			if (!isDodge && priorCount >= PLACEMENT_MATCH_GOAL - 1) {
-				const priorAverageSum = nonDodgeMatches.reduce((sum, match) => {
+				const relevantMatches = nonDodgeMatches.slice(-1 * (PLACEMENT_MATCH_GOAL - 1));
+				const priorAverageSum = relevantMatches.reduce((sum, match) => {
 					const speed = typeof match.avg_speed === 'number' ? match.avg_speed : 0;
 					return sum + speed;
 				}, 0);
-				const combinedAverage = (priorAverageSum + averageMs) / (priorCount + 1);
+				const combinedAverage = (priorAverageSum + averageMs) / (relevantMatches.length + 1);
 				endEloToStore = placementEloForAverageSpeed(combinedAverage);
 			}
 
 			startElo = null;
 		} else if (currentRating !== null) {
-			placementMatchCount = 0;
+			nextPlacementCount = 0;
 			const baseline = currentRating;
 			startElo = baseline;
 			const delta = lpDelta ?? 0;
 			endEloToStore = baseline + delta;
 			lpDeltaToStore = delta;
 		} else {
-			placementMatchCount = 0;
+			nextPlacementCount = 0;
 			startElo = null;
 			endEloToStore = null;
 			lpDeltaToStore = null;
@@ -500,6 +505,12 @@
 			} catch (xpErr) {
 				console.error('Failed to award XP', xpErr);
 			}
+		}
+
+		if (isPlacementMatch) {
+			profile.update((p) => (p ? { ...p, placements: nextPlacementCount } : p));
+		} else if (currentRating !== null) {
+			profile.update((p) => (p ? { ...p, placements: 0 } : p));
 		}
 
 		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : endEloToStore;
@@ -689,9 +700,9 @@
 							</div>
 						{/if}
 						{#if placementMode}
-							<div class="flex flex-row gap-2">
-								<div class="mt-2 font-mono text-4xl tracking-tighter text-slate-100 transition">
-									{placementMatchCount}/5
+							<div class="flex flex-col gap-1">
+								<div class="mt-2 font-mono text-4xl text-slate-100 transition">
+									{formatPlacementProgress(placementMatchCount)}
 								</div>
 							</div>
 						{:else}
@@ -713,7 +724,7 @@
 						</div>
 						<div class="flex flex-row items-end gap-2">
 							{#if placementMode}
-								<div class="mt-4 font-mono text-5xl text-neutral-500" class:opacity-60={!signedIn}>
+								<div class="mt-2 font-mono text-5xl text-neutral-500" class:opacity-60={!signedIn}>
 									-
 								</div>
 							{:else}

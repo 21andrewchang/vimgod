@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { profile } from '$lib/stores/profile';
+	const placementMatchCount = $derived(Math.min(5, $profile?.placements ?? 0));
 	const { data } = $props<{ data: PageData }>();
 
 	const {
@@ -217,12 +219,12 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 								</div>
 							{:else}
 								<div class="mb-2 text-center font-mono text-xs text-[#c9ced6]">
-									4/5 placements completed
+									{placementMatchCount}/5 placements completed
 								</div>
 								<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-800/60">
 									<div
 										class="bg-pearlescent shiny-glow h-2 rounded-full"
-										style={`width:${lpPercent}%;`}
+										style={`width:${(placementMatchCount / 5) * 100}%`}
 									/>
 								</div>
 							{/if}
