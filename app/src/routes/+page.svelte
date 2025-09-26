@@ -3,6 +3,7 @@
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
+	import { blur } from 'svelte/transition';
 	import {
 		clearDodgeSnapshot,
 		DODGE_LP_PENALTY,
@@ -145,6 +146,7 @@
 	{#if showRankup}
 		<div
 			class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+			transition:blur={{ duration: 200 }}
 		>
 			<div class="w-full max-w-md text-center text-white">
 				<div class="mb-6 text-3xl font-semibold">{displayRank}</div>

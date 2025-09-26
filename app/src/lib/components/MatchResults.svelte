@@ -683,7 +683,7 @@
 								{:else}
 									<div>{startRank}</div>
 								{/if}
-								{#if startRank !== rank}
+								{#if startRank !== rank || showRankup}
 									{#if lpDelta < 0}
 										<svg
 											class="mb-0.5 h-2 w-2 rotate-180 text-red-400"
