@@ -219,13 +219,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // Convert match history to history format (limit to 50 most recent matches)
   const history = recentMatches.map((match, index) => {
-    let result: 'win' | 'loss' | 'draw';
+    let result: 'win' | 'loss' | 'draw' | 'placement';
     if (match.lp_delta > 0) {
       result = 'win';
     } else if (match.lp_delta < 0) {
       result = 'loss';
-    } else {
+    } else if (match.lp_delta == 0) {
       result = 'draw';
+    } else {
+      result = 'placement';
     }
 
     return {
