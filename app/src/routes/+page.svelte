@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
+	import RankUp from '$lib/components/RankUp.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
@@ -144,20 +145,7 @@
 		<MatchResults {match} {rankUp} />
 	{/if}
 	{#if showRankup}
-		<div
-			class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-			transition:blur={{ duration: 200 }}
-		>
-			<div class="w-full max-w-md text-center text-white">
-				<div class="mb-6 text-3xl font-semibold">{displayRank}</div>
-				<button
-					class="rounded-lg border border-white/30 px-4 py-2"
-					onclick={() => (showRankup = false)}
-				>
-					Close
-				</button>
-			</div>
-		</div>
+		<RankUp closeRankup={() => (showRankup = false)} rank={displayRank} />
 	{/if}
 	<Footer />
 </main>
