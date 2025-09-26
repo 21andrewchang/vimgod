@@ -3,10 +3,15 @@
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
-import { clearDodgeSnapshot, DODGE_LP_PENALTY, DODGE_STORAGE_KEY, type DodgeSnapshot } from '$lib/reloadGuard';
+	import {
+		clearDodgeSnapshot,
+		DODGE_LP_PENALTY,
+		DODGE_STORAGE_KEY,
+		type DodgeSnapshot
+	} from '$lib/reloadGuard';
 	import { browser } from '$app/environment';
 	import { get } from 'svelte/store';
-import { getContext, onDestroy, onMount } from 'svelte';
+	import { getContext, onDestroy, onMount } from 'svelte';
 	import { user } from '$lib/stores/auth';
 	import '$lib/stores/auth';
 
@@ -14,21 +19,21 @@ import { getContext, onDestroy, onMount } from 'svelte';
 	$: signedIn = Boolean($user);
 	const match = createMatchController({ totalRounds: 20 });
 
-onMount(() => {
-    if (!browser) return;
-    const stored = localStorage.getItem(DODGE_STORAGE_KEY);
-    if (!stored) return;
-    try {
-        const parsed = JSON.parse(stored) as DodgeSnapshot;
-        if (parsed?.type === 'dodge' && parsed.state) {
-            match.replaceState(parsed.state as MatchState);
-        }
-    } catch (error) {
-        console.warn('failed to hydrate dodge snapshot', error);
-    } finally {
-        clearDodgeSnapshot();
-    }
-});
+	onMount(() => {
+		if (!browser) return;
+		const stored = localStorage.getItem(DODGE_STORAGE_KEY);
+		if (!stored) return;
+		try {
+			const parsed = JSON.parse(stored) as DodgeSnapshot;
+			if (parsed?.type === 'dodge' && parsed.state) {
+				match.replaceState(parsed.state as MatchState);
+			}
+		} catch (error) {
+			console.warn('failed to hydrate dodge snapshot', error);
+		} finally {
+			clearDodgeSnapshot();
+		}
+	});
 
 	type ReloadGuardContext = {
 		enable: (

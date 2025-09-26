@@ -88,8 +88,8 @@
 		return String(mod).padStart(2, '0');
 	}
 
-	let state: MatchState = get(match);
-	const unsubscribe = match.subscribe((value: MatchState) => (state = value));
+	let matchState: MatchState = get(match);
+	const unsubscribe = match.subscribe((value: MatchState) => (matchState = value));
 	onDestroy(unsubscribe);
 
 	onDestroy(() => {
@@ -106,11 +106,11 @@
 		void refreshProfile();
 	});
 
-	const completedRounds = $derived(state.completed.filter((round) => round.index > 0));
+	const completedRounds = $derived(matchState.completed.filter((round) => round.index > 0));
 	const wins = $derived(completedRounds.filter((round) => round.succeeded).length);
 	const losses = $derived(completedRounds.length - wins);
 	const matchOutcome = $derived(
-		state.outcome === 'dodge'
+		matchState.outcome === 'dodge'
 			? 'Dodge '
 			: wins > losses
 				? 'Victory'
@@ -118,7 +118,7 @@
 					? 'Defeat'
 					: 'Draw'
 	);
-	const lpDelta = $derived(state.totalPoints);
+	const lpDelta = $derived(matchState.totalPoints);
 
 	const averageMs = $derived(
 		completedRounds.length
@@ -139,7 +139,7 @@
 				) / roundsWithKeys.length
 			: 0
 	);
-	const undoCount = $derived(state.undoCount ?? 0);
+	const undoCount = $derived(matchState.undoCount ?? 0);
 
 	const IGNORED_KEYS = new Set([
 		'Alt',
@@ -240,17 +240,17 @@
 		return `${display} / ${PLACEMENT_MATCH_GOAL}`;
 	}
 
-	function buildSignature(state: MatchState, uid: string | null) {
-		const rounds = state.completed.filter((r) => r.index > 0);
-		const firstStart = rounds[0]?.startedAt ?? state.startTime ?? 0;
-		const lastDone = state.endTime ?? rounds.at(-1)?.completedAt ?? 0;
+	function buildSignature(matchState: MatchState, uid: string | null) {
+		const rounds = matchState.completed.filter((r) => r.index > 0);
+		const firstStart = rounds[0]?.startedAt ?? matchState.startTime ?? 0;
+		const lastDone = matchState.endTime ?? rounds.at(-1)?.completedAt ?? 0;
 		return JSON.stringify({
 			uid,
 			rounds: rounds.length,
 			firstStart,
 			lastDone,
-			totalPoints: state.totalPoints,
-			timeLimitMs: state.timeLimitMs
+			totalPoints: matchState.totalPoints,
+			timeLimitMs: matchState.timeLimitMs
 		});
 	}
 
@@ -288,7 +288,7 @@
 			return;
 		}
 
-		if (state.status === 'complete' && !eloAnimated) {
+		if (matchState.status === 'complete' && !eloAnimated) {
 			eloAnimated = true;
 
 			const startElo = lpForRating(elo).lp ?? 0;
@@ -297,7 +297,7 @@
 			scheduleEloAnimation(startElo, endElo);
 		}
 
-		if (state.status !== 'complete') {
+		if (matchState.status !== 'complete') {
 			eloAnimated = false;
 			if (eloStartTimer) {
 				clearTimeout(eloStartTimer);
@@ -335,7 +335,7 @@
 
 		const profileXp = $profile?.xp ?? 0;
 
-		if (state.status === 'complete' && state.outcome !== 'dodge') {
+		if (matchState.status === 'complete' && matchState.outcome !== 'dodge') {
 			if (!xpAnimationRan) {
 				xpAnimationRan = true;
 				xpBaseline = profileXp;
@@ -357,7 +357,7 @@
 			return;
 		}
 
-		if (state.status !== 'complete') {
+		if (matchState.status !== 'complete') {
 			if (currentLevel !== visibleLevel) {
 				visibleLevel = currentLevel;
 				slideLevels = [currentLevel, currentLevel + 1];
@@ -398,16 +398,16 @@
 
 	async function writeHistoryIdempotent(): Promise<number | null> {
 		if (wroteHistoryOnce) return null;
-		if (state.status !== 'complete') return null;
+		if (matchState.status !== 'complete') return null;
 
 		const uid = $user?.id ?? null;
 
-		const signature = buildSignature(state, uid);
+		const signature = buildSignature(matchState, uid);
 		const match_id = getOrCreateMatchId(signature, uid);
 
 		const currentRating = $profile?.rating ?? null;
 		const isPlacementMatch = uid !== null && currentRating === null;
-		const isDodge = state.outcome === 'dodge';
+		const isDodge = matchState.outcome === 'dodge';
 		let startElo: number | null = currentRating;
 		let endEloToStore: number | null = null;
 		let lpDeltaToStore: number | null = null;
@@ -491,7 +491,7 @@
 
 		wroteHistoryOnce = true;
 
-		if (signedIn && state.outcome !== 'dodge') {
+		if (signedIn && matchState.outcome !== 'dodge') {
 			try {
 				const updatedXp = await increaseXp(10);
 				profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
@@ -518,7 +518,7 @@
 	}
 
 	$effect(() => {
-		if (state.status === 'complete') {
+		if (matchState.status === 'complete') {
 			void writeHistoryIdempotent();
 		}
 	});
@@ -528,7 +528,7 @@
 	const samples = $derived(roundDurations.map((duration, index) => ({ x: index, y: duration })));
 	const dashed = $derived(
 		roundDurations.length
-			? roundDurations.map((_, index) => ({ x: index, y: state.timeLimitMs }))
+			? roundDurations.map((_, index) => ({ x: index, y: matchState.timeLimitMs }))
 			: null
 	);
 
@@ -582,6 +582,9 @@
 	const graphHeight = 200;
 </script>
 
+{#if showRankup}
+	<div></div>
+{/if}
 <div class="mb-12 w-full max-w-7xl rounded-xl px-20 text-white shadow-lg backdrop-blur">
 	{#if signedIn}
 		<div class="mb-12 w-full">
@@ -605,7 +608,7 @@
 			</div>
 		</div>
 	{/if}
-	{#if state.status === 'complete'}
+	{#if matchState.status === 'complete'}
 		<div class=" flex items-center gap-16">
 			<div class="mb-2 flex items-center justify-center">
 				{#if !signedIn}
