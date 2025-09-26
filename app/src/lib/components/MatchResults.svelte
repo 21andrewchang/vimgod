@@ -13,9 +13,12 @@
 	import { cubicOut } from 'svelte/easing';
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
 	import { levelFromXP } from '$lib/utils';
-	import { lpForRating, rankIdFromRating, prettyRank } from '$lib/data/ranks';
+	import { lpForRating, rankIdFromRating, prettyRank, bigRank } from '$lib/data/ranks';
 
-	const { match } = $props<{ match: MatchController }>();
+	const { match, rankUp } = $props<{
+		match: MatchController;
+		rankUp: (newRank: 'string') => void;
+	}>();
 
 	const signedIn = $derived(!!$user);
 
@@ -26,6 +29,19 @@
 	const rankId = $derived(hasPlacementRating ? rankIdFromRating(elo) : null);
 	const startRank = $derived(rankId ? prettyRank(rankId) : 'Unranked');
 	const rank = $derived(rankId ? prettyRank(rankId) : 'Unranked');
+	const startBig = rankId ? bigRank(rankId) : 'Unranked';
+	const big = $derived(rankId ? bigRank(rankId) : 'Unranked');
+	const showRankup = $derived(startBig !== big);
+
+	let wasRankup = $state(false);
+	//need to export rank and show the rankup on the same level as editor
+	$effect(() => {
+		const now = showRankup;
+		if (showRankup && !wasRankup) {
+			rankUp(rank);
+		}
+		wasRankup = now;
+	});
 
 	const eloTween = new Tween<number>(0);
 	let eloAnimated = false;
@@ -583,7 +599,14 @@
 </script>
 
 {#if showRankup}
-	<div></div>
+	<dialog class="z-50 h-full w-full text-neutral-200">
+		<div>you ranked up lol</div>
+		<button
+			onclick={() => {
+				closed = true;
+			}}>x</button
+		>
+	</dialog>
 {/if}
 <div class="mb-12 w-full max-w-7xl rounded-xl px-20 text-white shadow-lg backdrop-blur">
 	{#if signedIn}

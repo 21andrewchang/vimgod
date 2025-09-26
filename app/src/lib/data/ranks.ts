@@ -286,6 +286,20 @@ export function prettyRank(rankId: RankId | 'unranked'): string {
     return cap(rankId);
 }
 
+export function bigRank(rankId: RankId | 'unranked'): string {
+    if (rankId === 'unranked') {
+        return 'Unranked';
+    }
+    if (rankId === 'nova' || rankId === 'supernova' || rankId === 'singularity') {
+        return rankId;
+    }
+    const m = rankId.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
+    if (m) {
+        return `${m[1]}`;
+    }
+    return rankId;
+}
+
 export function nextRankId(current: RankId): RankId | null {
     const i = ORDER.indexOf(current);
     return i >= 0 && i < ORDER.length - 1 ? ORDER[i + 1] : null;

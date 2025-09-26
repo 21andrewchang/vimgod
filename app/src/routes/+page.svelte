@@ -15,9 +15,15 @@
 	import { user } from '$lib/stores/auth';
 	import '$lib/stores/auth';
 
-	let signedIn = false;
-	$: signedIn = Boolean($user);
+	let signedIn = $derived(!!$user);
+	let showRankup = $state(false);
+	let displayRank = $state('');
 	const match = createMatchController({ totalRounds: 20 });
+
+	const rankUp = (newRank: string): void => {
+		displayRank = newRank;
+		showRankup = true;
+	};
 
 	onMount(() => {
 		if (!browser) return;
@@ -92,8 +98,11 @@
 		}
 	};
 
-	$: if (reloadGuard) {
+	$effect(() => {
+		if (!reloadGuard) return;
+
 		const status = $match.status;
+
 		if (!signedIn) {
 			reloadGuard.disableBlocking(true);
 			reloadGuard.disable();
@@ -104,7 +113,7 @@
 			reloadGuard.disableBlocking(false);
 			reloadGuard.enable(undefined, (_snapshot) => startNewMatch());
 		}
-	}
+	});
 
 	onDestroy(() => {
 		reloadGuard?.disable();
@@ -130,8 +139,13 @@
 		<div class="rounded-xl border border-white/20">
 			<Editor {match} />
 		</div>
+	{:else if showRankup}
+		<div class="absolute z-50 h-full w-full text-white">
+			<div>{displayRank}</div>
+			<button onclick={() => (showRankup = false)}>x</button>
+		</div>
 	{:else}
-		<MatchResults {match} />
+		<MatchResults {match} {rankUp} />
 	{/if}
 	<Footer />
 </main>
