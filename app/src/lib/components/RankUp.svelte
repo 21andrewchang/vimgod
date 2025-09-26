@@ -8,6 +8,8 @@
 
 	// start at bronze for the demo
 	let idx = $state(0);
+	const normalizeRank = (label: string) => label.toLowerCase().replace(/[^a-z]/g, '');
+	const colorKey = $derived(normalizeRank(rank));
 
 	const currentRank = $derived(RANKS[idx]);
 	const pretty = (r: string) => r.charAt(0).toUpperCase() + r.slice(1);
@@ -24,7 +26,7 @@
 <div
 	class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
 	transition:blur={{ duration: 200 }}
-	data-rank={rank}
+	data-rank={colorKey}
 >
 	<div class="relative z-10 w-full max-w-md text-center text-white">
 		<div class="rank-beam" aria-hidden="true"></div>
@@ -63,7 +65,7 @@
 		--rank-title-glow-2: rgba(147, 197, 253, 0.35);
 		--rank-title-color: #e6f6ff;
 	}
-	[data-rank='Bronze IV'] {
+	[data-rank='bronze'] {
 		--rank-core-1: rgba(205, 127, 50, 0);
 		--rank-core-2: rgba(205, 127, 50, 0.95);
 		--rank-core-3: rgba(205, 127, 50, 0);
@@ -76,7 +78,7 @@
 		--rank-title-glow-2: rgba(237, 178, 116, 0.3);
 		--rank-title-color: #ffe9d3;
 	}
-	[data-rank='Silver IV'] {
+	[data-rank='silver'] {
 		--rank-core-1: rgba(192, 192, 192, 0);
 		--rank-core-2: rgba(210, 220, 230, 0.95);
 		--rank-core-3: rgba(192, 192, 192, 0);
@@ -89,7 +91,7 @@
 		--rank-title-glow-2: rgba(208, 220, 232, 0.3);
 		--rank-title-color: #f4f7fa;
 	}
-	[data-rank='Gold IV'] {
+	[data-rank='gold'] {
 		--rank-core-1: rgba(255, 213, 74, 0);
 		--rank-core-2: rgba(255, 213, 74, 0.95);
 		--rank-core-3: rgba(255, 213, 74, 0);
@@ -102,7 +104,7 @@
 		--rank-title-glow-2: rgba(255, 220, 120, 0.35);
 		--rank-title-color: #fff6d8;
 	}
-	[data-rank='Platinum IV'] {
+	[data-rank='platinum'] {
 		--rank-core-1: rgba(167, 224, 255, 0);
 		--rank-core-2: rgba(167, 224, 255, 0.92);
 		--rank-core-3: rgba(167, 224, 255, 0);
@@ -115,7 +117,7 @@
 		--rank-title-glow-2: rgba(147, 197, 253, 0.35);
 		--rank-title-color: #e6f6ff;
 	}
-	[data-rank='Diamond IV'] {
+	[data-rank='diamond'] {
 		--rank-core-1: rgba(56, 189, 248, 0);
 		--rank-core-2: rgba(56, 189, 248, 0.95);
 		--rank-core-3: rgba(56, 189, 248, 0);
