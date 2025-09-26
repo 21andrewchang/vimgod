@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
-	import Tutorial from '$lib/components/Tutorial.svelte';
 	import { user, signInWithGoogle } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
 	import { levelFromXP } from '$lib/utils';
 	import type { RankId } from '$lib/data/ranks';
 	import { onMount } from 'svelte';
+	import TutorialEditor from '$lib/components/TutorialEditor.svelte';
 
 	type Kind = 'movement' | 'delete' | 'visual' | 'undo';
 	type Combo = { keys: string | string[]; label: string; desc: string; kind: Kind };
@@ -397,7 +397,7 @@
 			</div>
 		</div>
 	{:else}
-		<Tutorial />
+		<TutorialEditor />
 	{/if}
 
 	<Footer minimal={true} />

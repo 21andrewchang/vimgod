@@ -9,7 +9,6 @@
 	<meta name="description" content="Sign in to vimgod - ranked vim. gg." />
 </svelte:head>
 
-<BgDarkTiles />
 
 <div class="w-full relative overflow-hidden min-h-screen">
 	<div class="relative z-[2] px-6 py-8 max-w-4xl mx-auto min-h-screen flex flex-col">

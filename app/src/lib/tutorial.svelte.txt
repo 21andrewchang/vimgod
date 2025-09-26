@@ -1,4 +1,12 @@
-purple represents movement
-basic movement is h - left, j - down, k - up, l - right
+Welcome to vimgod, explorer.
 
-move to the purple box using hjkl
+You should know how to move but if you dont, 
+you can use h, j, k, and l to move
+left, down, up, and right, respectively.
+
+Try it out - your  location is that white box.
+Move it around and try to reach the purple box.
+
+ time you reach the purple box, it will move.
+In the real game, this is considered a "round".
+A single match consists of multiple rounds.
