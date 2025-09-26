@@ -139,13 +139,23 @@
 		<div class="rounded-xl border border-white/20">
 			<Editor {match} />
 		</div>
-	{:else if showRankup}
-		<div class="absolute z-50 h-full w-full text-white">
-			<div>{displayRank}</div>
-			<button onclick={() => (showRankup = false)}>x</button>
-		</div>
 	{:else}
 		<MatchResults {match} {rankUp} />
+	{/if}
+	{#if showRankup}
+		<div
+			class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+		>
+			<div class="w-full max-w-md text-center text-white">
+				<div class="mb-6 text-3xl font-semibold">{displayRank}</div>
+				<button
+					class="rounded-lg border border-white/30 px-4 py-2"
+					onclick={() => (showRankup = false)}
+				>
+					Close
+				</button>
+			</div>
+		</div>
 	{/if}
 	<Footer />
 </main>
