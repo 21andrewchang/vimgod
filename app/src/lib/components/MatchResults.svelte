@@ -2,7 +2,7 @@
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
 	import Graph from '$lib/components/Graph.svelte';
 	import { onDestroy, onMount } from 'svelte';
-	import { scale, slide } from 'svelte/transition';
+	import { scale, slide, blur } from 'svelte/transition';
 	import { get } from 'svelte/store';
 	import type { MatchController, MatchState } from '$lib/match/match';
 	import { supabase } from '$lib/supabaseClient';
@@ -341,16 +341,9 @@
 				xpBaseline = profileXp;
 				const targetXp = xpBaseline + MATCH_XP_REWARD;
 				xpTween.set(xpBaseline, { duration: 0 });
-				// xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 3000 });
-			} else if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
-				xpBaseline = profileXp;
-				xpTween.set(profileXp, { duration: 0 });
+				xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 3000 });
 			}
 		}
-		// } else {
-		// 	const targetXp = xpBaseline + MATCH_XP_REWARD;
-		// 	xpTween.set(targetXp, { duration: 700, easing: cubicOut });
-		// }
 		return;
 	});
 
