@@ -2,27 +2,46 @@
 	import NextTestButton from '$lib/components/NextTestButton.svelte';
 	import Graph from '$lib/components/Graph.svelte';
 	import { onDestroy, onMount } from 'svelte';
-	import { scale, slide } from 'svelte/transition';
+	import { scale, slide, blur } from 'svelte/transition';
 	import { get } from 'svelte/store';
 	import type { MatchController, MatchState } from '$lib/match/match';
 	import { supabase } from '$lib/supabaseClient';
-	import { user, signInWithGoogle, setInitialRank, increaseXp } from '$lib/stores/auth';
+	import { user, signInWithGoogle, increaseXp } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
+	import { matchStatus } from '$lib/stores/matchStatus';
 	import { Tween, prefersReducedMotion } from 'svelte/motion';
 	import { cubicOut } from 'svelte/easing';
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
 	import { levelFromXP } from '$lib/utils';
-	import { lpForRating, rankIdFromRating, prettyRank } from '$lib/data/ranks';
+	import { lpForRating, rankIdFromRating, prettyRank, bigRank } from '$lib/data/ranks';
 
-	const { match } = $props<{ match: MatchController }>();
+	const { match, rankUp } = $props<{
+		match: MatchController;
+		rankUp: (newRank: 'string') => void;
+	}>();
 
 	const signedIn = $derived(!!$user);
 
-	const elo = $derived($profile?.rating ?? 67);
+	const rating = $derived($profile?.rating ?? null);
+	const hasPlacementRating = $derived(rating !== null);
+	const placementMode = $derived(signedIn && !hasPlacementRating);
+	const elo = $derived(hasPlacementRating ? (rating as number) : 0);
+	const rankId = $derived(hasPlacementRating ? rankIdFromRating(elo) : null);
+	const startRank = $derived(rankId ? prettyRank(rankId) : 'Unranked');
+	const rank = $derived(rankId ? prettyRank(rankId) : 'Unranked');
+	const startBig = rankId ? bigRank(rankId) : 'Unranked';
+	const big = $derived(rankId ? bigRank(rankId) : 'Unranked');
+	const showRankup = $derived(startBig !== big);
 
-	const startRank = prettyRank(rankIdFromRating(elo));
-	const rankId = $derived(rankIdFromRating(elo));
-	const rank = $derived(prettyRank(rankId));
+	let wasRankup = $state(false);
+	//need to export rank and show the rankup on the same level as editor
+	$effect(() => {
+		const now = showRankup;
+		if (showRankup && !wasRankup) {
+			rankUp(rank);
+		}
+		wasRankup = now;
+	});
 
 	const eloTween = new Tween<number>(0);
 	let eloAnimated = false;
@@ -85,8 +104,8 @@
 		return String(mod).padStart(2, '0');
 	}
 
-	let state: MatchState = get(match);
-	const unsubscribe = match.subscribe((value: MatchState) => (state = value));
+	let matchState: MatchState = get(match);
+	const unsubscribe = match.subscribe((value: MatchState) => (matchState = value));
 	onDestroy(unsubscribe);
 
 	onDestroy(() => {
@@ -94,18 +113,20 @@
 			clearTimeout(levelSlideTimer);
 			levelSlideTimer = null;
 		}
+		matchStatus.set('idle');
 	});
 
 	onMount(() => {
+		matchStatus.set('complete');
 		eloTween.set($profile?.rating ?? 0, { duration: 0 });
 		void refreshProfile();
 	});
 
-	const completedRounds = $derived(state.completed.filter((round) => round.index > 0));
+	const completedRounds = $derived(matchState.completed.filter((round) => round.index > 0));
 	const wins = $derived(completedRounds.filter((round) => round.succeeded).length);
 	const losses = $derived(completedRounds.length - wins);
 	const matchOutcome = $derived(
-		state.outcome === 'dodge'
+		matchState.outcome === 'dodge'
 			? 'Dodge '
 			: wins > losses
 				? 'Victory'
@@ -113,7 +134,7 @@
 					? 'Defeat'
 					: 'Draw'
 	);
-	const lpDelta = $derived(state.totalPoints);
+	const lpDelta = $derived(matchState.totalPoints);
 
 	const averageMs = $derived(
 		completedRounds.length
@@ -134,7 +155,7 @@
 				) / roundsWithKeys.length
 			: 0
 	);
-	const undoCount = $derived(state.undoCount ?? 0);
+	const undoCount = $derived(matchState.undoCount ?? 0);
 
 	const IGNORED_KEYS = new Set([
 		'Alt',
@@ -217,20 +238,35 @@
 		{ label: 'Bronze 4', maxMs: Number.POSITIVE_INFINITY, value: RANK_VALUES.bronze4 }
 	] as const;
 
-	const PLACEMENT_CAP = RANK_VALUES.gold4;
+	const PLACEMENT_CAP = RANK_VALUES.gold1;
 	const lsKey = (uid: string | null) => `mh:last:${uid ?? 'anon'}`;
 
-	function buildSignature(state: MatchState, uid: string | null) {
-		const rounds = state.completed.filter((r) => r.index > 0);
-		const firstStart = rounds[0]?.startedAt ?? state.startTime ?? 0;
-		const lastDone = state.endTime ?? rounds.at(-1)?.completedAt ?? 0;
+	function placementEloForAverageSpeed(avgSpeed: number): number {
+		const band =
+			rankBands.find((candidate) => avgSpeed <= candidate.maxMs) ?? rankBands[rankBands.length - 1];
+		return Math.min(band.value, PLACEMENT_CAP);
+	}
+
+	const PLACEMENT_MATCH_GOAL = 5;
+	const placementMatchCount = $derived(Math.min(PLACEMENT_MATCH_GOAL, $profile?.placements ?? 0));
+
+	function formatPlacementProgress(count: number): string {
+		const clamped = Math.min(PLACEMENT_MATCH_GOAL, Math.max(0, count));
+		const display = clamped === 0 ? 1 : clamped;
+		return `${display} / ${PLACEMENT_MATCH_GOAL}`;
+	}
+
+	function buildSignature(matchState: MatchState, uid: string | null) {
+		const rounds = matchState.completed.filter((r) => r.index > 0);
+		const firstStart = rounds[0]?.startedAt ?? matchState.startTime ?? 0;
+		const lastDone = matchState.endTime ?? rounds.at(-1)?.completedAt ?? 0;
 		return JSON.stringify({
 			uid,
 			rounds: rounds.length,
 			firstStart,
 			lastDone,
-			totalPoints: state.totalPoints,
-			timeLimitMs: state.timeLimitMs
+			totalPoints: matchState.totalPoints,
+			timeLimitMs: matchState.timeLimitMs
 		});
 	}
 
@@ -257,36 +293,18 @@
 		}
 	}
 
-	const projectedRankValue = $derived(
-		completedRounds.length
-			? (rankBands.find((band) => averageMs <= band.maxMs) ?? rankBands[rankBands.length - 1]).value
-			: null
-	);
-	const placementRankValue = $derived(
-		projectedRankValue === null ? null : Math.min(projectedRankValue, PLACEMENT_CAP)
-	);
-
-	let triedInitialRank = false;
-
 	$effect(() => {
-		if (
-			!triedInitialRank &&
-			state.status === 'complete' &&
-			$user &&
-			projectedRankValue !== null &&
-			placementRankValue !== null
-		) {
-			triedInitialRank = true;
-			console.log('projected: ', projectedRankValue);
-			console.log('placement: ', placementRankValue);
-			setInitialRank(projectedRankValue, placementRankValue).catch((e) =>
-				console.error('Failed to set initial rank', e)
-			);
+		if (!hasPlacementRating) {
+			eloAnimated = false;
+			if (eloStartTimer) {
+				clearTimeout(eloStartTimer);
+				eloStartTimer = null;
+			}
+			eloTween.set(0, { duration: 0 });
+			return;
 		}
-	});
 
-	$effect(() => {
-		if (state.status === 'complete' && !eloAnimated) {
+		if (matchState.status === 'complete' && !eloAnimated) {
 			eloAnimated = true;
 
 			const startElo = lpForRating(elo).lp ?? 0;
@@ -295,7 +313,7 @@
 			scheduleEloAnimation(startElo, endElo);
 		}
 
-		if (state.status !== 'complete') {
+		if (matchState.status !== 'complete') {
 			eloAnimated = false;
 			if (eloStartTimer) {
 				clearTimeout(eloStartTimer);
@@ -333,22 +351,15 @@
 
 		const profileXp = $profile?.xp ?? 0;
 
-		if (state.status === 'complete' && state.outcome !== 'dodge') {
+		if (matchState.status === 'complete' && matchState.outcome !== 'dodge') {
 			if (!xpAnimationRan) {
 				xpAnimationRan = true;
 				xpBaseline = profileXp;
 				const targetXp = xpBaseline + MATCH_XP_REWARD;
 				xpTween.set(xpBaseline, { duration: 0 });
-				// xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 3000 });
-			} else if (profileXp >= xpBaseline + MATCH_XP_REWARD) {
-				xpBaseline = profileXp;
-				xpTween.set(profileXp, { duration: 0 });
+				xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 3000 });
 			}
 		}
-		// } else {
-		// 	const targetXp = xpBaseline + MATCH_XP_REWARD;
-		// 	xpTween.set(targetXp, { duration: 700, easing: cubicOut });
-		// }
 		return;
 	});
 
@@ -362,7 +373,7 @@
 			return;
 		}
 
-		if (state.status !== 'complete') {
+		if (matchState.status !== 'complete') {
 			if (currentLevel !== visibleLevel) {
 				visibleLevel = currentLevel;
 				slideLevels = [currentLevel, currentLevel + 1];
@@ -403,16 +414,69 @@
 
 	async function writeHistoryIdempotent(): Promise<number | null> {
 		if (wroteHistoryOnce) return null;
-		if (state.status !== 'complete') return null;
+		if (matchState.status !== 'complete') return null;
 
 		const uid = $user?.id ?? null;
 
-		const signature = buildSignature(state, uid);
+		const signature = buildSignature(matchState, uid);
 		const match_id = getOrCreateMatchId(signature, uid);
 
-		// Use server-truth rating at the time of write
-		const startElo = $profile?.rating ?? 0;
-		const computedEndElo = startElo + (lpDelta ?? 0);
+		const currentRating = $profile?.rating ?? null;
+		const isPlacementMatch = uid !== null && currentRating === null;
+		const isDodge = matchState.outcome === 'dodge';
+		let startElo: number | null = currentRating;
+		let endEloToStore: number | null = null;
+		let lpDeltaToStore: number | null = null;
+		let nextPlacementCount = 0;
+
+		if (isPlacementMatch) {
+			type PlacementMatch = {
+				avg_speed: number | null;
+				is_dodge: boolean | null;
+				end_elo: number | null;
+			};
+			const { data: placementHistory, error: placementError } = await supabase
+				.from('match_history')
+				.select('avg_speed, is_dodge, end_elo')
+				.eq('player_id', uid)
+				.neq('match_id', match_id)
+				.order('created_at', { ascending: true })
+				.limit(25);
+
+			if (placementError) {
+				console.error('Failed to load placement history', placementError);
+			}
+
+			const historyRows = (placementHistory as PlacementMatch[] | null) ?? [];
+			const placementRows = historyRows.filter((match) => match?.end_elo === null);
+			const nonDodgeMatches = placementRows.filter((match) => match?.is_dodge !== true);
+			const priorCount = nonDodgeMatches.length;
+			nextPlacementCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + (isDodge ? 0 : 1));
+
+			if (!isDodge && priorCount >= PLACEMENT_MATCH_GOAL - 1) {
+				const relevantMatches = nonDodgeMatches.slice(-1 * (PLACEMENT_MATCH_GOAL - 1));
+				const priorAverageSum = relevantMatches.reduce((sum, match) => {
+					const speed = typeof match.avg_speed === 'number' ? match.avg_speed : 0;
+					return sum + speed;
+				}, 0);
+				const combinedAverage = (priorAverageSum + averageMs) / (relevantMatches.length + 1);
+				endEloToStore = placementEloForAverageSpeed(combinedAverage);
+			}
+
+			startElo = null;
+		} else if (currentRating !== null) {
+			nextPlacementCount = 0;
+			const baseline = currentRating;
+			startElo = baseline;
+			const delta = lpDelta ?? 0;
+			endEloToStore = baseline + delta;
+			lpDeltaToStore = delta;
+		} else {
+			nextPlacementCount = 0;
+			startElo = null;
+			endEloToStore = null;
+			lpDeltaToStore = null;
+		}
 
 		const row = {
 			match_id,
@@ -424,8 +488,9 @@
 			apm: Math.round(apm),
 			reaction_time: averageReaction,
 			start_elo: startElo,
-			end_elo: computedEndElo,
-			lp_delta: lpDelta,
+			end_elo: endEloToStore,
+			lp_delta: lpDeltaToStore,
+			is_dodge: isDodge,
 			motion_counts: Object.keys(keyFrequency).length ? keyFrequency : {}
 		};
 
@@ -442,7 +507,7 @@
 
 		wroteHistoryOnce = true;
 
-		if (signedIn && state.outcome !== 'dodge') {
+		if (signedIn && matchState.outcome !== 'dodge') {
 			try {
 				const updatedXp = await increaseXp(10);
 				profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
@@ -451,7 +516,13 @@
 			}
 		}
 
-		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : computedEndElo;
+		if (isPlacementMatch) {
+			profile.update((p) => (p ? { ...p, placements: nextPlacementCount } : p));
+		} else if (currentRating !== null) {
+			profile.update((p) => (p ? { ...p, placements: 0 } : p));
+		}
+
+		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : endEloToStore;
 
 		if (typeof endElo === 'number') {
 			profile.update((p) => (p ? { ...p, rating: endElo } : p));
@@ -463,7 +534,7 @@
 	}
 
 	$effect(() => {
-		if (state.status === 'complete') {
+		if (matchState.status === 'complete') {
 			void writeHistoryIdempotent();
 		}
 	});
@@ -473,7 +544,7 @@
 	const samples = $derived(roundDurations.map((duration, index) => ({ x: index, y: duration })));
 	const dashed = $derived(
 		roundDurations.length
-			? roundDurations.map((_, index) => ({ x: index, y: state.timeLimitMs }))
+			? roundDurations.map((_, index) => ({ x: index, y: matchState.timeLimitMs }))
 			: null
 	);
 
@@ -503,7 +574,6 @@
 		if (!signedIn) {
 			match.start();
 		}
-		triedInitialRank = false;
 
 		eloAnimated = false;
 		if (eloStartTimer) {
@@ -528,6 +598,16 @@
 	const graphHeight = 200;
 </script>
 
+{#if showRankup}
+	<dialog class="z-50 h-full w-full text-neutral-200">
+		<div>you ranked up lol</div>
+		<button
+			onclick={() => {
+				closed = true;
+			}}>x</button
+		>
+	</dialog>
+{/if}
 <div class="mb-12 w-full max-w-7xl rounded-xl px-20 text-white shadow-lg backdrop-blur">
 	{#if signedIn}
 		<div class="mb-12 w-full">
@@ -551,7 +631,7 @@
 			</div>
 		</div>
 	{/if}
-	{#if state.status === 'complete'}
+	{#if matchState.status === 'complete'}
 		<div class=" flex items-center gap-16">
 			<div class="mb-2 flex items-center justify-center">
 				{#if !signedIn}
@@ -590,57 +670,71 @@
 					aria-hidden={!signedIn}
 				>
 					<div>
-						<div
-							class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
-						>
-							{#if eloTween.current > 100 || eloTween.current < 0}
-								<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
-							{:else}
-								<div>{startRank}</div>
-							{/if}
-							{#if startRank !== rank}
-								{#if lpDelta < 0}
-									<svg
-										class="mb-0.5 h-2 w-2 rotate-180 text-red-400"
-										viewBox="0 0 12 12"
-										fill="none"
-										aria-hidden="true"
-									>
-										<path
-											d="M2 7 L6 3 L10 7"
-											stroke="currentColor"
-											stroke-width="1"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-										/>
-									</svg>
-								{:else}
-									<svg
-										viewBox="0 0 12 12"
-										fill="none"
-										class="h-2 w-2 text-emerald-300"
-										aria-hidden="true"
-									>
-										<path
-											d="M2 7 L6 3 L10 7"
-											stroke="currentColor"
-											stroke-width="1"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-										/>
-									</svg>
-								{/if}
-							{/if}
-						</div>
-						<div class="flex flex-row items-end gap-2">
-							<div
-								class="font-mono text-5xl text-slate-100 transition"
-								class:opacity-60={!signedIn}
-							>
-								{twoDigits(Math.round(eloTween.current))}
+						{#if placementMode}
+							<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
+								Placements
 							</div>
-							<div class="mb-1 font-mono text-xs text-neutral-600">LP</div>
-						</div>
+						{:else}
+							<div
+								class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
+							>
+								{#if eloTween.current > 100 || eloTween.current < 0}
+									<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
+								{:else}
+									<div>{startRank}</div>
+								{/if}
+								{#if startRank !== rank || showRankup}
+									{#if lpDelta < 0}
+										<svg
+											class="mb-0.5 h-2 w-2 rotate-180 text-red-400"
+											viewBox="0 0 12 12"
+											fill="none"
+											aria-hidden="true"
+										>
+											<path
+												d="M2 7 L6 3 L10 7"
+												stroke="currentColor"
+												stroke-width="1"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+									{:else}
+										<svg
+											viewBox="0 0 12 12"
+											fill="none"
+											class="h-2 w-2 text-emerald-300"
+											aria-hidden="true"
+										>
+											<path
+												d="M2 7 L6 3 L10 7"
+												stroke="currentColor"
+												stroke-width="1"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+									{/if}
+								{/if}
+							</div>
+						{/if}
+						{#if placementMode}
+							<div class="flex flex-col gap-1">
+								<div class="mt-2 font-mono text-4xl text-slate-100 transition">
+									{formatPlacementProgress(placementMatchCount)}
+								</div>
+							</div>
+						{:else}
+							<div class="flex flex-row items-end gap-2">
+								<div
+									class="font-mono text-5xl text-slate-100 transition"
+									class:opacity-60={!signedIn}
+								>
+									{twoDigits(Math.round(eloTween.current))}
+								</div>
+								<div class="mb-1 font-mono text-xs text-neutral-600">LP</div>
+							</div>
+						{/if}
 					</div>
 
 					<div>
@@ -648,21 +742,27 @@
 							{matchOutcome}
 						</div>
 						<div class="flex flex-row items-end gap-2">
-							<div class="flex items-center gap-0.5">
-								<div
-									class={`font-mono text-2xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
-									class:opacity-60={!signedIn}
-								>
-									{formatPoints(lpDelta).sign}
+							{#if placementMode}
+								<div class="mt-2 font-mono text-5xl text-neutral-500" class:opacity-60={!signedIn}>
+									-
 								</div>
-								<div
-									class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
-									class:opacity-60={!signedIn}
-								>
-									{formatPoints(lpDelta).number}
+							{:else}
+								<div class="flex items-center gap-0.5">
+									<div
+										class={`font-mono text-2xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+										class:opacity-60={!signedIn}
+									>
+										{formatPoints(lpDelta).sign}
+									</div>
+									<div
+										class={`font-mono text-5xl transition ${lpDelta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}
+										class:opacity-60={!signedIn}
+									>
+										{formatPoints(lpDelta).number}
+									</div>
 								</div>
-							</div>
-							<div class="mb-1 font-mono text-xs text-neutral-600">LP</div>
+								<div class="mb-1 font-mono text-xs text-neutral-600">LP</div>
+							{/if}
 						</div>
 					</div>
 				</div>

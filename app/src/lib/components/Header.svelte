@@ -5,7 +5,11 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
-	const { variant = 'inline', size = 'large', fixed = false } = $props<{
+	const {
+		variant = 'inline',
+		size = 'large',
+		fixed = false
+	} = $props<{
 		variant?: 'fixed' | 'inline';
 		size?: 'small' | 'large';
 		fixed?: boolean;
@@ -38,7 +42,6 @@
 
 	/* page-aware logo interactivity */
 	const pathname = $derived($page.url?.pathname ?? '/');
-	const isHome = $derived(pathname === '/');
 	const isProfile = $derived(pathname.startsWith('/profile'));
 	const isMotions = $derived(pathname.startsWith('/motions'));
 	const logoIsInteractive = $derived(isProfile || isMotions);
@@ -133,10 +136,10 @@
 	);
 
 	const logoClass = $derived(
-    effectiveVariant === 'fixed'
-      ? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-      : `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
-  );
+		effectiveVariant === 'fixed'
+			? `flex items-center gap-2 max-[740px]:hidden ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+			: `flex items-center gap-2 ${logoIsInteractive ? 'cursor-pointer' : 'cursor-default'}`
+	);
 
 	const greaterThanClass = $derived(
 		size === 'small' ? 'text-2xl font-normal text-purple-400' : 'text-4xl font-normal'
@@ -190,10 +193,9 @@
 		</div>
 	</div>
 
-	<!-- Right: Motions icon + User -->
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
 			onclick={() => goto('/motions')}
 			aria-label="Open motions combos"
 		>
@@ -205,7 +207,6 @@
 			/>
 		</button>
 
-		<!-- User Icon + Username -->
 		<div
 			bind:this={iconRef}
 			role="button"
@@ -286,7 +287,6 @@
 			{/if}
 		</div>
 	</div>
-	
 </div>
 
 <style>
@@ -296,6 +296,27 @@
 	}
 	.user-dropdown.hiding {
 		animation: dropdownShrink 0.1s ease-in forwards;
+	}
+
+	.rank-display {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		width: fit-content;
+	}
+	.rank-progress {
+		height: 1px;
+		width: 100%;
+		background: rgba(255, 255, 255, 0.12);
+		position: relative;
+		overflow: hidden;
+		border-radius: 9999px;
+	}
+	.rank-progress__fill {
+		position: absolute;
+		inset: 0;
+		background: #666;
 	}
 
 	@keyframes dropdownExpand {

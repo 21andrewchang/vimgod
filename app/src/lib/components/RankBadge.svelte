@@ -9,6 +9,7 @@
 		elo?: number;
 		lp?: number;
 	}>();
+	console.log('rank: ', rankName);
 </script>
 
 <div class="flex items-center gap-3">
@@ -16,6 +17,13 @@
 		<Supernova />
 	{:else if rank === 'Singularity'}
 		<Singularity />
+	{:else if rank === 'Unranked'}
+		<div
+			class="font-regular rounded-xl bg-neutral-800 px-3 py-1 text-sm text-neutral-300"
+			style="font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+		>
+			{rank}
+		</div>
 	{:else}
 		<div
 			class={`font-regular rounded-xl px-3 py-1 text-sm ${colorByRank[rankName] ?? 'bg-neutral-200'}`}

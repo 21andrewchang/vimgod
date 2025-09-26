@@ -1,34 +1,47 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
+	import RankUp from '$lib/components/RankUp.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
-import { clearDodgeSnapshot, DODGE_LP_PENALTY, DODGE_STORAGE_KEY, type DodgeSnapshot } from '$lib/reloadGuard';
+	import { blur } from 'svelte/transition';
+	import {
+		clearDodgeSnapshot,
+		DODGE_LP_PENALTY,
+		DODGE_STORAGE_KEY,
+		type DodgeSnapshot
+	} from '$lib/reloadGuard';
 	import { browser } from '$app/environment';
 	import { get } from 'svelte/store';
-import { getContext, onDestroy, onMount } from 'svelte';
+	import { getContext, onDestroy, onMount } from 'svelte';
 	import { user } from '$lib/stores/auth';
 	import '$lib/stores/auth';
 
-	let signedIn = false;
-	$: signedIn = Boolean($user);
+	let signedIn = $derived(!!$user);
+	let showRankup = $state(false);
+	let displayRank = $state('');
 	const match = createMatchController({ totalRounds: 20 });
 
-onMount(() => {
-    if (!browser) return;
-    const stored = localStorage.getItem(DODGE_STORAGE_KEY);
-    if (!stored) return;
-    try {
-        const parsed = JSON.parse(stored) as DodgeSnapshot;
-        if (parsed?.type === 'dodge' && parsed.state) {
-            match.replaceState(parsed.state as MatchState);
-        }
-    } catch (error) {
-        console.warn('failed to hydrate dodge snapshot', error);
-    } finally {
-        clearDodgeSnapshot();
-    }
-});
+	const rankUp = (newRank: string): void => {
+		displayRank = newRank;
+		showRankup = true;
+	};
+
+	onMount(() => {
+		if (!browser) return;
+		const stored = localStorage.getItem(DODGE_STORAGE_KEY);
+		if (!stored) return;
+		try {
+			const parsed = JSON.parse(stored) as DodgeSnapshot;
+			if (parsed?.type === 'dodge' && parsed.state) {
+				match.replaceState(parsed.state as MatchState);
+			}
+		} catch (error) {
+			console.warn('failed to hydrate dodge snapshot', error);
+		} finally {
+			clearDodgeSnapshot();
+		}
+	});
 
 	type ReloadGuardContext = {
 		enable: (
@@ -87,8 +100,11 @@ onMount(() => {
 		}
 	};
 
-	$: if (reloadGuard) {
+	$effect(() => {
+		if (!reloadGuard) return;
+
 		const status = $match.status;
+
 		if (!signedIn) {
 			reloadGuard.disableBlocking(true);
 			reloadGuard.disable();
@@ -99,7 +115,7 @@ onMount(() => {
 			reloadGuard.disableBlocking(false);
 			reloadGuard.enable(undefined, (_snapshot) => startNewMatch());
 		}
-	}
+	});
 
 	onDestroy(() => {
 		reloadGuard?.disable();
@@ -126,7 +142,10 @@ onMount(() => {
 			<Editor {match} />
 		</div>
 	{:else}
-		<MatchResults {match} />
+		<MatchResults {match} {rankUp} />
+	{/if}
+	{#if showRankup}
+		<RankUp closeRankup={() => (showRankup = false)} rank={displayRank} />
 	{/if}
 	<Footer />
 </main>

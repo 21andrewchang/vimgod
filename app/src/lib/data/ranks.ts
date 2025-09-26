@@ -34,7 +34,7 @@ const RANK_VALUES = {
 
 export const colorByRank: Record<string, string> = {
     Unranked: 'bg-neutral-300 text-neutral-800',
-    Bronze: 'bg-amber-700 text-white',
+    Bronze: 'bg-yellow-900 text-white/60',
     Silver: 'bg-slate-300 text-slate-900',
     Gold: 'bg-amber-200 text-yellow-700',
     Platinum: 'bg-teal-200 text-teal-600',
@@ -244,7 +244,8 @@ const ORDER: RankId[] = Object.entries(RANK_VALUES)
     .sort((a, b) => a[1] - b[1])
     .map(([k]) => k as RankId);
 
-export function rankIdFromRating(rating: number): RankId {
+export function rankIdFromRating(rating: number | null): RankId | 'unranked' {
+    if (rating == null) return 'unranked'
     let current = ORDER[0];
     for (const key of ORDER) {
         if (rating >= RANK_VALUES[key]) current = key;
@@ -269,7 +270,10 @@ export function lpForRating(rating: number) {
 
 function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-export function prettyRank(rankId: RankId): string {
+export function prettyRank(rankId: RankId | 'unranked'): string {
+    if (rankId === 'unranked') {
+        return 'Unranked';
+    }
     if (rankId === 'nova' || rankId === 'supernova' || rankId === 'singularity') {
         return cap(rankId);
     }
@@ -280,6 +284,20 @@ export function prettyRank(rankId: RankId): string {
     }
     // Fallback
     return cap(rankId);
+}
+
+export function bigRank(rankId: RankId | 'unranked'): string {
+    if (rankId === 'unranked') {
+        return 'Unranked';
+    }
+    if (rankId === 'nova' || rankId === 'supernova' || rankId === 'singularity') {
+        return rankId;
+    }
+    const m = rankId.match(/(bronze|silver|gold|platinum|diamond)([1-4])/i);
+    if (m) {
+        return `${m[1]}`;
+    }
+    return rankId;
 }
 
 export function nextRankId(current: RankId): RankId | null {

@@ -5,10 +5,10 @@
 
 	const {
 		userName = 'Player',
-		rank = 'Bronze',
-		rankName = 'Bronze',
-		level = 420,
-		experience = 67,
+		rank = 'Unranked',
+		rankName = 'Unranked',
+		level = 0,
+		experience = 0,
 		maxExperience = 100
 	} = $props<{
 		userName?: string;
