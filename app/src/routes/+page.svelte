@@ -144,9 +144,7 @@
 	{:else}
 		<MatchResults {match} {rankUp} />
 	{/if}
-	{#if showRankup}
-		<RankUp closeRankup={() => (showRankup = false)} rank={displayRank} />
-	{/if}
+	<RankUp closeRankup={() => (showRankup = false)} rank={displayRank} visible={showRankup} />
 	<Footer />
 </main>
 

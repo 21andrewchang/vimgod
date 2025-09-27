@@ -195,9 +195,26 @@
 
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
+			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			onclick={() => goto('/tutorial')}
+			aria-label="tutorial"
+		>
+			<svg
+				class={`h-6 w-6 opacity-50 transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100`}
+				viewBox="0 0 24 24"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<path
+					d="M12 6a4 4 0 0 1 4 4c0 2.22-1.76 3.18-2.66 3.73-.69.41-.84.59-.84 1.27v.25h-2v-.39c0-1.54.6-2.2 1.8-2.92.69-.41 1.7-1.01 1.7-1.94A2 2 0 0 0 12 8a2 2 0 0 0-2 2H8a4 4 0 0 1 4-4Z"
+				/>
+				<circle cx="12" cy="18.5" r="1.25" />
+			</svg>
+		</button>
+		<button
 			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
 			onclick={() => goto('/motions')}
-			aria-label="Open motions combos"
+			aria-label="motions"
 		>
 			<img
 				src="/cards.svg"
