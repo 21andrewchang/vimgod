@@ -8,8 +8,9 @@
 
 	// start at bronze for the demo
 	let idx = $state(0);
-	const normalizeRank = (label: string) => label.toLowerCase().replace(/[^a-z]/g, '');
-	const colorKey = $derived(normalizeRank(rank));
+	const normalizeRank = (label: string) => label.toLowerCase().split(' ');
+	const colorKey = $derived(normalizeRank(rank)[0]);
+	console.log(colorKey);
 
 	const currentRank = $derived(RANKS[idx]);
 	const pretty = (r: string) => r.charAt(0).toUpperCase() + r.slice(1);
