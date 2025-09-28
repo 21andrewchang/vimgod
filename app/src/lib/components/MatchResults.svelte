@@ -359,7 +359,7 @@
 				xpBaseline = profileXp;
 				const targetXp = xpBaseline + MATCH_XP_REWARD;
 				xpTween.set(xpBaseline, { duration: 0 });
-				xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 3000 });
+				xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 1000 });
 			}
 		}
 		return;
