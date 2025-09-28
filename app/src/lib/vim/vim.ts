@@ -541,7 +541,25 @@ export function createVimController(options: VimOptions): VimController {
     let newRow = currRow;
     let newCol = currCol + 1;
     let currLine = lines[cursor.row] ?? '';
-
+    if (currCol == currLine.length - 1 && currRow < lines.length - 1 && !ghost) {
+      newCol = 0;
+      newRow++;
+      skipSpaces(newRow, newCol, false);
+      cursor.col = newCol;
+      cursor.goalCol = cursor.col;
+      cursor.row = newRow;
+      setPendingCount(null);
+      if (currentMode === 'visual') updateVisualCharSelection();
+      return;
+    }
+    if (currLine === '' && currRow < lines.length - 1 && !ghost) {
+      cursor.col = 0;
+      cursor.goalCol = cursor.col;
+      cursor.row = currRow + 1;
+      setPendingCount(null);
+      if (currentMode === 'visual') updateVisualCharSelection();
+      return;
+    }
     for (; remaining > 0; remaining--) {
       if (currRow === lines.length - 1 && currCol === (lines[currRow]?.length ?? 1) - 1) {
         if (!ghost) setPendingCount(null);
@@ -551,12 +569,13 @@ export function createVimController(options: VimOptions): VimController {
         if (newCol < currLine.length - 1) {
           newCol++;
         } else if (currRow === lines.length - 1) {
+          console.log('huh')
           newCol = (lines[currRow]?.length ?? 1) - 1;
           break;
-        } else {
+        } else if (newCol == currLine.length - 1) {
           newCol = 0;
           newRow++;
-          currLine = lines[newRow] ?? '';
+          break;
         }
       }
       currCol = newCol;
@@ -582,7 +601,15 @@ export function createVimController(options: VimOptions): VimController {
     let currRow = cursor.row;
     let currCol = cursor.col;
     let newRow = currRow;
+    // if col == 0 then this is -1
     let newCol = currCol - 1;
+    if (currCol === 0 && currRow !== 0) {
+      newRow = currRow - 1;
+      newCol = lines[newRow].length - 1;
+      if (lines[newRow].length == 0) {
+        newCol = 0;
+      }
+    }
 
     if (currRow === 0 && currCol === 0) return ghost ? [currRow, currCol] : undefined;
 
@@ -592,10 +619,19 @@ export function createVimController(options: VimOptions): VimController {
         break;
       }
       if (classOf(currRow, currCol, big) !== classOf(newRow, newCol, big)) {
+        if (currCol === 0 && !ghost) {
+          cursor.col = newCol;
+          cursor.goalCol = cursor.col;
+          cursor.row = newRow;
+          setPendingCount(null);
+          if (currentMode === 'visual') updateVisualCharSelection();
+          return;
+        }
         currCol = newCol;
         newCol--;
       }
       if (isSpaceChar(lines[currRow]?.[currCol])) {
+        //problem is likely here because firt col is space
         [currRow, currCol] = skipSpaces(currRow, currCol, true);
         newRow = currRow;
         newCol = currCol - 1;
@@ -1151,7 +1187,10 @@ export function createVimController(options: VimOptions): VimController {
     let currCol = cursor.col;
     let newRow = cursor.row;
     let newCol = currCol;
+    let fallRow = cursor.row;
+    let fallCol = cursor.col;
     const line = lines[currRow] ?? '';
+    let found = false;
 
     if (!reverse && currCol < line.length - 1 && line[currCol + 1] === char) {
       currCol++;
@@ -1172,11 +1211,16 @@ export function createVimController(options: VimOptions): VimController {
         break;
       }
       newCol += reverse ? -1 : 1;
+      if (lines[newRow][newCol] === char) {
+        found = true
+      }
     }
 
-    cursor.col = newCol + (reverse ? 1 : -1);
-    cursor.goalCol = cursor.col;
-    cursor.row = newRow;
+    if (found) {
+      cursor.col = newCol + (reverse ? 1 : -1);
+      cursor.goalCol = cursor.col;
+      cursor.row = newRow;
+    }
     if (currentMode === 'visual') updateVisualCharSelection();
   }
 
