@@ -88,9 +88,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   const rankName = rank.split(' ')[0];
 
 
-  // console.log('rankId', rankId);
-  // console.log('rank', rank);
-  console.log('rankName profile', rankName);
 
   const appUser = {
     id: userData.id,

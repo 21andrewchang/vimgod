@@ -44,7 +44,9 @@
 	const pathname = $derived($page.url?.pathname ?? '/');
 	const isProfile = $derived(pathname.startsWith('/profile'));
 	const isMotions = $derived(pathname.startsWith('/motions'));
-	const logoIsInteractive = $derived(isProfile || isMotions);
+	const isTutorial = $derived(pathname.startsWith('/tutorial'));
+	const isLogin = $derived(pathname.startsWith('/login'));
+	const logoIsInteractive = $derived(isProfile || isMotions || isLogin || isTutorial);
 
 	function handleHeaderMouseEnter() {
 		isHeaderHovered = true;
@@ -93,7 +95,6 @@
 				window.location.href = '/profile';
 				break;
 			case 'settings':
-				console.log('Settings clicked');
 				break;
 			case 'signout':
 				signOut().then(() => {
@@ -195,14 +196,31 @@
 
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
+			onclick={() => goto('/tutorial')}
+			aria-label="tutorial"
+		>
+			<svg
+				class={`h-6 w-6 opacity-50 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100`}
+				viewBox="0 0 24 24"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<path
+					d="M12 6a4 4 0 0 1 4 4c0 2.22-1.76 3.18-2.66 3.73-.69.41-.84.59-.84 1.27v.25h-2v-.39c0-1.54.6-2.2 1.8-2.92.69-.41 1.7-1.01 1.7-1.94A2 2 0 0 0 12 8a2 2 0 0 0-2 2H8a4 4 0 0 1 4-4Z"
+				/>
+				<circle cx="12" cy="18.5" r="1.25" />
+			</svg>
+		</button>
+		<button
+			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
 			onclick={() => goto('/motions')}
-			aria-label="Open motions combos"
+			aria-label="motions"
 		>
 			<img
 				src="/cards.svg"
 				alt=""
-				class={`${helpIconSizeClass} opacity-50 transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100`}
+				class={`${helpIconSizeClass} opacity-50 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100`}
 				aria-hidden="true"
 			/>
 		</button>
@@ -250,7 +268,7 @@
 				<div
 					id="user-menu"
 					bind:this={menuRef}
-					class="user-dropdown absolute right-0 top-full z-50 mt-1 w-40 rounded border border-neutral-700 bg-neutral-800 shadow-lg {dropdownHiding
+					class="user-dropdown absolute top-full right-0 z-50 mt-1 w-40 rounded border border-neutral-700 bg-neutral-800 shadow-lg {dropdownHiding
 						? 'hiding'
 						: ''}"
 					role="menu"

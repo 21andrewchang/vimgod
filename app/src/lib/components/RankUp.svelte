@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { blur } from 'svelte/transition';
 
-	// keep your prop so the API stays the same; we’ll ignore the incoming rank for the demo
-	const { rank, closeRankup } = $props<{ rank: string; closeRankup: () => void }>();
+	const { visible, rank, closeRankup } = $props<{
+		rank: string;
+		closeRankup: () => void;
+		visible: boolean;
+	}>();
 
 	const RANKS = ['bronze', 'silver', 'gold', 'platinum', 'diamond'] as const;
 
@@ -17,30 +20,34 @@
 
 	function next() {
 		if (idx < RANKS.length - 1) {
-			idx += 1; // go to next rank
+			idx += 1;
 		} else {
-			closeRankup(); // finished slideshow
+			closeRankup();
 		}
 	}
 </script>
 
-<div
-	class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-	transition:blur={{ duration: 200 }}
-	data-rank={colorKey}
->
-	<div class="relative z-10 w-full max-w-md text-center text-white">
-		<div class="rank-beam" aria-hidden="true"></div>
-		<div class="rank-title mb-16 font-mono uppercase tracking-widest">{pretty(rank)}</div>
-	</div>
-
-	<button
-		class="text-mono absolute bottom-20 z-10 text-neutral-600 transition hover:text-neutral-200"
+{#if visible}
+	<div
+		class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
 		onclick={closeRankup}
+		transition:blur={{ duration: 200 }}
+		data-rank={colorKey}
 	>
-		Continue
-	</button>
-</div>
+		<div class="relative z-10 w-full max-w-md text-center text-white">
+			<div class="rank-beam" aria-hidden="true"></div>
+			<div class="rank-title mb-16 font-mono tracking-widest uppercase">{pretty(rank)}</div>
+		</div>
+
+		<button
+			in:blur={{ duration: 500, delay: 800 }}
+			class="text-mono absolute bottom-20 z-10 px-10 pt-10 !text-xs tracking-widest text-neutral-700 transition hover:text-neutral-500"
+			onclick={closeRankup}
+		>
+			CONTINUE
+		</button>
+	</div>
+{/if}
 
 <style>
 	/* Respect reduced motion */
@@ -51,7 +58,6 @@
 		}
 	}
 
-	/* === Rank theme variables (bronze/silver/gold/platinum/diamond) === */
 	[data-rank] {
 		--rank-core-0: rgba(0, 0, 0, 0);
 		--rank-core-1: rgba(167, 224, 255, 0);
@@ -65,6 +71,20 @@
 		--rank-title-glow-1: rgba(147, 197, 253, 0.55);
 		--rank-title-glow-2: rgba(147, 197, 253, 0.35);
 		--rank-title-color: #e6f6ff;
+	}
+	[data-rank='tutorial'] {
+		--rank-core-0: rgba(0, 0, 0, 0);
+		--rank-core-1: rgba(255, 255, 255, 0);
+		--rank-core-2: rgba(255, 255, 255, 0.92);
+		--rank-core-3: rgba(255, 255, 255, 0);
+		--rank-bloom-1: rgba(255, 255, 255, 0.08);
+		--rank-bloom-2: rgba(255, 255, 255, 0.25);
+		--rank-shadow-1: rgba(255, 255, 255, 0.75);
+		--rank-shadow-2: rgba(255, 255, 255, 0.45);
+		--rank-shadow-3: rgba(255, 255, 255, 0.25);
+		--rank-title-glow-1: rgba(255, 255, 255, 0.55);
+		--rank-title-glow-2: rgba(255, 255, 255, 0.35);
+		--rank-title-color: #fff;
 	}
 	[data-rank='bronze'] {
 		--rank-core-1: rgba(205, 127, 50, 0);

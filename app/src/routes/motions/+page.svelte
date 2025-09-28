@@ -133,9 +133,7 @@
 	// Auth + progression gating
 	const signedIn = $derived(!!$user);
 	const level = $derived(levelFromXP($profile.xp ? $profile.xp : 0).level);
-	console.log($profile.xp);
 	const rating = $derived($profile?.rating ?? 0);
-	$inspect(rating);
 
 	const levelByLabel: Record<string, number> = {
 		'basic movement': 1,
@@ -277,7 +275,7 @@
 						{#each combos as c}
 							<article
 								data-kind={c.kind}
-								class={`group relative rounded-xl border-0 bg-neutral-900/60 p-4 shadow-sm outline-none transition focus-visible:outline-none ${
+								class={`group relative rounded-xl border-0 bg-neutral-900/60 p-4 shadow-sm transition outline-none focus-visible:outline-none ${
 									isUnlocked(c)
 										? 'hover:[box-shadow:0_0_0_1px_var(--kind-border),0_0_30px_var(--kind-shadow)] focus-visible:[box-shadow:0_0_0_1px_var(--kind-border),0_0_36px_var(--kind-shadow)]'
 										: ''
@@ -312,14 +310,14 @@
 															class="flex flex-col items-center gap-0.5 text-center transition-transform duration-200 ease-out group-hover:-translate-y-full"
 														>
 															{#each detail.lines as line}
-																<span class=" whitespace-nowrap leading-[1.1rem]">{line}</span>
+																<span class=" leading-[1.1rem] whitespace-nowrap">{line}</span>
 															{/each}
 														</div>
 														<div
 															class="absolute inset-0 flex translate-y-full items-center justify-center text-center transition-transform duration-200 ease-out group-hover:translate-y-0"
 														>
 															<button
-																class="pointer-events-auto whitespace-nowrap leading-[1.1rem] underline decoration-dotted underline-offset-2 hover:text-neutral-100 focus:outline-none focus-visible:text-neutral-100"
+																class="pointer-events-auto leading-[1.1rem] whitespace-nowrap underline decoration-dotted underline-offset-2 hover:text-neutral-100 focus:outline-none focus-visible:text-neutral-100"
 																onclick={signInWithGoogle}
 															>
 																Sign in to unlock
@@ -329,7 +327,7 @@
 												{:else}
 													<div class="flex flex-col items-center gap-0.5 text-center">
 														{#each detail.lines as line}
-															<span class="whitespace-nowrap leading-[1.1rem]">{line}</span>
+															<span class="leading-[1.1rem] whitespace-nowrap">{line}</span>
 														{/each}
 													</div>
 												{/if}
@@ -338,7 +336,7 @@
 									</div>
 								{/if}
 								<!-- combo -->
-								<div class={`relative z-0 ${isUnlocked(c) ? '' : 'select-none blur'}`}>
+								<div class={`relative z-0 ${isUnlocked(c) ? '' : 'blur select-none'}`}>
 									<div
 										class="mb-2 flex flex-wrap items-center gap-1.5 opacity-100"
 										class:opacity-40={!isUnlocked(c)}
