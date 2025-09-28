@@ -582,7 +582,14 @@ export function createVimController(options: VimOptions): VimController {
     let currRow = cursor.row;
     let currCol = cursor.col;
     let newRow = currRow;
+    // if col == 0 then this is -1
     let newCol = currCol - 1;
+    if (currCol === 0 && currRow !== 0) {
+      newRow = currRow - 1;
+      newCol = lines[newRow].length;
+      console.log(lines[newRow]);
+      console.log(lines[newRow].length);
+    }
 
     if (currRow === 0 && currCol === 0) return ghost ? [currRow, currCol] : undefined;
 
@@ -591,11 +598,13 @@ export function createVimController(options: VimOptions): VimController {
         newCol--;
         break;
       }
+      //so classOf calling newCol as -1 breaks
       if (classOf(currRow, currCol, big) !== classOf(newRow, newCol, big)) {
         currCol = newCol;
         newCol--;
       }
       if (isSpaceChar(lines[currRow]?.[currCol])) {
+        //problem is likely here because firt col is space
         [currRow, currCol] = skipSpaces(currRow, currCol, true);
         newRow = currRow;
         newCol = currCol - 1;

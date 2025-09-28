@@ -25,12 +25,6 @@
 			kind: 'movement'
 		},
 		{
-			keys: ['e'],
-			label: 'move end',
-			desc: 'jump to last char of current word or end of next word',
-			kind: 'movement'
-		},
-		{
 			keys: ['0'],
 			label: 'start of line',
 			desc: 'teleport to the start of current line',
@@ -40,6 +34,12 @@
 			keys: ['^'],
 			label: 'current line',
 			desc: 'teleport to first char of current line',
+			kind: 'movement'
+		},
+		{
+			keys: ['e'],
+			label: 'move end',
+			desc: 'jump to last char of current word or end of next word',
 			kind: 'movement'
 		},
 		{
@@ -139,9 +139,9 @@
 		'basic movement': 1,
 		'move word': 1,
 		'move back': 2,
-		'move end': 5,
 		'start of line': 3,
 		'current line': 4,
+		'move end': 5,
 		'end of line': 6,
 		'first line': 7,
 		'last line': 8,
