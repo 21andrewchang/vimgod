@@ -618,8 +618,15 @@ export function createVimController(options: VimOptions): VimController {
         newCol--;
         break;
       }
-      //so classOf calling newCol as -1 breaks
       if (classOf(currRow, currCol, big) !== classOf(newRow, newCol, big)) {
+        if (currCol === 0 && !ghost) {
+          cursor.col = newCol;
+          cursor.goalCol = cursor.col;
+          cursor.row = newRow;
+          setPendingCount(null);
+          if (currentMode === 'visual') updateVisualCharSelection();
+          return;
+        }
         currCol = newCol;
         newCol--;
       }
