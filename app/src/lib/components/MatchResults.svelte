@@ -15,8 +15,10 @@
 	import { levelFromXP } from '$lib/utils';
 	import { lpForRating, rankIdFromRating, prettyRank, bigRank } from '$lib/data/ranks';
 
-	const { match, rankUp } = $props<{
+	const { match, deltaApplied, rankUp, resetDeltaApplied } = $props<{
 		match: MatchController;
+		deltaApplied: boolean;
+		resetDeltaApplied: () => void;
 		rankUp: (newRank: 'string') => void;
 	}>();
 
@@ -34,7 +36,7 @@
 	const showRankup = $derived(startBig !== big);
 
 	let wasRankup = $state(false);
-	//need to export rank and show the rankup on the same level as editor
+
 	$effect(() => {
 		const now = showRankup;
 		if (showRankup && !wasRankup) {
@@ -304,7 +306,7 @@
 			return;
 		}
 
-		if (matchState.status === 'complete' && !eloAnimated) {
+		if (matchState.status === 'complete' && !eloAnimated && !deltaApplied) {
 			eloAnimated = true;
 
 			const startElo = lpForRating(elo).lp ?? 0;
@@ -570,6 +572,7 @@
 	};
 
 	const playAgain = () => {
+		resetDeltaApplied();
 		match.reset();
 		if (!signedIn) {
 			match.start();
@@ -598,21 +601,11 @@
 	const graphHeight = 200;
 </script>
 
-{#if showRankup}
-	<dialog class="z-50 h-full w-full text-neutral-200">
-		<div>you ranked up lol</div>
-		<button
-			onclick={() => {
-				closed = true;
-			}}>x</button
-		>
-	</dialog>
-{/if}
 <div class="mb-12 w-full max-w-7xl rounded-xl px-20 text-white shadow-lg backdrop-blur">
 	{#if signedIn}
 		<div class="mb-12 w-full">
 			<div
-				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
+				class="flex w-full items-center font-mono text-[11px] tracking-[0.28em] text-neutral-400 uppercase"
 			>
 				{#if xpStats.level === slideLevels[1]}
 					<div in:scale={{ start: 0.4, duration: 100 }}>Lvl {xpStats.level}</div>
@@ -664,19 +657,19 @@
 				{/if}
 
 				<div
-					class="w-30 relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
+					class="relative box-border flex h-full w-30 flex-col justify-between gap-10 rounded-md transition select-none"
 					class:blur-sm={!signedIn}
 					class:opacity-50={!signedIn}
 					aria-hidden={!signedIn}
 				>
 					<div>
 						{#if placementMode}
-							<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
+							<div class="font-mono text-xs tracking-widest text-neutral-400 uppercase">
 								Placements
 							</div>
 						{:else}
 							<div
-								class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
+								class="flex items-center gap-1 font-mono text-xs tracking-widest text-neutral-400 uppercase"
 							>
 								{#if eloTween.current > 100 || eloTween.current < 0}
 									<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
@@ -738,11 +731,11 @@
 					</div>
 
 					<div>
-						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
+						<div class="font-mono text-xs tracking-widest text-neutral-400 uppercase">
 							{matchOutcome}
 						</div>
 						<div class="flex flex-row items-end gap-2">
-							{#if placementMode}
+							{#if placementMode || deltaApplied}
 								<div class="mt-2 font-mono text-5xl text-neutral-500" class:opacity-60={!signedIn}>
 									-
 								</div>

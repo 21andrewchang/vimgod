@@ -22,8 +22,13 @@
 	let displayRank = $state('');
 	const match = createMatchController({ totalRounds: 20 });
 
+	let deltaApplied = $state(false);
+	const resetDeltaApplied = (): void => {
+		deltaApplied = false;
+	};
 	const rankUp = (newRank: string): void => {
 		displayRank = newRank;
+		deltaApplied = true;
 		showRankup = true;
 	};
 
@@ -142,9 +147,15 @@
 			<Editor {match} />
 		</div>
 	{:else}
-		<MatchResults {match} {rankUp} />
+		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} />
 	{/if}
-	<RankUp closeRankup={() => (showRankup = false)} rank={displayRank} visible={showRankup} />
+	<RankUp
+		closeRankup={() => {
+			showRankup = false;
+		}}
+		rank={displayRank}
+		visible={showRankup}
+	/>
 	<Footer />
 </main>
 

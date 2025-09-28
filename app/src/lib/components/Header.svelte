@@ -44,7 +44,9 @@
 	const pathname = $derived($page.url?.pathname ?? '/');
 	const isProfile = $derived(pathname.startsWith('/profile'));
 	const isMotions = $derived(pathname.startsWith('/motions'));
-	const logoIsInteractive = $derived(isProfile || isMotions);
+	const isTutorial = $derived(pathname.startsWith('/tutorial'));
+	const isLogin = $derived(pathname.startsWith('/login'));
+	const logoIsInteractive = $derived(isProfile || isMotions || isLogin || isTutorial);
 
 	function handleHeaderMouseEnter() {
 		isHeaderHovered = true;
