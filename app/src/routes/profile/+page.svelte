@@ -112,8 +112,6 @@
 		? `${abbrevFromRankId(rankId)} → ${abbrevFromRankId(nextId)}`
 		: `${abbrevFromRankId(rankId)}`;
 
-	// console.log('leftProgressLabel', leftProgressLabel);
-
 	const statItems = [
 		// { label: 'rank', value: `${profileUser.elo}` },
 		{ label: 'wins', value: `${totals.wins} (${totals.winRate}%)` },
@@ -177,7 +175,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 <BgDarkTiles />
 
 <div class="relative w-full overflow-hidden">
-	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pb-4 pt-16">
+	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pt-16 pb-4">
 		<!-- Stats row -->
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-11">
 			<div class="md:col-span-5">
@@ -258,7 +256,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 					<StatCard label={item.label} value={item.value} class="pb-card-compact">
 						<div
 							slot="corner"
-							class="absolute inset-y-0 right-3 flex items-center text-[12px] uppercase tracking-[0.12em]"
+							class="absolute inset-y-0 right-3 flex items-center text-[12px] tracking-[0.12em] uppercase"
 							class:hidden={item.percentile === null}
 							style={`${percentileBadgeStyle(item.percentile)} font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;`}
 						>

@@ -20,9 +20,9 @@
 
 	function next() {
 		if (idx < RANKS.length - 1) {
-			idx += 1; // go to next rank
+			idx += 1;
 		} else {
-			closeRankup(); // finished slideshow
+			closeRankup();
 		}
 	}
 </script>
@@ -30,6 +30,7 @@
 {#if visible}
 	<div
 		class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+		onclick={closeRankup}
 		transition:blur={{ duration: 200 }}
 		data-rank={colorKey}
 	>
@@ -40,7 +41,7 @@
 
 		<button
 			in:blur={{ duration: 500, delay: 800 }}
-			class="text-mono absolute bottom-20 z-10 tracking-widest text-neutral-700 transition hover:text-neutral-200"
+			class="text-mono absolute bottom-20 z-10 px-10 pt-10 !text-xs tracking-widest text-neutral-700 transition hover:text-neutral-500"
 			onclick={closeRankup}
 		>
 			CONTINUE

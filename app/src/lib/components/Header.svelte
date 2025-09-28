@@ -93,7 +93,6 @@
 				window.location.href = '/profile';
 				break;
 			case 'settings':
-				console.log('Settings clicked');
 				break;
 			case 'signout':
 				signOut().then(() => {
@@ -195,12 +194,12 @@
 
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
 			onclick={() => goto('/tutorial')}
 			aria-label="tutorial"
 		>
 			<svg
-				class={`h-6 w-6 opacity-50 transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100`}
+				class={`h-6 w-6 opacity-50 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100`}
 				viewBox="0 0 24 24"
 				fill="currentColor"
 				aria-hidden="true"
@@ -212,14 +211,14 @@
 			</svg>
 		</button>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
 			onclick={() => goto('/motions')}
 			aria-label="motions"
 		>
 			<img
 				src="/cards.svg"
 				alt=""
-				class={`${helpIconSizeClass} opacity-50 transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100`}
+				class={`${helpIconSizeClass} opacity-50 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100`}
 				aria-hidden="true"
 			/>
 		</button>
@@ -267,7 +266,7 @@
 				<div
 					id="user-menu"
 					bind:this={menuRef}
-					class="user-dropdown absolute right-0 top-full z-50 mt-1 w-40 rounded border border-neutral-700 bg-neutral-800 shadow-lg {dropdownHiding
+					class="user-dropdown absolute top-full right-0 z-50 mt-1 w-40 rounded border border-neutral-700 bg-neutral-800 shadow-lg {dropdownHiding
 						? 'hiding'
 						: ''}"
 					role="menu"
