@@ -8,8 +8,10 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { user } from '$lib/stores/auth';
 	import { matchStatus } from '$lib/stores/matchStatus';
+	import { profile } from '$lib/stores/profile';
 	import { createVimController, type Cursor, type Mode } from '$lib/vim/vim';
 	import RoundGoalBadge from '$lib/components/RoundGoalBadge.svelte';
+	import { rankIdFromRating } from '$lib/data/ranks';
 	import type {
 		MatchController,
 		MatchState,
@@ -28,14 +30,91 @@
 	const MAX_ROWS = ROWS;
 	const TEXT_TOP = 38;
 
-	const PLATINUM_THRESHOLD = 1200;
-	const DIAMOND_THRESHOLD = 1600;
-	const HIGHLIGHT_CHANCE = 0.4;
-	const MANIPULATION_CHANCE = 0.35;
 	const MAX_MANIPULATION_LINES = 2;
-	const MAX_MANIPULATION_ROUNDS = 4;
 	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
 	const MAX_UNDO_ENTRIES = 50;
+
+	type RoundConfig = {
+		highlightChance: number;
+		maxHighlightRounds: number;
+		manipulationChance: number;
+		maxManipulationRounds: number;
+	};
+
+	type RoundConfigKey =
+		| 'landing'
+		| 'placement'
+		| 'bronze'
+		| 'silver'
+		| 'gold'
+		| 'platinum'
+		| 'diamond'
+		| 'nova'
+		| 'supernova'
+		| 'singularity';
+
+	const PLACEMENT_MATCH_GOAL = 5;
+
+	const ROUND_CONFIGS: Record<RoundConfigKey, RoundConfig> = {
+		landing: { highlightChance: 0, maxHighlightRounds: 0, manipulationChance: 0, maxManipulationRounds: 0 },
+		placement: {
+			highlightChance: 0.34,
+			maxHighlightRounds: 1,
+			manipulationChance: 0.22,
+			maxManipulationRounds: 1
+		},
+		bronze: {
+			highlightChance: 0.18,
+			maxHighlightRounds: 2,
+			manipulationChance: 0.05,
+			maxManipulationRounds: 1
+		},
+		silver: {
+			highlightChance: 0.22,
+			maxHighlightRounds: 3,
+			manipulationChance: 0.08,
+			maxManipulationRounds: 1
+		},
+		gold: {
+			highlightChance: 0.26,
+			maxHighlightRounds: 4,
+			manipulationChance: 0.12,
+			maxManipulationRounds: 2
+		},
+		platinum: {
+			highlightChance: 0.32,
+			maxHighlightRounds: 5,
+			manipulationChance: 0.18,
+			maxManipulationRounds: 3
+		},
+		diamond: {
+			highlightChance: 0.38,
+			maxHighlightRounds: 6,
+			manipulationChance: 0.28,
+			maxManipulationRounds: 4
+		},
+		nova: {
+			highlightChance: 0.42,
+			maxHighlightRounds: 6,
+			manipulationChance: 0.32,
+			maxManipulationRounds: 5
+		},
+		supernova: {
+			highlightChance: 0.46,
+			maxHighlightRounds: 7,
+			manipulationChance: 0.36,
+			maxManipulationRounds: 6
+		},
+		singularity: {
+			highlightChance: 0.5,
+			maxHighlightRounds: 8,
+			manipulationChance: 0.4,
+			maxManipulationRounds: 8
+		}
+	};
+
+	let roundConfig: RoundConfig = ROUND_CONFIGS.landing;
+	let roundConfigKey: RoundConfigKey = 'landing';
 
 	const RATING_TIMER_RULES: Array<{ max: number; ms: number }> = [
 		{ max: 399, ms: 5000 },
@@ -80,17 +159,19 @@
 
 	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
 
-	type RoundBracket = 'movement-only' | 'highlight-enabled' | 'manipulation-enabled';
-
 	type UndoSnapshot = { document: string; cursor: { row: number; col: number } };
-	let roundBracket: RoundBracket = 'movement-only';
 	let manipulationRoundsGenerated = 0;
+	let highlightRoundsGenerated = 0;
 	let loadingRating = false;
 	let undoStack: UndoSnapshot[] = [];
 	let roundBaselineSnapshot: UndoSnapshot | null = null;
 	let lastActiveRoundIndex: number | null = null;
 	let forceUndoRequired = false;
 	let unsubscribeUser: (() => void) | undefined;
+	let unsubscribeProfile: (() => void) | undefined;
+	let profileState = get(profile);
+	let profileRating: number | null = null;
+	let placementMode = false;
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -211,6 +292,67 @@
 		runWarmupCountdownStep(3);
 	}
 
+	function resetRoundGenerationCounters() {
+		manipulationRoundsGenerated = 0;
+		highlightRoundsGenerated = 0;
+	}
+
+	function baseTierFromRankId(rankId: ReturnType<typeof rankIdFromRating>): RoundConfigKey {
+		if (rankId === 'unranked') return 'bronze';
+		if (rankId.startsWith('bronze')) return 'bronze';
+		if (rankId.startsWith('silver')) return 'silver';
+		if (rankId.startsWith('gold')) return 'gold';
+		if (rankId.startsWith('platinum')) return 'platinum';
+		if (rankId.startsWith('diamond')) return 'diamond';
+		if (rankId === 'nova') return 'nova';
+		if (rankId === 'supernova') return 'supernova';
+		if (rankId === 'singularity') return 'singularity';
+		return 'diamond';
+	}
+
+	function determineRoundConfigKey(
+		signedInValue: boolean,
+		placementModeValue: boolean,
+		ratingValue: number | null,
+		fallbackRating: number | null
+	): RoundConfigKey {
+		if (!signedInValue) return 'landing';
+		if (placementModeValue) return 'placement';
+		const candidates: Array<number | null> = [ratingValue, fallbackRating];
+		for (const candidate of candidates) {
+			if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+				const rankId = rankIdFromRating(candidate);
+				return baseTierFromRankId(rankId);
+			}
+		}
+		return 'bronze';
+	}
+
+	function setRoundConfig(key: RoundConfigKey) {
+		const config = ROUND_CONFIGS[key] ?? ROUND_CONFIGS.bronze;
+		roundConfig = { ...config };
+		roundConfigKey = key;
+		resetRoundGenerationCounters();
+	}
+
+	$: profileRating = typeof profileState?.rating === 'number' ? profileState.rating : null;
+	$: placementMode =
+		signedIn &&
+		(profileRating ?? null) === null &&
+		(profileState?.placements ?? 0) < PLACEMENT_MATCH_GOAL;
+
+	$: {
+		const nextConfigKey = determineRoundConfigKey(
+			signedIn,
+			placementMode,
+			currentRating,
+			profileRating
+		);
+		if (nextConfigKey !== roundConfigKey) {
+			setRoundConfig(nextConfigKey);
+		}
+	}
+
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
 	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
@@ -265,7 +407,7 @@
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 	$: if (matchState.status === 'idle') {
-		manipulationRoundsGenerated = 0;
+		resetRoundGenerationCounters();
 		undoStack = [];
 		roundBaselineSnapshot = null;
 		lastActiveRoundIndex = null;
@@ -812,28 +954,27 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
+		const {
+			manipulationChance,
+			maxManipulationRounds,
+			highlightChance,
+			maxHighlightRounds
+		} = roundConfig;
 		const canAttemptManipulation =
-			roundBracket === 'manipulation-enabled' &&
-			manipulationRoundsGenerated < MAX_MANIPULATION_ROUNDS;
-		if (canAttemptManipulation) {
-			if (Math.random() < MANIPULATION_CHANCE) {
-				const manipulation = generateManipulationTarget();
-				if (manipulation) {
-					manipulationRoundsGenerated += 1;
-					return manipulation;
-				}
+			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
+		if (canAttemptManipulation && Math.random() < manipulationChance) {
+			const manipulation = generateManipulationTarget();
+			if (manipulation) {
+				manipulationRoundsGenerated += 1;
+				return manipulation;
 			}
 		}
-		if (roundBracket === 'manipulation-enabled') {
-			if (Math.random() < HIGHLIGHT_CHANCE) {
-				const highlight = generateHighlightTarget();
-				if (highlight) return highlight;
-			}
-		}
-		if (roundBracket === 'highlight-enabled') {
-			if (Math.random() < HIGHLIGHT_CHANCE) {
-				const highlight = generateHighlightTarget();
-				if (highlight) return highlight;
+		const canAttemptHighlight = highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
+		if (canAttemptHighlight && Math.random() < highlightChance) {
+			const highlight = generateHighlightTarget();
+			if (highlight) {
+				highlightRoundsGenerated += 1;
+				return highlight;
 			}
 		}
 		return generateMovementTarget();
@@ -889,7 +1030,6 @@
 			const currentUser = get(user);
 			if (!currentUser) {
 				currentRating = null;
-				roundBracket = 'movement-only';
 				applyTimerForRating(currentRating);
 				return;
 			}
@@ -901,23 +1041,14 @@
 			if (error) {
 				console.error('Failed to fetch user rating', error);
 				currentRating = null;
-				roundBracket = 'movement-only';
 				applyTimerForRating(currentRating);
 				return;
 			}
 			const ratingValue = typeof data?.rating === 'number' ? data.rating : null;
 			currentRating = ratingValue;
-			if (ratingValue != null && ratingValue >= DIAMOND_THRESHOLD) {
-				roundBracket = 'manipulation-enabled';
-			} else if (ratingValue != null && ratingValue >= PLATINUM_THRESHOLD) {
-				roundBracket = 'highlight-enabled';
-			} else {
-				roundBracket = 'movement-only';
-			}
 			applyTimerForRating(currentRating);
 		} catch (error) {
 			console.error('Failed to fetch user rating', error);
-			roundBracket = 'movement-only';
 			currentRating = null;
 			applyTimerForRating(currentRating);
 		} finally {
@@ -1158,6 +1289,10 @@
 
 		matchState = get(match);
 		signedIn = Boolean(get(user));
+		profileState = get(profile);
+		unsubscribeProfile = profile.subscribe((value) => {
+			profileState = value;
+		});
 		unsubscribeMatch = match.subscribe((value) => {
 			matchState = value;
 			matchStatus.set(value.status);
@@ -1212,6 +1347,7 @@
 		if (!browser) return;
 		unsubscribeMatch?.();
 		unsubscribeUser?.();
+		unsubscribeProfile?.();
 		ro?.disconnect();
 		window.removeEventListener('resize', resize);
 		cancelAnimationFrame(raf);
