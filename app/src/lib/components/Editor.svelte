@@ -63,9 +63,9 @@
 			maxManipulationRounds: 0
 		},
 		placement: {
-			highlightChance: 0.34,
+			highlightChance: 1,
 			maxHighlightRounds: 1,
-			manipulationChance: 0.22,
+			manipulationChance: 1,
 			maxManipulationRounds: 1
 		},
 		bronze: {
