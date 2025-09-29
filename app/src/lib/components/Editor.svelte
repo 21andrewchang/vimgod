@@ -48,6 +48,8 @@
 		mapRustTokenizer
 	];
 
+	const EMPTY_DOCUMENT = Array.from({ length: MAX_ROWS }, () => ' '.repeat(2)).join('\n');
+
 	type RoundConfig = {
 		highlightChance: number;
 		maxHighlightRounds: number;
@@ -203,7 +205,9 @@
 	let manipulationGuaranteeSchedule: Set<number> = new Set();
 
 	let activeMap = defaultText;
+	let lastMatchMap = defaultText;
 	let mapInitialized = false;
+	let pendingMap: string | null = null;
 	let lastMatchStatus: MatchState['status'] | null = null;
 
 	export let match: MatchController;
@@ -285,6 +289,7 @@
 		forceUndoRequired = false;
 		undoStack = [];
 		roundBaselineSnapshot = null;
+		ensureInitialMap();
 	}
 
 	function finishWarmup() {
@@ -409,16 +414,14 @@
 	}
 
 	function ensureInitialMap() {
-		if (!mapInitialized) {
-			setActiveDocument(pickRandomMap(), { preserveCursor: false });
-			mapInitialized = true;
-		}
+		pendingMap = null;
+		mapInitialized = false;
+		setActiveDocument(EMPTY_DOCUMENT, { preserveCursor: false });
 	}
 
 	function prepareMapForRound() {
-		if (!mapInitialized) {
-			setActiveDocument(pickRandomMap(activeMap), { preserveCursor: true });
-			mapInitialized = true;
+		if (!pendingMap && !mapInitialized) {
+			pendingMap = pickRandomMap(lastMatchMap);
 		}
 	}
 
@@ -541,13 +544,22 @@
 			forceUndoRequired = false;
 			undoCount = 0;
 			if (lastMatchStatus !== 'idle') {
-				mapInitialized = false;
 				ensureInitialMap();
 			}
 		}
 		lastMatchStatus = status;
 	}
 	$: match?.setUndoCount?.(undoCount);
+	$: {
+		const active = matchState.active;
+		const isWarmup = active?.isWarmup ?? false;
+		if (!mapInitialized && pendingMap && active && (!signedIn || !isWarmup)) {
+			setActiveDocument(pendingMap, { preserveCursor: false });
+			mapInitialized = true;
+			lastMatchMap = pendingMap;
+			pendingMap = null;
+		}
+	}
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -1619,7 +1631,7 @@
 				></canvas>
 				{#if warmupRoomActive}
 					<div class="pointer-events-none absolute inset-0">
-						<div class="absolute inset-0 bg-black/90 backdrop-blur-md"></div>
+						<div class="absolute inset-0 bg-black/0"></div>
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
 								<div class=" font-mono text-lg uppercase tracking-wider text-neutral-200">
