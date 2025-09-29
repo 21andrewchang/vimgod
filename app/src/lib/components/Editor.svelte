@@ -39,6 +39,8 @@
 		maxHighlightRounds: number;
 		manipulationChance: number;
 		maxManipulationRounds: number;
+		guaranteedHighlightRounds?: number;
+		guaranteedManipulationRounds?: number;
 	};
 
 	type RoundConfigKey =
@@ -66,55 +68,57 @@
 			highlightChance: 1,
 			maxHighlightRounds: 1,
 			manipulationChance: 1,
-			maxManipulationRounds: 1
+			maxManipulationRounds: 1,
+			guaranteedHighlightRounds: 1,
+			guaranteedManipulationRounds: 1
 		},
 		bronze: {
-			highlightChance: 0.18,
+			highlightChance: 0.2,
 			maxHighlightRounds: 0,
 			manipulationChance: 0.05,
 			maxManipulationRounds: 0
 		},
 		silver: {
-			highlightChance: 0.22,
+			highlightChance: 0.24,
 			maxHighlightRounds: 1,
 			manipulationChance: 0.08,
 			maxManipulationRounds: 0
 		},
 		gold: {
-			highlightChance: 0.26,
+			highlightChance: 0.28,
 			maxHighlightRounds: 2,
 			manipulationChance: 0.12,
 			maxManipulationRounds: 1
 		},
 		platinum: {
 			highlightChance: 0.32,
-			maxHighlightRounds: 4,
+			maxHighlightRounds: 3,
 			manipulationChance: 0.18,
 			maxManipulationRounds: 1
 		},
 		diamond: {
-			highlightChance: 0.38,
-			maxHighlightRounds: 5,
-			manipulationChance: 0.28,
+			highlightChance: 0.36,
+			maxHighlightRounds: 4,
+			manipulationChance: 0.24,
 			maxManipulationRounds: 2
 		},
 		nova: {
-			highlightChance: 0.42,
-			maxHighlightRounds: 6,
-			manipulationChance: 0.32,
+			highlightChance: 0.4,
+			maxHighlightRounds: 5,
+			manipulationChance: 0.3,
 			maxManipulationRounds: 3
 		},
 		supernova: {
-			highlightChance: 0.46,
-			maxHighlightRounds: 6,
-			manipulationChance: 0.36,
-			maxManipulationRounds: 3
+			highlightChance: 0.44,
+			maxHighlightRounds: 5,
+			manipulationChance: 0.34,
+			maxManipulationRounds: 4
 		},
 		singularity: {
 			highlightChance: 0.5,
 			maxHighlightRounds: 6,
 			manipulationChance: 0.4,
-			maxManipulationRounds: 3
+			maxManipulationRounds: 4
 		}
 	};
 
@@ -179,6 +183,10 @@
 	let profileState = get(profile);
 	let profileRating: number | null = null;
 	let placementMode = false;
+	let highlightGuaranteeRemaining = 0;
+	let manipulationGuaranteeRemaining = 0;
+	let roundsGenerated = 0;
+	let warmupOffset = 0;
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -302,6 +310,10 @@
 	function resetRoundGenerationCounters() {
 		manipulationRoundsGenerated = 0;
 		highlightRoundsGenerated = 0;
+		manipulationGuaranteeRemaining = roundConfig.guaranteedManipulationRounds ?? 0;
+		highlightGuaranteeRemaining = roundConfig.guaranteedHighlightRounds ?? 0;
+		roundsGenerated = 0;
+		warmupOffset = 0;
 	}
 
 	function baseTierFromRankId(rankId: ReturnType<typeof rankIdFromRating>): RoundConfigKey {
@@ -961,26 +973,94 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
+		roundsGenerated += 1;
+		const isWarmupRound = signedIn && roundConfigKey !== 'landing' && roundsGenerated === 1;
+		if (isWarmupRound) {
+			warmupOffset = 1;
+			return generateMovementTarget();
+		}
+
+		const totalScoringRounds = matchState.scoringRounds ?? 20;
+		const scoringRoundsGeneratedSoFar = Math.max(0, roundsGenerated - warmupOffset - 1);
+		const scoringRoundsLeftIncludingThis = Math.max(
+			1,
+			totalScoringRounds - scoringRoundsGeneratedSoFar
+		);
+
 		const { manipulationChance, maxManipulationRounds, highlightChance, maxHighlightRounds } =
 			roundConfig;
+
 		const canAttemptManipulation =
 			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
-		if (canAttemptManipulation && Math.random() < manipulationChance) {
+		const canAttemptHighlight =
+			highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
+
+		const manipulationPressure =
+			manipulationGuaranteeRemaining > 0
+				? manipulationGuaranteeRemaining / scoringRoundsLeftIncludingThis
+				: 0;
+		const highlightPressure =
+			highlightGuaranteeRemaining > 0
+				? highlightGuaranteeRemaining / scoringRoundsLeftIncludingThis
+				: 0;
+
+		const manipulationForce =
+			manipulationGuaranteeRemaining > 0 &&
+			manipulationGuaranteeRemaining >= scoringRoundsLeftIncludingThis;
+		const highlightForce =
+			highlightGuaranteeRemaining > 0 &&
+			highlightGuaranteeRemaining >= scoringRoundsLeftIncludingThis;
+
+		let shouldPickManipulation = false;
+		if (canAttemptManipulation) {
+			const chance = manipulationForce ? 1 : Math.max(manipulationChance, manipulationPressure);
+			if (manipulationForce || Math.random() < chance) {
+				shouldPickManipulation = true;
+			}
+		}
+
+		let shouldPickHighlight = false;
+		if (canAttemptHighlight) {
+			const chance = highlightForce ? 1 : Math.max(highlightChance, highlightPressure);
+			if (highlightForce || Math.random() < chance) {
+				shouldPickHighlight = true;
+			}
+		}
+
+		if (shouldPickManipulation && shouldPickHighlight) {
+			const manipulationScore = manipulationPressure + (manipulationForce ? 1 : 0);
+			const highlightScore = highlightPressure + (highlightForce ? 1 : 0);
+			if (manipulationScore === highlightScore) {
+				if (Math.random() < 0.5) {
+					shouldPickManipulation = false;
+				} else {
+					shouldPickHighlight = false;
+				}
+			} else if (manipulationScore > highlightScore) {
+				shouldPickHighlight = false;
+			} else {
+				shouldPickManipulation = false;
+			}
+		}
+
+		if (shouldPickManipulation) {
 			const manipulation = generateManipulationTarget();
 			if (manipulation) {
 				manipulationRoundsGenerated += 1;
+				if (manipulationGuaranteeRemaining > 0) manipulationGuaranteeRemaining -= 1;
 				return manipulation;
 			}
 		}
-		const canAttemptHighlight =
-			highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
-		if (canAttemptHighlight && Math.random() < highlightChance) {
+
+		if (shouldPickHighlight) {
 			const highlight = generateHighlightTarget();
 			if (highlight) {
 				highlightRoundsGenerated += 1;
+				if (highlightGuaranteeRemaining > 0) highlightGuaranteeRemaining -= 1;
 				return highlight;
 			}
 		}
+
 		return generateMovementTarget();
 	}
 
