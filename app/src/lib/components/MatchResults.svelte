@@ -72,7 +72,7 @@
 		return { level, experience, maxExperience, percent };
 	}
 
-	const START_DELAY_MS = 200;
+	const START_DELAY_MS = 1000;
 	const BASE_MS = 1200;
 	const EXTRA_PER_POINT = 140;
 	const MIN_MS = 1600;
@@ -360,7 +360,7 @@
 				xpBaseline = profileXp;
 				const targetXp = xpBaseline + MATCH_XP_REWARD;
 				xpTween.set(xpBaseline, { duration: 0 });
-				xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 1000 });
+				xpTween.set(targetXp, { duration: 1000, easing: cubicOut, delay: 200 });
 			}
 		}
 		return;

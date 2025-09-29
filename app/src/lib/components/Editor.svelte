@@ -8,8 +8,10 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { user } from '$lib/stores/auth';
 	import { matchStatus } from '$lib/stores/matchStatus';
+	import { profile } from '$lib/stores/profile';
 	import { createVimController, type Cursor, type Mode } from '$lib/vim/vim';
 	import RoundGoalBadge from '$lib/components/RoundGoalBadge.svelte';
+	import { rankIdFromRating } from '$lib/data/ranks';
 	import type {
 		MatchController,
 		MatchState,
@@ -28,21 +30,109 @@
 	const MAX_ROWS = ROWS;
 	const TEXT_TOP = 38;
 
-	const PLATINUM_THRESHOLD = 1200;
-	const DIAMOND_THRESHOLD = 1600;
-	const HIGHLIGHT_CHANCE = 0.4;
-	const MANIPULATION_CHANCE = 0.35;
 	const MAX_MANIPULATION_LINES = 2;
-	const MAX_MANIPULATION_ROUNDS = 4;
 	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
 	const MAX_UNDO_ENTRIES = 50;
+
+	type RoundConfig = {
+		highlightChance: number;
+		maxHighlightRounds: number;
+		manipulationChance: number;
+		maxManipulationRounds: number;
+		guaranteedHighlightRounds?: number;
+		guaranteedManipulationRounds?: number;
+	};
+
+	type RoundConfigKey =
+		| 'landing'
+		| 'placement'
+		| 'bronze'
+		| 'silver'
+		| 'gold'
+		| 'platinum'
+		| 'diamond'
+		| 'nova'
+		| 'supernova'
+		| 'singularity';
+
+	const PLACEMENT_MATCH_GOAL = 5;
+
+	const ROUND_CONFIGS: Record<RoundConfigKey, RoundConfig> = {
+		landing: {
+			highlightChance: 0,
+			maxHighlightRounds: 0,
+			manipulationChance: 0,
+			maxManipulationRounds: 0
+		},
+		placement: {
+			highlightChance: 1,
+			maxHighlightRounds: 1,
+			manipulationChance: 1,
+			maxManipulationRounds: 1,
+			guaranteedHighlightRounds: 1,
+			guaranteedManipulationRounds: 1
+		},
+		bronze: {
+			highlightChance: 0.2,
+			maxHighlightRounds: 0,
+			manipulationChance: 0.05,
+			maxManipulationRounds: 0
+		},
+		silver: {
+			highlightChance: 0.24,
+			maxHighlightRounds: 1,
+			manipulationChance: 0.08,
+			maxManipulationRounds: 0
+		},
+		gold: {
+			highlightChance: 0.28,
+			maxHighlightRounds: 2,
+			manipulationChance: 0.12,
+			maxManipulationRounds: 1
+		},
+		platinum: {
+			highlightChance: 0.32,
+			maxHighlightRounds: 3,
+			manipulationChance: 0.18,
+			maxManipulationRounds: 1
+		},
+		diamond: {
+			highlightChance: 0.36,
+			maxHighlightRounds: 4,
+			manipulationChance: 0.24,
+			maxManipulationRounds: 2
+		},
+		nova: {
+			highlightChance: 0.4,
+			maxHighlightRounds: 5,
+			manipulationChance: 0.3,
+			maxManipulationRounds: 3
+		},
+		supernova: {
+			highlightChance: 0.44,
+			maxHighlightRounds: 5,
+			manipulationChance: 0.34,
+			maxManipulationRounds: 4
+		},
+		singularity: {
+			highlightChance: 0.5,
+			maxHighlightRounds: 6,
+			manipulationChance: 0.4,
+			maxManipulationRounds: 4
+		}
+	};
+
+	let roundConfig: RoundConfig = ROUND_CONFIGS.landing;
+	let roundConfigKey: RoundConfigKey = 'landing';
 
 	const RATING_TIMER_RULES: Array<{ max: number; ms: number }> = [
 		{ max: 399, ms: 5000 },
 		{ max: 799, ms: 4000 },
 		{ max: 1199, ms: 3000 },
 		{ max: 1599, ms: 2000 },
-		{ max: Infinity, ms: 1500 }
+		{ max: 1999, ms: 1500 },
+		{ max: 2199, ms: 1250 },
+		{ max: Infinity, ms: 1000 }
 	];
 	const CARET_STEP = 9.6328;
 
@@ -80,17 +170,23 @@
 
 	const DEFAULT_BORDER_COLOR = 'border-color: rgba(148, 163, 184, 0.14);';
 
-	type RoundBracket = 'movement-only' | 'highlight-enabled' | 'manipulation-enabled';
-
 	type UndoSnapshot = { document: string; cursor: { row: number; col: number } };
-	let roundBracket: RoundBracket = 'movement-only';
 	let manipulationRoundsGenerated = 0;
+	let highlightRoundsGenerated = 0;
 	let loadingRating = false;
 	let undoStack: UndoSnapshot[] = [];
 	let roundBaselineSnapshot: UndoSnapshot | null = null;
 	let lastActiveRoundIndex: number | null = null;
 	let forceUndoRequired = false;
 	let unsubscribeUser: (() => void) | undefined;
+	let unsubscribeProfile: (() => void) | undefined;
+	let profileState = get(profile);
+	let profileRating: number | null = null;
+	let placementMode = false;
+	let roundsGenerated = 0;
+	let warmupOffset = 0;
+	let highlightGuaranteeSchedule: Set<number> = new Set();
+	let manipulationGuaranteeSchedule: Set<number> = new Set();
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -211,6 +307,121 @@
 		runWarmupCountdownStep(3);
 	}
 
+	function resetRoundGenerationCounters() {
+		manipulationRoundsGenerated = 0;
+		highlightRoundsGenerated = 0;
+		roundsGenerated = 0;
+		warmupOffset = 0;
+
+		const highlightCount = roundConfig.guaranteedHighlightRounds ?? 0;
+		highlightGuaranteeSchedule = buildGuaranteeSchedule(highlightCount);
+		const manipulationCount = roundConfig.guaranteedManipulationRounds ?? 0;
+		manipulationGuaranteeSchedule = buildGuaranteeSchedule(
+			manipulationCount,
+			highlightGuaranteeSchedule
+		);
+	}
+
+	function buildGuaranteeSchedule(count: number, exclude: Set<number> = new Set()): Set<number> {
+		const total = matchState.scoringRounds ?? 20;
+		if (count <= 0 || total <= 0) return new Set();
+		const pool: number[] = [];
+		for (let i = 1; i <= total; i += 1) {
+			if (!exclude.has(i)) pool.push(i);
+		}
+		if (!pool.length) return new Set();
+		if (count >= pool.length) return new Set(pool);
+		const schedule = new Set<number>();
+		const candidates = [...pool];
+		for (let i = 0; i < count && candidates.length; i += 1) {
+			const idx = Math.floor(Math.random() * candidates.length);
+			const [picked] = candidates.splice(idx, 1);
+			schedule.add(picked);
+		}
+		return schedule;
+	}
+
+	function rescheduleGuarantee(
+		schedule: Set<number>,
+		exclude: Set<number>,
+		currentRound: number
+	) {
+		const total = matchState.scoringRounds ?? 20;
+		schedule.delete(currentRound);
+		if (total <= 0) return;
+		const reserved = new Set<number>(exclude);
+		schedule.forEach((value) => reserved.add(value));
+		reserved.add(currentRound);
+		const options: number[] = [];
+		for (let i = currentRound + 1; i <= total; i += 1) {
+			if (!reserved.has(i)) options.push(i);
+		}
+		if (!options.length) {
+			for (let i = 1; i <= total; i += 1) {
+				if (!reserved.has(i)) options.push(i);
+			}
+		}
+		if (!options.length) return;
+		const pick = options[Math.floor(Math.random() * options.length)];
+		schedule.add(pick);
+	}
+
+	function baseTierFromRankId(rankId: ReturnType<typeof rankIdFromRating>): RoundConfigKey {
+		if (rankId === 'unranked') return 'bronze';
+		if (rankId.startsWith('bronze')) return 'bronze';
+		if (rankId.startsWith('silver')) return 'silver';
+		if (rankId.startsWith('gold')) return 'gold';
+		if (rankId.startsWith('platinum')) return 'platinum';
+		if (rankId.startsWith('diamond')) return 'diamond';
+		if (rankId === 'nova') return 'nova';
+		if (rankId === 'supernova') return 'supernova';
+		if (rankId === 'singularity') return 'singularity';
+		return 'diamond';
+	}
+
+	function determineRoundConfigKey(
+		signedInValue: boolean,
+		placementModeValue: boolean,
+		ratingValue: number | null,
+		fallbackRating: number | null
+	): RoundConfigKey {
+		if (!signedInValue) return 'landing';
+		if (placementModeValue) return 'placement';
+		const candidates: Array<number | null> = [ratingValue, fallbackRating];
+		for (const candidate of candidates) {
+			if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+				const rankId = rankIdFromRating(candidate);
+				return baseTierFromRankId(rankId);
+			}
+		}
+		return 'bronze';
+	}
+
+	function setRoundConfig(key: RoundConfigKey) {
+		const config = ROUND_CONFIGS[key] ?? ROUND_CONFIGS.bronze;
+		roundConfig = { ...config };
+		roundConfigKey = key;
+		resetRoundGenerationCounters();
+	}
+
+	$: profileRating = typeof profileState?.rating === 'number' ? profileState.rating : null;
+	$: placementMode =
+		signedIn &&
+		(profileRating ?? null) === null &&
+		(profileState?.placements ?? 0) < PLACEMENT_MATCH_GOAL;
+
+	$: {
+		const nextConfigKey = determineRoundConfigKey(
+			signedIn,
+			placementMode,
+			currentRating,
+			profileRating
+		);
+		if (nextConfigKey !== roundConfigKey) {
+			setRoundConfig(nextConfigKey);
+		}
+	}
+
 	$: timeLimitMs = matchState.timeLimitMs ?? 5000;
 	$: totalPoints = matchState.totalPoints ?? 0;
 	$: pointsLabel = `${totalPoints > 0 ? '+' : ''}${totalPoints.toFixed(0)}`;
@@ -265,7 +476,7 @@
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
 	$: if (matchState.status === 'idle') {
-		manipulationRoundsGenerated = 0;
+		resetRoundGenerationCounters();
 		undoStack = [];
 		roundBaselineSnapshot = null;
 		lastActiveRoundIndex = null;
@@ -812,30 +1023,109 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
+		roundsGenerated += 1;
+		const isWarmupRound = signedIn && roundConfigKey !== 'landing' && roundsGenerated === 1;
+		if (isWarmupRound) {
+			warmupOffset = 1;
+			return generateMovementTarget();
+		}
+
+		const scoringRoundNumber = Math.max(1, roundsGenerated - warmupOffset);
+		const {
+			manipulationChance,
+			maxManipulationRounds,
+			highlightChance,
+			maxHighlightRounds
+		} = roundConfig;
+
 		const canAttemptManipulation =
-			roundBracket === 'manipulation-enabled' &&
-			manipulationRoundsGenerated < MAX_MANIPULATION_ROUNDS;
-		if (canAttemptManipulation) {
-			if (Math.random() < MANIPULATION_CHANCE) {
-				const manipulation = generateManipulationTarget();
-				if (manipulation) {
+			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
+		const canAttemptHighlight =
+			highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
+
+		const manipulationDueNow = manipulationGuaranteeSchedule.has(scoringRoundNumber);
+		const highlightDueNow = highlightGuaranteeSchedule.has(scoringRoundNumber);
+		const manipulationGuaranteePending = manipulationGuaranteeSchedule.size > 0;
+		const highlightGuaranteePending = highlightGuaranteeSchedule.size > 0;
+
+		const priorities: Array<'manipulation' | 'highlight'> = [];
+
+		if (manipulationDueNow) {
+			if (canAttemptManipulation) {
+				priorities.push('manipulation');
+			} else {
+				rescheduleGuarantee(
+					manipulationGuaranteeSchedule,
+					highlightGuaranteeSchedule,
+					scoringRoundNumber
+				);
+			}
+		}
+
+		if (highlightDueNow) {
+			if (canAttemptHighlight) {
+				priorities.push('highlight');
+			} else {
+				rescheduleGuarantee(
+					highlightGuaranteeSchedule,
+					manipulationGuaranteeSchedule,
+					scoringRoundNumber
+				);
+			}
+		}
+
+		if (priorities.length === 2 && Math.random() < 0.5) {
+			priorities.reverse();
+		}
+
+		if (!priorities.length) {
+			if (!manipulationGuaranteePending && canAttemptManipulation && Math.random() < manipulationChance) {
+				priorities.push('manipulation');
+			}
+			if (!highlightGuaranteePending && canAttemptHighlight && Math.random() < highlightChance) {
+				priorities.push('highlight');
+			}
+			if (priorities.length === 2 && Math.random() < 0.5) {
+				priorities.reverse();
+			}
+		}
+
+		for (const kind of priorities) {
+			if (kind === 'manipulation') {
+				const target = generateManipulationTarget();
+				if (target) {
 					manipulationRoundsGenerated += 1;
-					return manipulation;
+					if (manipulationDueNow) {
+						manipulationGuaranteeSchedule.delete(scoringRoundNumber);
+					}
+					return target;
+				}
+				if (manipulationDueNow) {
+					rescheduleGuarantee(
+						manipulationGuaranteeSchedule,
+						highlightGuaranteeSchedule,
+						scoringRoundNumber
+					);
+				}
+			} else {
+				const target = generateHighlightTarget();
+				if (target) {
+					highlightRoundsGenerated += 1;
+					if (highlightDueNow) {
+						highlightGuaranteeSchedule.delete(scoringRoundNumber);
+					}
+					return target;
+				}
+				if (highlightDueNow) {
+					rescheduleGuarantee(
+						highlightGuaranteeSchedule,
+						manipulationGuaranteeSchedule,
+						scoringRoundNumber
+					);
 				}
 			}
 		}
-		if (roundBracket === 'manipulation-enabled') {
-			if (Math.random() < HIGHLIGHT_CHANCE) {
-				const highlight = generateHighlightTarget();
-				if (highlight) return highlight;
-			}
-		}
-		if (roundBracket === 'highlight-enabled') {
-			if (Math.random() < HIGHLIGHT_CHANCE) {
-				const highlight = generateHighlightTarget();
-				if (highlight) return highlight;
-			}
-		}
+
 		return generateMovementTarget();
 	}
 
@@ -889,7 +1179,6 @@
 			const currentUser = get(user);
 			if (!currentUser) {
 				currentRating = null;
-				roundBracket = 'movement-only';
 				applyTimerForRating(currentRating);
 				return;
 			}
@@ -901,23 +1190,14 @@
 			if (error) {
 				console.error('Failed to fetch user rating', error);
 				currentRating = null;
-				roundBracket = 'movement-only';
 				applyTimerForRating(currentRating);
 				return;
 			}
 			const ratingValue = typeof data?.rating === 'number' ? data.rating : null;
 			currentRating = ratingValue;
-			if (ratingValue != null && ratingValue >= DIAMOND_THRESHOLD) {
-				roundBracket = 'manipulation-enabled';
-			} else if (ratingValue != null && ratingValue >= PLATINUM_THRESHOLD) {
-				roundBracket = 'highlight-enabled';
-			} else {
-				roundBracket = 'movement-only';
-			}
 			applyTimerForRating(currentRating);
 		} catch (error) {
 			console.error('Failed to fetch user rating', error);
-			roundBracket = 'movement-only';
 			currentRating = null;
 			applyTimerForRating(currentRating);
 		} finally {
@@ -1158,6 +1438,10 @@
 
 		matchState = get(match);
 		signedIn = Boolean(get(user));
+		profileState = get(profile);
+		unsubscribeProfile = profile.subscribe((value) => {
+			profileState = value;
+		});
 		unsubscribeMatch = match.subscribe((value) => {
 			matchState = value;
 			matchStatus.set(value.status);
@@ -1212,6 +1496,7 @@
 		if (!browser) return;
 		unsubscribeMatch?.();
 		unsubscribeUser?.();
+		unsubscribeProfile?.();
 		ro?.disconnect();
 		window.removeEventListener('resize', resize);
 		cancelAnimationFrame(raf);
@@ -1225,7 +1510,7 @@
 			{#if matchState.active || warmupRoomActive}
 				<div class="pointer-events-none flex gap-2">
 					<div
-						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
+						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono tracking-wide text-neutral-100 uppercase"
 					>
 						<div class="relative flex items-center justify-center">
 							<CircularProgress
@@ -1256,8 +1541,8 @@
 			<div
 				data-mode={currentMode}
 				data-glow-kind={activeTargetKind ?? 'none'}
-				class="data-[mode=command]:border-white/7 relative overflow-hidden rounded-xl border
-         border-white/10 shadow-lg transition-all"
+				class="relative overflow-hidden rounded-xl border border-white/10
+         shadow-lg transition-all data-[mode=command]:border-white/7"
 				style={editorStyle}
 			>
 				<canvas
@@ -1271,7 +1556,7 @@
 						<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
-								<div class=" font-mono text-lg uppercase tracking-wider text-neutral-200">
+								<div class=" font-mono text-lg tracking-wider text-neutral-200 uppercase">
 									move to start match
 								</div>
 							{:else if warmupState === 'countdown'}
@@ -1286,7 +1571,7 @@
 
 			{#if currentMode === 'command'}
 				<div
-					class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2"
+					class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2"
 					style={`width:${targetW}px`}
 				>
 					<div
@@ -1304,7 +1589,7 @@
 	</div>
 </div>
 
-<div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
+<div class="fixed right-4 bottom-3 z-50 space-y-1 text-right font-mono text-gray-100">
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
