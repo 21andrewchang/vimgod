@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
 	import RankUp from '$lib/components/RankUp.svelte';
+	import UnlockMove from '$lib/components/UnlockMove.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
@@ -18,9 +19,10 @@
 	import '$lib/stores/auth';
 
 	let signedIn = $derived(!!$user);
+	let rounds = $derived(signedIn ? 20 : 10);
 	let showRankup = $state(false);
 	let displayRank = $state('');
-	const match = createMatchController({ totalRounds: 20 });
+	let match = createMatchController({ totalRounds: rounds });
 
 	let deltaApplied = $state(false);
 	const resetDeltaApplied = (): void => {
@@ -149,6 +151,7 @@
 	{:else}
 		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} />
 	{/if}
+	<UnlockMove closeMove={() => {}} move={'deletion'} visible={false} />
 	<RankUp
 		closeRankup={() => {
 			showRankup = false;
