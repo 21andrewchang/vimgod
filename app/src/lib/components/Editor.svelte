@@ -359,11 +359,7 @@
 		return schedule;
 	}
 
-	function rescheduleGuarantee(
-		schedule: Set<number>,
-		exclude: Set<number>,
-		currentRound: number
-	) {
+	function rescheduleGuarantee(schedule: Set<number>, exclude: Set<number>, currentRound: number) {
 		const total = matchState.scoringRounds ?? 20;
 		schedule.delete(currentRound);
 		if (total <= 0) return;
@@ -397,7 +393,10 @@
 		return candidate;
 	}
 
-	function setActiveDocument(text: string, { preserveCursor = false }: { preserveCursor?: boolean } = {}) {
+	function setActiveDocument(
+		text: string,
+		{ preserveCursor = false }: { preserveCursor?: boolean } = {}
+	) {
 		activeMap = text;
 		const position = preserveCursor ? { row: cursor.row, col: cursor.col } : null;
 		vim.resetDocument(text, position ?? undefined);
@@ -1097,12 +1096,8 @@
 		}
 
 		const scoringRoundNumber = Math.max(1, roundsGenerated - warmupOffset);
-		const {
-			manipulationChance,
-			maxManipulationRounds,
-			highlightChance,
-			maxHighlightRounds
-		} = roundConfig;
+		const { manipulationChance, maxManipulationRounds, highlightChance, maxHighlightRounds } =
+			roundConfig;
 
 		const canAttemptManipulation =
 			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
@@ -1145,7 +1140,11 @@
 		}
 
 		if (!priorities.length) {
-			if (!manipulationGuaranteePending && canAttemptManipulation && Math.random() < manipulationChance) {
+			if (
+				!manipulationGuaranteePending &&
+				canAttemptManipulation &&
+				Math.random() < manipulationChance
+			) {
 				priorities.push('manipulation');
 			}
 			if (!highlightGuaranteePending && canAttemptHighlight && Math.random() < highlightChance) {
@@ -1577,7 +1576,7 @@
 			{#if matchState.active || warmupRoomActive}
 				<div class="pointer-events-none flex gap-2">
 					<div
-						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono tracking-wide text-neutral-100 uppercase"
+						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
 					>
 						<div class="relative flex items-center justify-center">
 							<CircularProgress
@@ -1608,8 +1607,8 @@
 			<div
 				data-mode={currentMode}
 				data-glow-kind={activeTargetKind ?? 'none'}
-				class="relative overflow-hidden rounded-xl border border-white/10
-         shadow-lg transition-all data-[mode=command]:border-white/7"
+				class="data-[mode=command]:border-white/7 relative overflow-hidden rounded-xl border
+         border-white/10 shadow-lg transition-all"
 				style={editorStyle}
 			>
 				<canvas
@@ -1620,10 +1619,10 @@
 				></canvas>
 				{#if warmupRoomActive}
 					<div class="pointer-events-none absolute inset-0">
-						<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
+						<div class="absolute inset-0 bg-black/90 backdrop-blur-md"></div>
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
-								<div class=" font-mono text-lg tracking-wider text-neutral-200 uppercase">
+								<div class=" font-mono text-lg uppercase tracking-wider text-neutral-200">
 									move to start match
 								</div>
 							{:else if warmupState === 'countdown'}
@@ -1638,7 +1637,7 @@
 
 			{#if currentMode === 'command'}
 				<div
-					class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2"
+					class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2"
 					style={`width:${targetW}px`}
 				>
 					<div
@@ -1656,7 +1655,7 @@
 	</div>
 </div>
 
-<div class="fixed right-4 bottom-3 z-50 space-y-1 text-right font-mono text-gray-100">
+<div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
