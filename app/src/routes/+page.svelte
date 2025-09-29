@@ -1,10 +1,12 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
 	import RankUp from '$lib/components/RankUp.svelte';
+	import UnlockMotion from '$lib/components/UnlockMotion.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
 	import { blur } from 'svelte/transition';
+	import { getMotionByLevel, type Motion } from '$lib/data/motions';
 	import {
 		clearDodgeSnapshot,
 		DODGE_LP_PENALTY,
@@ -18,9 +20,13 @@
 	import '$lib/stores/auth';
 
 	let signedIn = $derived(!!$user);
+	let rounds = $derived(signedIn ? 20 : 10);
 	let showRankup = $state(false);
 	let displayRank = $state('');
-	const match = createMatchController({ totalRounds: 20 });
+	let match = createMatchController({ totalRounds: rounds });
+	let unlockedMotion = $state<Motion | null>(null);
+	let pendingMotion = $state<Motion | null>(null);
+	let showMotion = $state(false);
 
 	let deltaApplied = $state(false);
 	const resetDeltaApplied = (): void => {
@@ -29,7 +35,46 @@
 	const rankUp = (newRank: string): void => {
 		displayRank = newRank;
 		deltaApplied = true;
+		if (showMotion) {
+			if (!pendingMotion) {
+				pendingMotion = unlockedMotion;
+			}
+			showMotion = false;
+			unlockedMotion = null;
+		}
 		showRankup = true;
+	};
+
+	const revealPendingMotion = () => {
+		if (!pendingMotion) return;
+		unlockedMotion = pendingMotion;
+		showMotion = true;
+		pendingMotion = null;
+	};
+
+	const unlockMotion = (level: number): void => {
+		const motion = getMotionByLevel(level);
+		if (!motion) return;
+		pendingMotion = motion;
+		if (!showRankup) {
+			if (showMotion) {
+				unlockedMotion = motion;
+				pendingMotion = null;
+			} else {
+				revealPendingMotion();
+			}
+		}
+	};
+
+	const closeUnlockMotion = () => {
+		showMotion = false;
+		unlockedMotion = null;
+		pendingMotion = null;
+	};
+
+	const closeRankupModal = () => {
+		showRankup = false;
+		revealPendingMotion();
 	};
 
 	onMount(() => {
@@ -100,6 +145,9 @@
 
 	const startNewMatch = () => {
 		match.reset();
+		showMotion = false;
+		unlockedMotion = null;
+		pendingMotion = null;
 		if (!signedIn) {
 			match.start();
 		}
@@ -147,15 +195,16 @@
 			<Editor {match} />
 		</div>
 	{:else}
-		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} />
+		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} {unlockMotion} />
 	{/if}
-	<RankUp
-		closeRankup={() => {
-			showRankup = false;
-		}}
-		rank={displayRank}
-		visible={showRankup}
-	/>
+	<UnlockMotion closeMotion={closeUnlockMotion} motion={unlockedMotion} visible={showMotion} />
+	<RankUp closeRankup={closeRankupModal} rank={displayRank} visible={showRankup} />
+	{#if showMotion || showRankup}
+		<div
+			class="fixed inset-0 z-[50] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+			transition:blur={{ duration: 200 }}
+		/>
+	{/if}
 	<Footer />
 </main>
 

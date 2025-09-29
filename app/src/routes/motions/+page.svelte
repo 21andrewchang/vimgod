@@ -1,164 +1,19 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
+	import TutorialEditor from '$lib/components/TutorialEditor.svelte';
+	import { motions, type Motion } from '$lib/data/motions';
+	import type { RankId } from '$lib/data/ranks';
+	import { levelFromXP } from '$lib/utils';
 	import { user, signInWithGoogle } from '$lib/stores/auth';
 	import { profile, refreshProfile } from '$lib/stores/profile';
-	import { levelFromXP } from '$lib/utils';
-	import type { RankId } from '$lib/data/ranks';
 	import { onMount } from 'svelte';
-	import TutorialEditor from '$lib/components/TutorialEditor.svelte';
 
-	type Kind = 'movement' | 'delete' | 'visual' | 'undo';
-	type Combo = { keys: string | string[]; label: string; desc: string; kind: Kind };
-
-	const combos: Combo[] = [
-		{ keys: 'h j k l', label: 'basic movement', desc: 'left, down, up, right', kind: 'movement' },
-		{
-			keys: ['w'],
-			label: 'move word',
-			desc: 'jump to start of next word',
-			kind: 'movement'
-		},
-		{
-			keys: ['b'],
-			label: 'move back',
-			desc: 'jump to first char of current word or start of previous word',
-			kind: 'movement'
-		},
-		{
-			keys: ['0'],
-			label: 'start of line',
-			desc: 'teleport to the start of current line',
-			kind: 'movement'
-		},
-		{
-			keys: ['^'],
-			label: 'current line',
-			desc: 'teleport to first char of current line',
-			kind: 'movement'
-		},
-		{
-			keys: ['e'],
-			label: 'move end',
-			desc: 'jump to last char of current word or end of next word',
-			kind: 'movement'
-		},
-		{
-			keys: ['$'],
-			label: 'end of line',
-			desc: 'teleport to end of line',
-			kind: 'movement'
-		},
-		{
-			keys: ['gg'],
-			label: 'first line',
-			desc: 'teleport to first line of file',
-			kind: 'movement'
-		},
-		{
-			keys: ['G'],
-			label: 'last line',
-			desc: 'teleport to last line of file',
-			kind: 'movement'
-		},
-		{
-			keys: ['f{char}'],
-			label: 'find {char}',
-			desc: 'teleport cursor to the next instance {char}',
-			kind: 'movement'
-		},
-		{
-			keys: ['F{char}'],
-			label: 'find previous {char}',
-			desc: 'teleport cursor to the previous instance {char}',
-			kind: 'movement'
-		},
-		{
-			keys: ['t{char}'],
-			label: 'to {char}',
-			desc: 'teleport cursor right before the next instance of {char}',
-			kind: 'movement'
-		},
-		{
-			keys: ['T{char}'],
-			label: 'to previous {char}',
-			desc: 'teleport cursor right before the previous instance of {char}',
-			kind: 'movement'
-		},
-		{
-			keys: ['Shift + v'],
-			label: 'select line',
-			desc: 'highlight the current line',
-			kind: 'visual'
-		},
-		{
-			keys: ['viw'],
-			label: 'select in word',
-			desc: 'highlight the current word',
-			kind: 'visual'
-		},
-		{
-			keys: ['vi(', 'vi)'],
-			label: 'select in ()',
-			desc: 'highlight content inside of current or next ()',
-			kind: 'visual'
-		},
-		{
-			keys: ['vi<', 'vi>'],
-			label: 'select in <>',
-			desc: 'highlight content inside of current or next <>',
-			kind: 'visual'
-		},
-		{
-			keys: ['d'],
-			label: 'delete',
-			desc: 'deletes current selection',
-			kind: 'delete'
-		},
-		{
-			keys: ['di(', 'di)'],
-			label: 'delete in ()',
-			desc: 'delete the contents of the current or next ()',
-			kind: 'delete'
-		},
-		{
-			keys: ['di<', 'di>'],
-			label: 'delete in <>',
-			desc: 'delete the contents of the current or next <>',
-			kind: 'delete'
-		},
-		{ keys: ['dd'], label: 'delete line', desc: 'deletes the current line', kind: 'delete' },
-		{ keys: ['u'], label: 'Undo', desc: 'undo your most recent edit', kind: 'undo' }
-	];
+	const combos = motions;
 
 	// Auth + progression gating
 	const signedIn = $derived(!!$user);
 	const level = $derived(levelFromXP($profile.xp ? $profile.xp : 0).level);
 	const rating = $derived($profile?.rating ?? 0);
-
-	const levelByLabel: Record<string, number> = {
-		'basic movement': 1,
-		'move word': 1,
-		'move back': 2,
-		'start of line': 3,
-		'current line': 4,
-		'move end': 5,
-		'end of line': 6,
-		'first line': 7,
-		'last line': 8,
-		'find {char}': 9,
-		'find previous {char}': 10,
-		'to {char}': 11,
-		'to previous {char}': 12,
-		'select line': 15,
-		'select in word': 15,
-		'select in ()': 16,
-		'select in <>': 17,
-		delete: 20,
-		'delete in ()': 21,
-		'delete in <>': 21,
-		'delete line': 22,
-		Undo: 22
-	};
 
 	const rankRequirements: Record<string, { rankId: RankId; rating: number }> = {
 		'select line': { rankId: 'Platinum 4', rating: 1200 },
@@ -172,30 +27,30 @@
 		Undo: { rankId: 'Diamond 4', rating: 1600 }
 	};
 
-	const requiredLevelFor = (c: Combo): number => levelByLabel[c.label] ?? 2;
+	const requiredLevelFor = (motion: Motion): number => motion.level;
 
-	const meetsRankRequirement = (c: Combo): boolean => {
-		const req = rankRequirements[c.label];
+	const meetsRankRequirement = (motion: Motion): boolean => {
+		const req = rankRequirements[motion.label];
 		if (!req) return true;
 		return rating >= req.rating;
 	};
 
-	const isGuestUnlocked = (c: Combo): boolean => {
-		const keyStr = Array.isArray(c.keys) ? c.keys.join(' ') : c.keys;
+	const isGuestUnlocked = (motion: Motion): boolean => {
+		const keyStr = Array.isArray(motion.keys) ? motion.keys.join(' ') : motion.keys;
 		const normalized = keyStr.trim();
 		return normalized === 'h j k l' || normalized === 'w';
 	};
 
-	const isUnlocked = (c: Combo) => {
+	const isUnlocked = (motion: Motion) => {
 		if (!signedIn) {
-			return isGuestUnlocked(c);
+			return isGuestUnlocked(motion);
 		}
-		return level >= requiredLevelFor(c) && meetsRankRequirement(c);
+		return level >= requiredLevelFor(motion) && meetsRankRequirement(motion);
 	};
 
-	function lockDetails(c: Combo) {
-		const levelReq = requiredLevelFor(c);
-		const rankReq = rankRequirements[c.label];
+	function lockDetails(motion: Motion) {
+		const levelReq = requiredLevelFor(motion);
+		const rankReq = rankRequirements[motion.label];
 		const lines: string[] = [];
 
 		if (rankReq && (!signedIn || rating < rankReq.rating)) {
@@ -227,6 +82,7 @@
 
 	let started = false;
 </script>
+
 
 <svelte:head>
 	<title>vimgod</title>
