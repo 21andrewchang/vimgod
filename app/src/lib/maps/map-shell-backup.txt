@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+SOURCE_DIR=${1:-./data}
+TARGET_DIR=${2:-./backup}
+timestamp=$(date +"%Y%m%d%H%M%S")
+archive="$TARGET_DIR/snapshot_$timestamp.tar.gz"
+[ -d "$TARGET_DIR" ] || mkdir -p "$TARGET_DIR"
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+find "$SOURCE_DIR" -type f -print0 \
+    | sort -z \
+    | tar -czf "$archive" --null -T -
+echo "created archive: $archive" >> "$tmpfile"
+cat "$tmpfile"
+exit 0

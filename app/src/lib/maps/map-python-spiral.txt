@@ -1,0 +1,15 @@
+def spiral(n):
+    grid = [[0] * n for _ in range(n)]
+    val = 1
+    top, bottom = 0, n - 1
+    left, right = 0, n - 1
+    while top <= bottom and left <= right:
+        for c in range(left, right + 1):
+            grid[top][c] = val
+            val += 1
+        top += 1
+        for r in range(top, bottom + 1):
+            grid[r][right] = val
+            val += 1
+        right -= 1
+    return grid

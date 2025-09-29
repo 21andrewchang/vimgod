@@ -1,0 +1,15 @@
+enum Token {
+    Number(i64),
+    Text(String),
+    End,
+}
+fn scan(input: &str) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    for piece in input.split_whitespace() {
+        match piece.parse::<i64>() {
+            Ok(value) => tokens.push(Token::Number(value)),
+            Err(_) => tokens.push(Token::Text(piece.into())),
+        }
+    }
+    tokens.push(Token::End); tokens
+}

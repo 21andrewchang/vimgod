@@ -1,5 +1,10 @@
 <script lang="ts">
 	import defaultText from '$lib/default-code.svelte.txt?raw';
+	import mapPythonSpiral from '$lib/maps/map-python-spiral.txt?raw';
+	import mapSqlAggregates from '$lib/maps/map-sql-aggregates.txt?raw';
+	import mapShellBackup from '$lib/maps/map-shell-backup.txt?raw';
+	import mapHtmlDashboard from '$lib/maps/map-html-dashboard.txt?raw';
+	import mapRustTokenizer from '$lib/maps/map-rust-tokenizer.txt?raw';
 	import { scale } from 'svelte/transition';
 	import CircularProgress from '$lib/components/CircularProgress.svelte';
 	import { onMount, onDestroy } from 'svelte';
@@ -33,6 +38,17 @@
 	const MAX_MANIPULATION_LINES = 2;
 	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
 	const MAX_UNDO_ENTRIES = 50;
+
+	const CODE_MAPS: string[] = [
+		defaultText,
+		mapPythonSpiral,
+		mapSqlAggregates,
+		mapShellBackup,
+		mapHtmlDashboard,
+		mapRustTokenizer
+	];
+
+	const EMPTY_DOCUMENT = Array.from({ length: MAX_ROWS }, () => ' '.repeat(2)).join('\n');
 
 	type RoundConfig = {
 		highlightChance: number;
@@ -188,6 +204,12 @@
 	let highlightGuaranteeSchedule: Set<number> = new Set();
 	let manipulationGuaranteeSchedule: Set<number> = new Set();
 
+	let activeMap = defaultText;
+	let lastMatchMap = defaultText;
+	let mapInitialized = false;
+	let pendingMap: string | null = null;
+	let lastMatchStatus: MatchState['status'] | null = null;
+
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -267,6 +289,7 @@
 		forceUndoRequired = false;
 		undoStack = [];
 		roundBaselineSnapshot = null;
+		ensureInitialMap();
 	}
 
 	function finishWarmup() {
@@ -341,11 +364,7 @@
 		return schedule;
 	}
 
-	function rescheduleGuarantee(
-		schedule: Set<number>,
-		exclude: Set<number>,
-		currentRound: number
-	) {
+	function rescheduleGuarantee(schedule: Set<number>, exclude: Set<number>, currentRound: number) {
 		const total = matchState.scoringRounds ?? 20;
 		schedule.delete(currentRound);
 		if (total <= 0) return;
@@ -364,6 +383,46 @@
 		if (!options.length) return;
 		const pick = options[Math.floor(Math.random() * options.length)];
 		schedule.add(pick);
+	}
+
+	function pickRandomMap(previous?: string) {
+		if (!CODE_MAPS.length) return defaultText;
+		if (CODE_MAPS.length === 1) return CODE_MAPS[0];
+		let candidate = CODE_MAPS[Math.floor(Math.random() * CODE_MAPS.length)];
+		if (!previous) return candidate;
+		let safety = CODE_MAPS.length * 2;
+		while (candidate === previous && safety > 0) {
+			candidate = CODE_MAPS[Math.floor(Math.random() * CODE_MAPS.length)];
+			safety -= 1;
+		}
+		return candidate;
+	}
+
+	function setActiveDocument(
+		text: string,
+		{ preserveCursor = false }: { preserveCursor?: boolean } = {}
+	) {
+		activeMap = text;
+		const position = preserveCursor ? { row: cursor.row, col: cursor.col } : null;
+		vim.resetDocument(text, position ?? undefined);
+		undoStack = [];
+		roundBaselineSnapshot = null;
+		forceUndoRequired = false;
+		if (ctx) {
+			recomputeLayout();
+		}
+	}
+
+	function ensureInitialMap() {
+		pendingMap = null;
+		mapInitialized = false;
+		setActiveDocument(EMPTY_DOCUMENT, { preserveCursor: false });
+	}
+
+	function prepareMapForRound() {
+		if (!pendingMap && !mapInitialized) {
+			pendingMap = pickRandomMap(lastMatchMap);
+		}
 	}
 
 	function baseTierFromRankId(rankId: ReturnType<typeof rankIdFromRating>): RoundConfigKey {
@@ -475,15 +534,32 @@
 		}
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
-	$: if (matchState.status === 'idle') {
-		resetRoundGenerationCounters();
-		undoStack = [];
-		roundBaselineSnapshot = null;
-		lastActiveRoundIndex = null;
-		forceUndoRequired = false;
-		undoCount = 0;
+	$: {
+		const status = matchState.status;
+		if (status === 'idle') {
+			resetRoundGenerationCounters();
+			undoStack = [];
+			roundBaselineSnapshot = null;
+			lastActiveRoundIndex = null;
+			forceUndoRequired = false;
+			undoCount = 0;
+			if (lastMatchStatus !== 'idle') {
+				ensureInitialMap();
+			}
+		}
+		lastMatchStatus = status;
 	}
 	$: match?.setUndoCount?.(undoCount);
+	$: {
+		const active = matchState.active;
+		const isWarmup = active?.isWarmup ?? false;
+		if (!mapInitialized && pendingMap && active && (!signedIn || !isWarmup)) {
+			setActiveDocument(pendingMap, { preserveCursor: false });
+			mapInitialized = true;
+			lastMatchMap = pendingMap;
+			pendingMap = null;
+		}
+	}
 
 	function recomputeLayout() {
 		const gutter = Math.ceil(ctx.measureText(String(ROWS)).width) + GUTTER_PAD;
@@ -1023,6 +1099,7 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
+		prepareMapForRound();
 		roundsGenerated += 1;
 		const isWarmupRound = signedIn && roundConfigKey !== 'landing' && roundsGenerated === 1;
 		if (isWarmupRound) {
@@ -1031,12 +1108,8 @@
 		}
 
 		const scoringRoundNumber = Math.max(1, roundsGenerated - warmupOffset);
-		const {
-			manipulationChance,
-			maxManipulationRounds,
-			highlightChance,
-			maxHighlightRounds
-		} = roundConfig;
+		const { manipulationChance, maxManipulationRounds, highlightChance, maxHighlightRounds } =
+			roundConfig;
 
 		const canAttemptManipulation =
 			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
@@ -1079,7 +1152,11 @@
 		}
 
 		if (!priorities.length) {
-			if (!manipulationGuaranteePending && canAttemptManipulation && Math.random() < manipulationChance) {
+			if (
+				!manipulationGuaranteePending &&
+				canAttemptManipulation &&
+				Math.random() < manipulationChance
+			) {
 				priorities.push('manipulation');
 			}
 			if (!highlightGuaranteePending && canAttemptHighlight && Math.random() < highlightChance) {
@@ -1434,6 +1511,7 @@
 
 	onMount(() => {
 		if (!browser) return;
+		ensureInitialMap();
 		applyTimerForRating(currentRating);
 
 		matchState = get(match);
@@ -1510,7 +1588,7 @@
 			{#if matchState.active || warmupRoomActive}
 				<div class="pointer-events-none flex gap-2">
 					<div
-						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono tracking-wide text-neutral-100 uppercase"
+						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
 					>
 						<div class="relative flex items-center justify-center">
 							<CircularProgress
@@ -1541,8 +1619,8 @@
 			<div
 				data-mode={currentMode}
 				data-glow-kind={activeTargetKind ?? 'none'}
-				class="relative overflow-hidden rounded-xl border border-white/10
-         shadow-lg transition-all data-[mode=command]:border-white/7"
+				class="data-[mode=command]:border-white/7 relative overflow-hidden rounded-xl border
+         border-white/10 shadow-lg transition-all"
 				style={editorStyle}
 			>
 				<canvas
@@ -1553,10 +1631,10 @@
 				></canvas>
 				{#if warmupRoomActive}
 					<div class="pointer-events-none absolute inset-0">
-						<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
+						<div class="absolute inset-0 bg-black/0"></div>
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
-								<div class=" font-mono text-lg tracking-wider text-neutral-200 uppercase">
+								<div class=" font-mono text-lg uppercase tracking-wider text-neutral-200">
 									move to start match
 								</div>
 							{:else if warmupState === 'countdown'}
@@ -1571,7 +1649,7 @@
 
 			{#if currentMode === 'command'}
 				<div
-					class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2"
+					class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2"
 					style={`width:${targetW}px`}
 				>
 					<div
@@ -1589,7 +1667,7 @@
 	</div>
 </div>
 
-<div class="fixed right-4 bottom-3 z-50 space-y-1 text-right font-mono text-gray-100">
+<div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
