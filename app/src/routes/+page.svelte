@@ -25,6 +25,7 @@
 	let displayRank = $state('');
 	let match = createMatchController({ totalRounds: rounds });
 	let unlockedMotion = $state<Motion | null>(null);
+	let pendingMotion = $state<Motion | null>(null);
 	let showMotion = $state(false);
 
 	let deltaApplied = $state(false);
@@ -34,18 +35,46 @@
 	const rankUp = (newRank: string): void => {
 		displayRank = newRank;
 		deltaApplied = true;
+		if (showMotion) {
+			if (!pendingMotion) {
+				pendingMotion = unlockedMotion;
+			}
+			showMotion = false;
+			unlockedMotion = null;
+		}
 		showRankup = true;
 	};
+
+	const revealPendingMotion = () => {
+		if (!pendingMotion) return;
+		unlockedMotion = pendingMotion;
+		showMotion = true;
+		pendingMotion = null;
+	};
+
 	const unlockMotion = (level: number): void => {
 		const motion = getMotionByLevel(level);
 		if (!motion) return;
-		unlockedMotion = motion;
-		showMotion = true;
+		pendingMotion = motion;
+		if (!showRankup) {
+			if (showMotion) {
+				unlockedMotion = motion;
+				pendingMotion = null;
+			} else {
+				revealPendingMotion();
+			}
+		}
 	};
 
 	const closeUnlockMotion = () => {
 		showMotion = false;
 		unlockedMotion = null;
+		pendingMotion = null;
+	};
+
+	const closeRankupModal = () => {
+		showRankup = false;
+		revealPendingMotion();
 	};
 
 	onMount(() => {
@@ -118,6 +147,7 @@
 		match.reset();
 		showMotion = false;
 		unlockedMotion = null;
+		pendingMotion = null;
 		if (!signedIn) {
 			match.start();
 		}
@@ -173,9 +203,7 @@
 		visible={showMotion}
 	/>
 	<RankUp
-		closeRankup={() => {
-			showRankup = false;
-		}}
+		closeRankup={closeRankupModal}
 		rank={displayRank}
 		visible={showRankup}
 	/>
