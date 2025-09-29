@@ -183,10 +183,10 @@
 	let profileState = get(profile);
 	let profileRating: number | null = null;
 	let placementMode = false;
-	let highlightGuaranteeRemaining = 0;
-	let manipulationGuaranteeRemaining = 0;
 	let roundsGenerated = 0;
 	let warmupOffset = 0;
+	let highlightGuaranteeSchedule: Set<number> = new Set();
+	let manipulationGuaranteeSchedule: Set<number> = new Set();
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -310,10 +310,60 @@
 	function resetRoundGenerationCounters() {
 		manipulationRoundsGenerated = 0;
 		highlightRoundsGenerated = 0;
-		manipulationGuaranteeRemaining = roundConfig.guaranteedManipulationRounds ?? 0;
-		highlightGuaranteeRemaining = roundConfig.guaranteedHighlightRounds ?? 0;
 		roundsGenerated = 0;
 		warmupOffset = 0;
+
+		const highlightCount = roundConfig.guaranteedHighlightRounds ?? 0;
+		highlightGuaranteeSchedule = buildGuaranteeSchedule(highlightCount);
+		const manipulationCount = roundConfig.guaranteedManipulationRounds ?? 0;
+		manipulationGuaranteeSchedule = buildGuaranteeSchedule(
+			manipulationCount,
+			highlightGuaranteeSchedule
+		);
+	}
+
+	function buildGuaranteeSchedule(count: number, exclude: Set<number> = new Set()): Set<number> {
+		const total = matchState.scoringRounds ?? 20;
+		if (count <= 0 || total <= 0) return new Set();
+		const pool: number[] = [];
+		for (let i = 1; i <= total; i += 1) {
+			if (!exclude.has(i)) pool.push(i);
+		}
+		if (!pool.length) return new Set();
+		if (count >= pool.length) return new Set(pool);
+		const schedule = new Set<number>();
+		const candidates = [...pool];
+		for (let i = 0; i < count && candidates.length; i += 1) {
+			const idx = Math.floor(Math.random() * candidates.length);
+			const [picked] = candidates.splice(idx, 1);
+			schedule.add(picked);
+		}
+		return schedule;
+	}
+
+	function rescheduleGuarantee(
+		schedule: Set<number>,
+		exclude: Set<number>,
+		currentRound: number
+	) {
+		const total = matchState.scoringRounds ?? 20;
+		schedule.delete(currentRound);
+		if (total <= 0) return;
+		const reserved = new Set<number>(exclude);
+		schedule.forEach((value) => reserved.add(value));
+		reserved.add(currentRound);
+		const options: number[] = [];
+		for (let i = currentRound + 1; i <= total; i += 1) {
+			if (!reserved.has(i)) options.push(i);
+		}
+		if (!options.length) {
+			for (let i = 1; i <= total; i += 1) {
+				if (!reserved.has(i)) options.push(i);
+			}
+		}
+		if (!options.length) return;
+		const pick = options[Math.floor(Math.random() * options.length)];
+		schedule.add(pick);
 	}
 
 	function baseTierFromRankId(rankId: ReturnType<typeof rankIdFromRating>): RoundConfigKey {
@@ -980,84 +1030,99 @@
 			return generateMovementTarget();
 		}
 
-		const totalScoringRounds = matchState.scoringRounds ?? 20;
-		const scoringRoundsGeneratedSoFar = Math.max(0, roundsGenerated - warmupOffset - 1);
-		const scoringRoundsLeftIncludingThis = Math.max(
-			1,
-			totalScoringRounds - scoringRoundsGeneratedSoFar
-		);
-
-		const { manipulationChance, maxManipulationRounds, highlightChance, maxHighlightRounds } =
-			roundConfig;
+		const scoringRoundNumber = Math.max(1, roundsGenerated - warmupOffset);
+		const {
+			manipulationChance,
+			maxManipulationRounds,
+			highlightChance,
+			maxHighlightRounds
+		} = roundConfig;
 
 		const canAttemptManipulation =
 			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
 		const canAttemptHighlight =
 			highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
 
-		const manipulationPressure =
-			manipulationGuaranteeRemaining > 0
-				? manipulationGuaranteeRemaining / scoringRoundsLeftIncludingThis
-				: 0;
-		const highlightPressure =
-			highlightGuaranteeRemaining > 0
-				? highlightGuaranteeRemaining / scoringRoundsLeftIncludingThis
-				: 0;
+		const manipulationDueNow = manipulationGuaranteeSchedule.has(scoringRoundNumber);
+		const highlightDueNow = highlightGuaranteeSchedule.has(scoringRoundNumber);
+		const manipulationGuaranteePending = manipulationGuaranteeSchedule.size > 0;
+		const highlightGuaranteePending = highlightGuaranteeSchedule.size > 0;
 
-		const manipulationForce =
-			manipulationGuaranteeRemaining > 0 &&
-			manipulationGuaranteeRemaining >= scoringRoundsLeftIncludingThis;
-		const highlightForce =
-			highlightGuaranteeRemaining > 0 &&
-			highlightGuaranteeRemaining >= scoringRoundsLeftIncludingThis;
+		const priorities: Array<'manipulation' | 'highlight'> = [];
 
-		let shouldPickManipulation = false;
-		if (canAttemptManipulation) {
-			const chance = manipulationForce ? 1 : Math.max(manipulationChance, manipulationPressure);
-			if (manipulationForce || Math.random() < chance) {
-				shouldPickManipulation = true;
-			}
-		}
-
-		let shouldPickHighlight = false;
-		if (canAttemptHighlight) {
-			const chance = highlightForce ? 1 : Math.max(highlightChance, highlightPressure);
-			if (highlightForce || Math.random() < chance) {
-				shouldPickHighlight = true;
-			}
-		}
-
-		if (shouldPickManipulation && shouldPickHighlight) {
-			const manipulationScore = manipulationPressure + (manipulationForce ? 1 : 0);
-			const highlightScore = highlightPressure + (highlightForce ? 1 : 0);
-			if (manipulationScore === highlightScore) {
-				if (Math.random() < 0.5) {
-					shouldPickManipulation = false;
-				} else {
-					shouldPickHighlight = false;
-				}
-			} else if (manipulationScore > highlightScore) {
-				shouldPickHighlight = false;
+		if (manipulationDueNow) {
+			if (canAttemptManipulation) {
+				priorities.push('manipulation');
 			} else {
-				shouldPickManipulation = false;
+				rescheduleGuarantee(
+					manipulationGuaranteeSchedule,
+					highlightGuaranteeSchedule,
+					scoringRoundNumber
+				);
 			}
 		}
 
-		if (shouldPickManipulation) {
-			const manipulation = generateManipulationTarget();
-			if (manipulation) {
-				manipulationRoundsGenerated += 1;
-				if (manipulationGuaranteeRemaining > 0) manipulationGuaranteeRemaining -= 1;
-				return manipulation;
+		if (highlightDueNow) {
+			if (canAttemptHighlight) {
+				priorities.push('highlight');
+			} else {
+				rescheduleGuarantee(
+					highlightGuaranteeSchedule,
+					manipulationGuaranteeSchedule,
+					scoringRoundNumber
+				);
 			}
 		}
 
-		if (shouldPickHighlight) {
-			const highlight = generateHighlightTarget();
-			if (highlight) {
-				highlightRoundsGenerated += 1;
-				if (highlightGuaranteeRemaining > 0) highlightGuaranteeRemaining -= 1;
-				return highlight;
+		if (priorities.length === 2 && Math.random() < 0.5) {
+			priorities.reverse();
+		}
+
+		if (!priorities.length) {
+			if (!manipulationGuaranteePending && canAttemptManipulation && Math.random() < manipulationChance) {
+				priorities.push('manipulation');
+			}
+			if (!highlightGuaranteePending && canAttemptHighlight && Math.random() < highlightChance) {
+				priorities.push('highlight');
+			}
+			if (priorities.length === 2 && Math.random() < 0.5) {
+				priorities.reverse();
+			}
+		}
+
+		for (const kind of priorities) {
+			if (kind === 'manipulation') {
+				const target = generateManipulationTarget();
+				if (target) {
+					manipulationRoundsGenerated += 1;
+					if (manipulationDueNow) {
+						manipulationGuaranteeSchedule.delete(scoringRoundNumber);
+					}
+					return target;
+				}
+				if (manipulationDueNow) {
+					rescheduleGuarantee(
+						manipulationGuaranteeSchedule,
+						highlightGuaranteeSchedule,
+						scoringRoundNumber
+					);
+				}
+			} else {
+				const target = generateHighlightTarget();
+				if (target) {
+					highlightRoundsGenerated += 1;
+					if (highlightDueNow) {
+						highlightGuaranteeSchedule.delete(scoringRoundNumber);
+					}
+					return target;
+				}
+				if (highlightDueNow) {
+					rescheduleGuarantee(
+						highlightGuaranteeSchedule,
+						manipulationGuaranteeSchedule,
+						scoringRoundNumber
+					);
+				}
 			}
 		}
 
