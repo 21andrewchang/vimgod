@@ -15,11 +15,12 @@
 	import { levelFromXP } from '$lib/utils';
 	import { lpForRating, rankIdFromRating, prettyRank, bigRank } from '$lib/data/ranks';
 
-	const { match, deltaApplied, rankUp, resetDeltaApplied } = $props<{
+	const { match, deltaApplied, rankUp, resetDeltaApplied, unlockMotion } = $props<{
 		match: MatchController;
 		deltaApplied: boolean;
 		resetDeltaApplied: () => void;
-		rankUp: (newRank: 'string') => void;
+		rankUp: (newRank: string) => void;
+		unlockMotion: (currentLevel: number) => void;
 	}>();
 
 	const signedIn = $derived(!!$user);
@@ -389,6 +390,9 @@
 		}
 
 		if (currentLevel > visibleLevel && !levelSliding) {
+			if (matchState.status === 'complete' && matchState.outcome !== 'dodge') {
+				unlockMotion(currentLevel);
+			}
 			slideLevels = [visibleLevel, currentLevel];
 			levelSliding = true;
 			levelSlideKey += 1;

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import Footer from '$lib/components/Footer.svelte';
 	import RankUp from '$lib/components/RankUp.svelte';
-	import UnlockMove from '$lib/components/UnlockMove.svelte';
+	import UnlockMotion from '$lib/components/UnlockMotion.svelte';
 	import Editor from '$lib/components/Editor.svelte';
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
 	import { blur } from 'svelte/transition';
-	import { motions } from '$lib/data/motions';
+	import { getMotionByLevel, type Motion } from '$lib/data/motions';
 	import {
 		clearDodgeSnapshot,
 		DODGE_LP_PENALTY,
@@ -24,7 +24,8 @@
 	let showRankup = $state(false);
 	let displayRank = $state('');
 	let match = createMatchController({ totalRounds: rounds });
-	const unlockedMotion = motions[0] ?? null;
+	let unlockedMotion = $state<Motion | null>(null);
+	let showMotion = $state(false);
 
 	let deltaApplied = $state(false);
 	const resetDeltaApplied = (): void => {
@@ -34,6 +35,17 @@
 		displayRank = newRank;
 		deltaApplied = true;
 		showRankup = true;
+	};
+	const unlockMotion = (level: number): void => {
+		const motion = getMotionByLevel(level);
+		if (!motion) return;
+		unlockedMotion = motion;
+		showMotion = true;
+	};
+
+	const closeUnlockMotion = () => {
+		showMotion = false;
+		unlockedMotion = null;
 	};
 
 	onMount(() => {
@@ -104,6 +116,8 @@
 
 	const startNewMatch = () => {
 		match.reset();
+		showMotion = false;
+		unlockedMotion = null;
 		if (!signedIn) {
 			match.start();
 		}
@@ -151,9 +165,13 @@
 			<Editor {match} />
 		</div>
 	{:else}
-		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} />
+		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} {unlockMotion} />
 	{/if}
-	<UnlockMove closeMove={() => {}} motion={unlockedMotion} visible={true} />
+	<UnlockMotion
+		closeMotion={closeUnlockMotion}
+		motion={unlockedMotion}
+		visible={showMotion}
+	/>
 	<RankUp
 		closeRankup={() => {
 			showRankup = false;

@@ -2,13 +2,11 @@
 	import { scale, blur } from 'svelte/transition';
 	import type { Motion } from '$lib/data/motions';
 
-	const TITLE_ANIMATION_MS = 2520;
 	const BEAM_GROW_X_MS = 2000;
-	const BEAM_TO_CARD_MS = 520;
 
-	const { visible, motion, closeMove } = $props<{
+	const { visible, motion, closeMotion } = $props<{
 		motion: Motion | null;
-		closeMove: () => void;
+		closeMotion: () => void;
 		visible: boolean;
 	}>();
 
@@ -74,7 +72,7 @@
 {#if visible}
 	<div
 		class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-		onclick={closeMove}
+		on:click={closeMotion}
 		transition:blur={{ duration: 200 }}
 		data-rank={colorKey}
 		style="
@@ -123,6 +121,7 @@
 		{/if}
 
 		<button
+			on:click={closeMotion}
 			in:blur={{ duration: 500, delay: 800 }}
 			class="text-mono absolute bottom-20 z-30 px-10 pt-10 !text-xs tracking-widest text-neutral-700 transition hover:text-neutral-500"
 		>
