@@ -56,7 +56,12 @@
 	const PLACEMENT_MATCH_GOAL = 5;
 
 	const ROUND_CONFIGS: Record<RoundConfigKey, RoundConfig> = {
-		landing: { highlightChance: 0, maxHighlightRounds: 0, manipulationChance: 0, maxManipulationRounds: 0 },
+		landing: {
+			highlightChance: 0,
+			maxHighlightRounds: 0,
+			manipulationChance: 0,
+			maxManipulationRounds: 0
+		},
 		placement: {
 			highlightChance: 0.34,
 			maxHighlightRounds: 1,
@@ -65,51 +70,51 @@
 		},
 		bronze: {
 			highlightChance: 0.18,
-			maxHighlightRounds: 2,
+			maxHighlightRounds: 0,
 			manipulationChance: 0.05,
-			maxManipulationRounds: 1
+			maxManipulationRounds: 0
 		},
 		silver: {
 			highlightChance: 0.22,
-			maxHighlightRounds: 3,
+			maxHighlightRounds: 1,
 			manipulationChance: 0.08,
-			maxManipulationRounds: 1
+			maxManipulationRounds: 0
 		},
 		gold: {
 			highlightChance: 0.26,
-			maxHighlightRounds: 4,
+			maxHighlightRounds: 2,
 			manipulationChance: 0.12,
-			maxManipulationRounds: 2
+			maxManipulationRounds: 1
 		},
 		platinum: {
 			highlightChance: 0.32,
-			maxHighlightRounds: 5,
+			maxHighlightRounds: 4,
 			manipulationChance: 0.18,
-			maxManipulationRounds: 3
+			maxManipulationRounds: 1
 		},
 		diamond: {
 			highlightChance: 0.38,
-			maxHighlightRounds: 6,
+			maxHighlightRounds: 5,
 			manipulationChance: 0.28,
-			maxManipulationRounds: 4
+			maxManipulationRounds: 2
 		},
 		nova: {
 			highlightChance: 0.42,
 			maxHighlightRounds: 6,
 			manipulationChance: 0.32,
-			maxManipulationRounds: 5
+			maxManipulationRounds: 3
 		},
 		supernova: {
 			highlightChance: 0.46,
-			maxHighlightRounds: 7,
+			maxHighlightRounds: 6,
 			manipulationChance: 0.36,
-			maxManipulationRounds: 6
+			maxManipulationRounds: 3
 		},
 		singularity: {
 			highlightChance: 0.5,
-			maxHighlightRounds: 8,
+			maxHighlightRounds: 6,
 			manipulationChance: 0.4,
-			maxManipulationRounds: 8
+			maxManipulationRounds: 3
 		}
 	};
 
@@ -121,7 +126,9 @@
 		{ max: 799, ms: 4000 },
 		{ max: 1199, ms: 3000 },
 		{ max: 1599, ms: 2000 },
-		{ max: Infinity, ms: 1500 }
+		{ max: 1999, ms: 1500 },
+		{ max: 2199, ms: 1250 },
+		{ max: Infinity, ms: 1000 }
 	];
 	const CARET_STEP = 9.6328;
 
@@ -954,12 +961,8 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
-		const {
-			manipulationChance,
-			maxManipulationRounds,
-			highlightChance,
-			maxHighlightRounds
-		} = roundConfig;
+		const { manipulationChance, maxManipulationRounds, highlightChance, maxHighlightRounds } =
+			roundConfig;
 		const canAttemptManipulation =
 			manipulationChance > 0 && manipulationRoundsGenerated < maxManipulationRounds;
 		if (canAttemptManipulation && Math.random() < manipulationChance) {
@@ -969,7 +972,8 @@
 				return manipulation;
 			}
 		}
-		const canAttemptHighlight = highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
+		const canAttemptHighlight =
+			highlightChance > 0 && highlightRoundsGenerated < maxHighlightRounds;
 		if (canAttemptHighlight && Math.random() < highlightChance) {
 			const highlight = generateHighlightTarget();
 			if (highlight) {
@@ -1361,7 +1365,7 @@
 			{#if matchState.active || warmupRoomActive}
 				<div class="pointer-events-none flex gap-2">
 					<div
-						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono uppercase tracking-wide text-neutral-100"
+						class="gap relative inline-flex items-center gap-3 overflow-hidden rounded-lg border border-neutral-400/20 bg-black/60 px-3 py-2 font-mono tracking-wide text-neutral-100 uppercase"
 					>
 						<div class="relative flex items-center justify-center">
 							<CircularProgress
@@ -1392,8 +1396,8 @@
 			<div
 				data-mode={currentMode}
 				data-glow-kind={activeTargetKind ?? 'none'}
-				class="data-[mode=command]:border-white/7 relative overflow-hidden rounded-xl border
-         border-white/10 shadow-lg transition-all"
+				class="relative overflow-hidden rounded-xl border border-white/10
+         shadow-lg transition-all data-[mode=command]:border-white/7"
 				style={editorStyle}
 			>
 				<canvas
@@ -1407,7 +1411,7 @@
 						<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
 						<div class="relative flex h-full w-full items-center justify-center">
 							{#if warmupState === 'waiting'}
-								<div class=" font-mono text-lg uppercase tracking-wider text-neutral-200">
+								<div class=" font-mono text-lg tracking-wider text-neutral-200 uppercase">
 									move to start match
 								</div>
 							{:else if warmupState === 'countdown'}
@@ -1422,7 +1426,7 @@
 
 			{#if currentMode === 'command'}
 				<div
-					class="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] -translate-x-1/2"
+					class="pointer-events-none absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2"
 					style={`width:${targetW}px`}
 				>
 					<div
@@ -1440,7 +1444,7 @@
 	</div>
 </div>
 
-<div class="fixed bottom-3 right-4 z-50 space-y-1 text-right font-mono text-gray-100">
+<div class="fixed right-4 bottom-3 z-50 space-y-1 text-right font-mono text-gray-100">
 	<div>{pendingCombo}</div>
 	<div>{pendingCount}</div>
 </div>
