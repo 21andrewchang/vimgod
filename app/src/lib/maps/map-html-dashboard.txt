@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Status Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+    <header>
+        <h1>Services</h1>
+    </header>
+    <main id="status-grid"></main>
+    <template id="row-template"></template>
+    <script type="module" src="/dashboard.js"></script>
+</body></html>

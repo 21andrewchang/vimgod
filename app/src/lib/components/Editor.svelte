@@ -1,5 +1,10 @@
 <script lang="ts">
 	import defaultText from '$lib/default-code.svelte.txt?raw';
+	import mapPythonSpiral from '$lib/maps/map-python-spiral.txt?raw';
+	import mapSqlAggregates from '$lib/maps/map-sql-aggregates.txt?raw';
+	import mapShellBackup from '$lib/maps/map-shell-backup.txt?raw';
+	import mapHtmlDashboard from '$lib/maps/map-html-dashboard.txt?raw';
+	import mapRustTokenizer from '$lib/maps/map-rust-tokenizer.txt?raw';
 	import { scale } from 'svelte/transition';
 	import CircularProgress from '$lib/components/CircularProgress.svelte';
 	import { onMount, onDestroy } from 'svelte';
@@ -33,6 +38,15 @@
 	const MAX_MANIPULATION_LINES = 2;
 	const MAX_MANIPULATION_SELECTION_ATTEMPTS = 8;
 	const MAX_UNDO_ENTRIES = 50;
+
+	const CODE_MAPS: string[] = [
+		defaultText,
+		mapPythonSpiral,
+		mapSqlAggregates,
+		mapShellBackup,
+		mapHtmlDashboard,
+		mapRustTokenizer
+	];
 
 	type RoundConfig = {
 		highlightChance: number;
@@ -187,6 +201,10 @@
 	let warmupOffset = 0;
 	let highlightGuaranteeSchedule: Set<number> = new Set();
 	let manipulationGuaranteeSchedule: Set<number> = new Set();
+
+	let activeMap = defaultText;
+	let mapInitialized = false;
+	let lastMatchStatus: MatchState['status'] | null = null;
 
 	export let match: MatchController;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -366,6 +384,45 @@
 		schedule.add(pick);
 	}
 
+	function pickRandomMap(previous?: string) {
+		if (!CODE_MAPS.length) return defaultText;
+		if (CODE_MAPS.length === 1) return CODE_MAPS[0];
+		let candidate = CODE_MAPS[Math.floor(Math.random() * CODE_MAPS.length)];
+		if (!previous) return candidate;
+		let safety = CODE_MAPS.length * 2;
+		while (candidate === previous && safety > 0) {
+			candidate = CODE_MAPS[Math.floor(Math.random() * CODE_MAPS.length)];
+			safety -= 1;
+		}
+		return candidate;
+	}
+
+	function setActiveDocument(text: string, { preserveCursor = false }: { preserveCursor?: boolean } = {}) {
+		activeMap = text;
+		const position = preserveCursor ? { row: cursor.row, col: cursor.col } : null;
+		vim.resetDocument(text, position ?? undefined);
+		undoStack = [];
+		roundBaselineSnapshot = null;
+		forceUndoRequired = false;
+		if (ctx) {
+			recomputeLayout();
+		}
+	}
+
+	function ensureInitialMap() {
+		if (!mapInitialized) {
+			setActiveDocument(pickRandomMap(), { preserveCursor: false });
+			mapInitialized = true;
+		}
+	}
+
+	function prepareMapForRound() {
+		if (!mapInitialized) {
+			setActiveDocument(pickRandomMap(activeMap), { preserveCursor: true });
+			mapInitialized = true;
+		}
+	}
+
 	function baseTierFromRankId(rankId: ReturnType<typeof rankIdFromRating>): RoundConfigKey {
 		if (rankId === 'unranked') return 'bronze';
 		if (rankId.startsWith('bronze')) return 'bronze';
@@ -475,13 +532,21 @@
 		}
 	}
 	$: editorStyle = `width:${targetW}px; height:${targetH}px; box-shadow:${glowBoxShadow}; ${glowBorderColor}`;
-	$: if (matchState.status === 'idle') {
-		resetRoundGenerationCounters();
-		undoStack = [];
-		roundBaselineSnapshot = null;
-		lastActiveRoundIndex = null;
-		forceUndoRequired = false;
-		undoCount = 0;
+	$: {
+		const status = matchState.status;
+		if (status === 'idle') {
+			resetRoundGenerationCounters();
+			undoStack = [];
+			roundBaselineSnapshot = null;
+			lastActiveRoundIndex = null;
+			forceUndoRequired = false;
+			undoCount = 0;
+			if (lastMatchStatus !== 'idle') {
+				mapInitialized = false;
+				ensureInitialMap();
+			}
+		}
+		lastMatchStatus = status;
 	}
 	$: match?.setUndoCount?.(undoCount);
 
@@ -1023,6 +1088,7 @@
 	}
 
 	function generateRoundTarget(): MatchTarget {
+		prepareMapForRound();
 		roundsGenerated += 1;
 		const isWarmupRound = signedIn && roundConfigKey !== 'landing' && roundsGenerated === 1;
 		if (isWarmupRound) {
@@ -1434,6 +1500,7 @@
 
 	onMount(() => {
 		if (!browser) return;
+		ensureInitialMap();
 		applyTimerForRating(currentRating);
 
 		matchState = get(match);

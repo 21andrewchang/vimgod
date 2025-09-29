@@ -1,0 +1,15 @@
+WITH recursive_dates AS (
+    SELECT date('2023-01-01') AS day
+    UNION ALL
+    SELECT day + INTERVAL '1 day'
+    FROM recursive_dates
+    WHERE day < date('2023-01-15')
+)
+SELECT
+    department_id,
+    SUM(amount) AS total_amount,
+    COUNT(*) FILTER (WHERE status = 'pending') AS open_items,
+    MAX(processed_at) AS last_processed,
+    MIN(day) AS first_day,
+    MAX(day) AS last_day
+FROM invoices JOIN recursive_dates USING (day);
