@@ -6,6 +6,7 @@
 	import MatchResults from '$lib/components/MatchResults.svelte';
 	import { createMatchController, type MatchState } from '$lib/match/match';
 	import { blur } from 'svelte/transition';
+	import { motions } from '$lib/data/motions';
 	import {
 		clearDodgeSnapshot,
 		DODGE_LP_PENALTY,
@@ -23,6 +24,7 @@
 	let showRankup = $state(false);
 	let displayRank = $state('');
 	let match = createMatchController({ totalRounds: rounds });
+	const unlockedMotion = motions[0] ?? null;
 
 	let deltaApplied = $state(false);
 	const resetDeltaApplied = (): void => {
@@ -151,7 +153,7 @@
 	{:else}
 		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} />
 	{/if}
-	<UnlockMove closeMove={() => {}} move={'deletion'} visible={false} />
+	<UnlockMove closeMove={() => {}} motion={unlockedMotion} visible={true} />
 	<RankUp
 		closeRankup={() => {
 			showRankup = false;
