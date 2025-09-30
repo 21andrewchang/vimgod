@@ -146,9 +146,16 @@
 	);
 
 	const totalKeys = $derived(completedRounds.reduce((s, r) => s + r.keys.length, 0));
+	const apmKeyCount = $derived(
+		completedRounds.reduce(
+			(sum, round) =>
+				sum + round.keys.reduce((count, entry) => count + (entry.repeat === true ? 0 : 1), 0),
+			0
+		)
+	);
 	const totalDurationMs = $derived(completedRounds.reduce((s, r) => s + r.durationMs, 0));
 	const averageKeys = $derived(completedRounds.length ? totalKeys / completedRounds.length : 0);
-	const apm = $derived(totalDurationMs > 0 ? (totalKeys / totalDurationMs) * 60000 : 0);
+	const apm = $derived(totalDurationMs > 0 ? (apmKeyCount / totalDurationMs) * 60000 : 0);
 	const roundsWithKeys = $derived(completedRounds.filter((round) => round.keys.length > 0));
 	const averageReaction = $derived(
 		roundsWithKeys.length

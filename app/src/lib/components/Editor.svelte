@@ -1471,7 +1471,7 @@
 	function onKeyDown(e: KeyboardEvent) {
 		const inWarmupRoom = warmupRoomActive;
 		if (!inWarmupRoom) {
-			match.recordKey(e.key, now());
+			match.recordKey(e.key, now(), e.repeat);
 		}
 		const undoKeyPressed = isUndoKey(e);
 		if (!inWarmupRoom && forceUndoRequired && !undoKeyPressed) {
