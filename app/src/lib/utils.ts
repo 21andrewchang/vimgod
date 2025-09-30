@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function levelFromXP(totalXP: number) {
-	const t = Math.max(0, totalXP);                // no floor here
+	const t = Math.max(0, totalXP);
 	// invert quadratic: totalXP = 25L^2 + 75L  (for level boundary)
 	const x = (-75 + Math.sqrt(5625 + 100 * t)) / 50;
 	const level = Math.floor(x) + 1;               // level stays integer

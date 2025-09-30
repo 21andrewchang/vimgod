@@ -25,6 +25,30 @@
 			closeRankup();
 		}
 	}
+	// --- Starburst config (perf-tuned) ---
+	const STAR_COUNT = 120; // ↓ a bit for perf; bump if you need denser fields
+	const MIN_DUR_MS = 700;
+	const MAX_DUR_MS = 1600;
+	const MIN_DELAY = 180;
+	const MAX_DELAY = 520;
+	const MAX_DIST_VW = 65;
+	const MIN_SCALE = 0.9;
+	const MAX_SCALE = 1.8;
+
+	const stars = Array.from({ length: STAR_COUNT }, (_, i) => {
+		const theta = Math.random() * Math.PI * 2;
+		const r = Math.pow(Math.random(), 0.5) * MAX_DIST_VW;
+		const dx = r * Math.cos(theta) + (Math.random() * 2 - 1) * 2;
+		const dy = r * Math.sin(theta) + (Math.random() * 2 - 1) * 2;
+		return {
+			id: i,
+			dx,
+			dy,
+			scale: MIN_SCALE + (MAX_SCALE - MIN_SCALE) * Math.random(),
+			delay: Math.floor(MIN_DELAY + (MAX_DELAY - MIN_DELAY) * Math.random()),
+			dur: Math.floor(MIN_DUR_MS + (MAX_DUR_MS - MIN_DUR_MS) * Math.random())
+		};
+	});
 </script>
 
 {#if visible}
@@ -34,10 +58,30 @@
 		transition:blur={{ duration: 200 }}
 		data-rank={colorKey}
 	>
-		<div class="relative z-10 w-full max-w-md text-center text-white">
+		<div class="relative z-10 w-full max-w-md text-center">
 			<div class="rank-beam" aria-hidden="true"></div>
-			<div class="rank-title mb-16 font-mono tracking-widest uppercase">{pretty(rank)}</div>
+			<div class="rank-title mb-16 font-mono uppercase tracking-widest">{pretty(rank)}</div>
 		</div>
+
+		{#if rank === 'Singularity'}
+			<div class="singularity-stars" aria-hidden="true">
+				{#each stars as s}
+					<span
+						class="star-wrap"
+						style="--dx:{s.dx}vw; --dy:{s.dy}vh; --delay:{s.delay}ms; --dur:{s.dur}ms;"
+					>
+						<span
+							class="star"
+							style="
+					--scale-end:{s.scale};
+					--drift-x-end:{s.dx * 0.08}vw;  /* drift ~8% farther along same vector */
+					--drift-y-end:{s.dy * 0.08}vh;
+				"
+						/>
+					</span>
+				{/each}
+			</div>
+		{/if}
 
 		<button
 			in:blur={{ duration: 500, delay: 800 }}
@@ -151,6 +195,70 @@
 		--rank-title-glow-2: rgba(59, 130, 246, 0.35);
 		--rank-title-color: #d9fbff;
 	}
+	[data-rank='nova'] {
+		/* Core beam: red (12%) → luminous center (50%) → purple (88%) */
+		--rank-core-0: rgba(0, 0, 0, 0);
+		--rank-core-1: rgba(255, 48, 64, 0.85); /* red band */
+		--rank-core-2: rgba(255, 48, 64, 0.95); /* near-white with a faint violet tint */
+		--rank-core-3: rgba(255, 48, 64, 0.85); /* purple band */
+
+		/* Bloom halo: balanced red/purple */
+		--rank-bloom-1: rgba(255, 48, 64, 0.16); /* red inner bloom */
+		--rank-bloom-2: rgba(255, 48, 64, 0.28); /* purple outer bloom */
+
+		/* Beam shadows (near → far falloff) */
+		--rank-shadow-1: rgba(255, 48, 64, 0.72); /* hot red core glow */
+		--rank-shadow-2: rgba(255, 48, 64, 0.55); /* accretion purple */
+		--rank-shadow-3: rgba(201, 224, 253, 0.18); /* cool distant haze to keep depth */
+
+		/* Title glow + color */
+		--rank-title-glow-1: rgba(255, 48, 64, 0.55); /* purple inner glow */
+		--rank-title-glow-2: rgba(255, 48, 64, 0.35); /* red outer haze */
+		--rank-title-color: #f9f5ff; /* icy, readable white */
+	}
+	[data-rank='supernova'] {
+		/* Core beam */
+		--rank-core-0: rgba(0, 0, 0, 0);
+		--rank-core-1: rgba(255, 170, 64, 0.9); /* #FFAA40 (left) */
+		--rank-core-2: rgba(255, 246, 236, 0.98); /* white-hot center (warm) */
+		--rank-core-3: rgba(156, 64, 255, 0.9); /* #9C40FF (right) */
+
+		/* Bloom halo */
+		--rank-bloom-1: rgba(255, 170, 64, 0.18); /* warm inner bloom */
+		--rank-bloom-2: rgba(156, 64, 255, 0.3); /* violet outer bloom */
+
+		/* Beam shadows (near → far falloff) */
+		--rank-shadow-1: rgba(255, 170, 64, 0.75); /* hot orange core glow */
+		--rank-shadow-2: rgba(156, 64, 255, 0.55); /* energetic violet */
+		--rank-shadow-3: rgba(255, 204, 128, 0.25); /* warm haze for depth */
+
+		/* Title glow + color */
+		--rank-title-glow-1: rgba(255, 170, 64, 0.58); /* warm inner rim */
+		--rank-title-glow-2: rgba(156, 64, 255, 0.36); /* cool outer halo */
+		--rank-title-color: #fff6ea; /* warm, readable white */
+	}
+
+	[data-rank='singularity'] {
+		/* Core beam: red (12%) → luminous center (50%) → purple (88%) */
+		--rank-core-0: rgba(0, 0, 0, 0);
+		--rank-core-1: rgba(255, 48, 64, 0.85); /* red band */
+		--rank-core-2: rgba(250, 236, 255, 0.95); /* near-white with a faint violet tint */
+		--rank-core-3: rgba(157, 78, 221, 0.85); /* purple band */
+
+		/* Bloom halo: balanced red/purple */
+		--rank-bloom-1: rgba(255, 48, 64, 0.16); /* red inner bloom */
+		--rank-bloom-2: rgba(157, 78, 221, 0.28); /* purple outer bloom */
+
+		/* Beam shadows (near → far falloff) */
+		--rank-shadow-1: rgba(255, 48, 64, 0.72); /* hot red core glow */
+		--rank-shadow-2: rgba(157, 78, 221, 0.55); /* accretion purple */
+		--rank-shadow-3: rgba(201, 224, 253, 0.18); /* cool distant haze to keep depth */
+
+		/* Title glow + color */
+		--rank-title-glow-1: rgba(157, 78, 221, 0.55); /* purple inner glow */
+		--rank-title-glow-2: rgba(255, 48, 64, 0.35); /* red outer haze */
+		--rank-title-color: #f9f5ff; /* icy, readable white */
+	}
 
 	/* Beam line */
 	.rank-beam {
@@ -263,6 +371,129 @@
 			text-shadow:
 				0 0 10px var(--rank-title-glow-1),
 				0 0 26px var(--rank-title-glow-2);
+		}
+	}
+	@property --popScale {
+		syntax: '<number>';
+		inherits: false;
+		initial-value: 0.2;
+	}
+	@property --driftX {
+		syntax: '<length-percentage>';
+		inherits: false;
+		initial-value: 0vw;
+	}
+	@property --driftY {
+		syntax: '<length-percentage>';
+		inherits: false;
+		initial-value: 0vh;
+	}
+
+	.singularity-stars {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		z-index: 5;
+		contain: layout paint size;
+	}
+
+	/* Wrapper: one-time ballistic flight to (dx,dy) */
+	.star-wrap {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate3d(-50%, -50%, 0);
+		will-change: transform;
+		animation: star-fly-wrap var(--dur) cubic-bezier(0.18, 0.68, 0.12, 1) var(--delay) forwards;
+	}
+	@keyframes star-fly-wrap {
+		0% {
+			transform: translate3d(-50%, -50%, 0);
+		}
+		100% {
+			transform: translate3d(calc(-50% + var(--dx)), calc(-50% + var(--dy)), 0);
+		}
+	}
+
+	/* Inner star: white + ice-blue glow, variable-driven scale + drift + twinkle */
+	.star {
+		display: block;
+		width: 2px;
+		height: 2px;
+		border-radius: 50%;
+		background: #fff;
+		box-shadow: 0 0 8px rgba(173, 216, 255, 0.55);
+		opacity: 0;
+		will-change: opacity, box-shadow, transform;
+
+		/* Compose transforms via variables: scale comes from --popScale, position from --driftX/Y */
+		transform: translate3d(var(--driftX), var(--driftY), 0) scale(var(--popScale));
+
+		/* 1) pop in (opacity + --popScale only)
+	   2) ultra-slow forward drift along original vector (variables only)
+	   3) infinite twinkle */
+		animation:
+			star-pop 900ms ease calc(var(--delay) + var(--dur) * 0.12) forwards,
+			star-drift 300000ms linear calc(var(--delay) + var(--dur)) infinite,
+			/* 5 min per cycle */ star-twinkle 2400ms ease-in-out calc(var(--delay) + var(--dur)) infinite;
+	}
+
+	/* Pop: do NOT animate transform directly */
+	@keyframes star-pop {
+		0% {
+			opacity: 0;
+			--popScale: 0.2;
+		}
+		40% {
+			opacity: 1;
+			--popScale: 1;
+		}
+		100% {
+			opacity: 0.46;
+			--popScale: 1.06;
+		}
+	}
+
+	/* Forward drift forever: tiny nudge per cycle; loop reset is negligible */
+	@keyframes star-drift {
+		0% {
+			--driftX: 0vw;
+			--driftY: 0vh;
+		}
+		100% {
+			--driftX: var(--drift-x-end);
+			--driftY: var(--drift-y-end);
+		}
+	}
+
+	/* Gentle endless twinkle (cheap) */
+	@keyframes star-twinkle {
+		0% {
+			opacity: 0.36;
+			box-shadow: 0 0 7px rgba(173, 216, 255, 0.48);
+		}
+		50% {
+			opacity: 0.52;
+			box-shadow: 0 0 9px rgba(198, 232, 255, 0.6);
+		}
+		100% {
+			opacity: 0.36;
+			box-shadow: 0 0 7px rgba(173, 216, 255, 0.48);
+		}
+	}
+
+	/* Reduced motion */
+	@media (prefers-reduced-motion: reduce) {
+		.star-wrap {
+			animation: none;
+			transform: translate3d(calc(-50% + var(--dx)), calc(-50% + var(--dy)), 0);
+		}
+		.star {
+			animation: none;
+			opacity: 0.45;
+			--popScale: 1;
+			--driftX: 0;
+			--driftY: 0;
 		}
 	}
 </style>

@@ -61,7 +61,7 @@
 	let levelSlideKey = 0;
 	let levelSlideTimer: ReturnType<typeof setTimeout> | null = null;
 	const LEVEL_SLIDE_DURATION = 240;
-	const MATCH_XP_REWARD = 10;
+	const MATCH_XP_REWARD = 25;
 
 	function computeXpStats(current: number) {
 		const { level, experience, maxExperience } = levelFromXP(current);
@@ -522,7 +522,7 @@
 
 		if (signedIn && matchState.outcome !== 'dodge') {
 			try {
-				const updatedXp = await increaseXp(10);
+				const updatedXp = await increaseXp(25);
 				profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
 			} catch (xpErr) {
 				console.error('Failed to award XP', xpErr);
@@ -616,7 +616,7 @@
 	{#if signedIn}
 		<div class="mb-12 w-full">
 			<div
-				class="flex w-full items-center font-mono text-[11px] tracking-[0.28em] text-neutral-400 uppercase"
+				class="flex w-full items-center font-mono text-[11px] uppercase tracking-[0.28em] text-neutral-400"
 			>
 				{#if xpStats.level === slideLevels[1]}
 					<div in:scale={{ start: 0.4, duration: 100 }}>Lvl {xpStats.level}</div>
@@ -668,19 +668,19 @@
 				{/if}
 
 				<div
-					class="relative box-border flex h-full w-30 flex-col justify-between gap-10 rounded-md transition select-none"
+					class="w-30 relative box-border flex h-full select-none flex-col justify-between gap-10 rounded-md transition"
 					class:blur-sm={!signedIn}
 					class:opacity-50={!signedIn}
 					aria-hidden={!signedIn}
 				>
 					<div>
 						{#if placementMode}
-							<div class="font-mono text-xs tracking-widest text-neutral-400 uppercase">
+							<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
 								Placements
 							</div>
 						{:else}
 							<div
-								class="flex items-center gap-1 font-mono text-xs tracking-widest text-neutral-400 uppercase"
+								class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
 							>
 								{#if eloTween.current > 100 || eloTween.current < 0}
 									<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
@@ -742,7 +742,7 @@
 					</div>
 
 					<div>
-						<div class="font-mono text-xs tracking-widest text-neutral-400 uppercase">
+						<div class="font-mono text-xs uppercase tracking-widest text-neutral-400">
 							{matchOutcome}
 						</div>
 						<div class="flex flex-row items-end gap-2">
