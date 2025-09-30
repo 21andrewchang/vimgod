@@ -47,6 +47,7 @@ export type PlayerSelection = HighlightSelection;
 export interface MatchKeypress {
   key: string;
   at: number;
+  repeat?: boolean;
 }
 
 export interface MatchRoundResult {
@@ -194,12 +195,12 @@ export const createMatchController = (options: MatchControllerOptions = {}) => {
     store.update((state) => ({ ...state, timeLimitMs }));
   };
 
-  const recordKey = (key: string, at = now()) => {
+  const recordKey = (key: string, at = now(), repeat = false) => {
     store.update((state) => {
       if ((state.status !== 'running' && state.status !== 'ready') || !state.active) return state;
       const isWarmup = state.active.isWarmup;
       const startedAt = state.active.startedAt ?? at;
-      const keys = [...state.active.keys, { key, at }];
+      const keys = [...state.active.keys, { key, at, repeat }];
       const wasReady = state.status === 'ready';
       return {
         ...state,
