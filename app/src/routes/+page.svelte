@@ -198,7 +198,7 @@
 		<MatchResults {match} {rankUp} {deltaApplied} {resetDeltaApplied} {unlockMotion} />
 	{/if}
 	<UnlockMotion closeMotion={closeUnlockMotion} motion={unlockedMotion} visible={showMotion} />
-	<RankUp closeRankup={closeRankupModal} rank={'Nova'} visible={true} />
+	<RankUp closeRankup={closeRankupModal} rank={displayRank} visible={showRankup} />
 	{#if showMotion || showRankup}
 		<div
 			class="fixed inset-0 z-[50] flex items-center justify-center bg-black/80 backdrop-blur-sm"
