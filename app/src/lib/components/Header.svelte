@@ -19,7 +19,7 @@
 
 	let isHeaderHovered = $state(false);
 	let isUserIconHovered = $state(false);
-	let isHelpHovered = $state(false);
+	let headerTooltip = $state({ show: false, x: 0, y: 0, text: '' });
 
 	let showUserDropdown = $state(false);
 	let dropdownHiding = $state(false);
@@ -58,6 +58,23 @@
 	function handleHeaderClick() {
 		if (!logoIsInteractive) return;
 		window.location.href = '/';
+	}
+
+	function showHeaderTooltip(event: MouseEvent | FocusEvent, text: string) {
+		const target = event.currentTarget as HTMLElement | null;
+		if (!target) return;
+		const rect = target.getBoundingClientRect();
+
+		headerTooltip = {
+			show: true,
+			x: rect.left + rect.width / 2,
+			y: rect.bottom + 8,
+			text
+		};
+	}
+
+	function hideHeaderTooltip() {
+		headerTooltip.show = false;
 	}
 
 	function openMenu() {
@@ -197,6 +214,10 @@
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
 			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
+			onmouseenter={(event) => showHeaderTooltip(event, 'tutorial')}
+			onmouseleave={hideHeaderTooltip}
+			onfocus={(event) => showHeaderTooltip(event, 'tutorial')}
+			onblur={hideHeaderTooltip}
 			onclick={() => goto('/tutorial')}
 			aria-label="tutorial"
 		>
@@ -214,6 +235,10 @@
 		</button>
 		<button
 			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
+			onmouseenter={(event) => showHeaderTooltip(event, 'library')}
+			onmouseleave={hideHeaderTooltip}
+			onfocus={(event) => showHeaderTooltip(event, 'library')}
+			onblur={hideHeaderTooltip}
 			onclick={() => goto('/motions')}
 			aria-label="motions"
 		>
@@ -306,6 +331,21 @@
 		</div>
 	</div>
 </div>
+
+{#if headerTooltip.show}
+	<div
+		class="fixed z-50 pointer-events-none rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 shadow-lg transition-all duration-200 ease-out"
+		style="
+			left: {headerTooltip.x}px;
+			top: {headerTooltip.y}px;
+			transform: translateX(-50%) translateY(0);
+			font-family: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;
+			white-space: nowrap;
+		"
+	>
+		{headerTooltip.text}
+	</div>
+{/if}
 
 <style>
 	.user-dropdown {
