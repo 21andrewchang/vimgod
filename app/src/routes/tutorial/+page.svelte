@@ -5,11 +5,14 @@
 	import { goto } from '$app/navigation';
 
 	const tutorialText = [
-		'Welcome to vimgod, explorer.',
+		'Welcome to vimgod, 10x dev.',
 		'',
 		'You should know how to move but if you dont,',
 		'you can use h, j, k, and l to move',
 		'left, down, up, and right, respectively.',
+		'',
+		'As you level up, you will unlock new vim motions.',
+		'The Library is in the top right corner.',
 		'',
 		'Try it out - your current location is that white box.',
 		'Move it around and try to reach the purple box.'
