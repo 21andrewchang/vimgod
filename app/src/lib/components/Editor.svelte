@@ -25,8 +25,8 @@
 		HighlightSelection
 	} from '$lib/match/match';
 
-	const COLS = 64; // pick what looks right; fixed column budget
-	const GUTTER_PAD = 20; // space for line numbers + gap
+	const COLS = 64;
+	const GUTTER_PAD = 20;
 
 	let targetW = 0,
 		targetH = 0;
