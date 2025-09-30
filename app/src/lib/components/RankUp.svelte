@@ -63,23 +63,25 @@
 			<div class="rank-title mb-16 font-mono uppercase tracking-widest">{pretty(rank)}</div>
 		</div>
 
-		<div class="singularity-stars" aria-hidden="true">
-			{#each stars as s}
-				<span
-					class="star-wrap"
-					style="--dx:{s.dx}vw; --dy:{s.dy}vh; --delay:{s.delay}ms; --dur:{s.dur}ms;"
-				>
+		{#if rank === 'Singularity'}
+			<div class="singularity-stars" aria-hidden="true">
+				{#each stars as s}
 					<span
-						class="star"
-						style="
+						class="star-wrap"
+						style="--dx:{s.dx}vw; --dy:{s.dy}vh; --delay:{s.delay}ms; --dur:{s.dur}ms;"
+					>
+						<span
+							class="star"
+							style="
 					--scale-end:{s.scale};
 					--drift-x-end:{s.dx * 0.08}vw;  /* drift ~8% farther along same vector */
 					--drift-y-end:{s.dy * 0.08}vh;
 				"
-					/>
-				</span>
-			{/each}
-		</div>
+						/>
+					</span>
+				{/each}
+			</div>
+		{/if}
 
 		<button
 			in:blur={{ duration: 500, delay: 800 }}
