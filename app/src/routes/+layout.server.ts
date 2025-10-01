@@ -14,7 +14,7 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
   // Pull minimal fields from your public.users row
   const { data: row } = await locals.supabase
     .from('users')
-    .select('id, name, rating, hidden_mmr, xp') // add more columns if you need them globally
+    .select('id, name, rating, hidden_mmr, hidden_mmr_rd, hidden_mmr_sigma, xp') // add more columns if you need them globally
     .eq('id', user.id)
     .maybeSingle();
 

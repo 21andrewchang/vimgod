@@ -14,6 +14,8 @@
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
 	import { levelFromXP } from '$lib/utils';
 	import { lpForRating, rankIdFromRating, prettyRank, bigRank } from '$lib/data/ranks';
+    import { updateAfterMatch } from '$lib/rating/service';
+    import { defaultLpParams, lpDeltaFromMatch, nudgeTowardTargetLP, defaultValorantParams, lpDeltaValorantStyle } from '$lib/rating/lp';
 
 	const { match, deltaApplied, rankUp, resetDeltaApplied, unlockMotion } = $props<{
 		match: MatchController;
@@ -424,127 +426,342 @@
 	});
 
 	let wroteHistoryOnce = false;
+	let writeHistoryPending = false;
 
-	async function writeHistoryIdempotent(): Promise<number | null> {
-		if (wroteHistoryOnce) return null;
-		if (matchState.status !== 'complete') return null;
+	// Requires a module-level guard somewhere above:
+    // let writeHistoryPending = false;
 
-		const uid = $user?.id ?? null;
+    async function writeHistoryIdempotent(): Promise<number | null> {
+        // ---- inline dev logger (terminal via /api/log) ----
+        const log = async (tag: string, data?: unknown) => {
+            if (!import.meta.env.DEV) return;
+            try {
+            await fetch('/api/log', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ tag, at: Date.now(), data })
+            });
+            } catch {}
+        };
 
-		const signature = buildSignature(matchState, uid);
-		const match_id = getOrCreateMatchId(signature, uid);
+        // quick helper: derive the current division bounds from *visible rating* number
+        // (treat each division as a 100-point band on the same numeric scale as MMR)
+        const divisionFromVisibleRating = (ratingNumber: number): import('$lib/rating/lp').Division => {
+            const L = Math.floor(ratingNumber / 100) * 100;
+            const U = L + 100;
+            return { L, U, name: `${L}-${U}` };
+        };
 
-		const currentRating = $profile?.rating ?? null;
-		const isPlacementMatch = uid !== null && currentRating === null;
-		const isDodge = matchState.outcome === 'dodge';
-		let startElo: number | null = currentRating;
-		let endEloToStore: number | null = null;
-		let lpDeltaToStore: number | null = null;
-		let nextPlacementCount = 0;
+        if (wroteHistoryOnce || writeHistoryPending) return null;
+        if (matchState.status !== 'complete') return null;
 
-		if (isPlacementMatch) {
-			type PlacementMatch = {
-				avg_speed: number | null;
-				is_dodge: boolean | null;
-				end_elo: number | null;
-			};
-			const { data: placementHistory, error: placementError } = await supabase
-				.from('match_history')
-				.select('avg_speed, is_dodge, end_elo')
-				.eq('player_id', uid)
-				.neq('match_id', match_id)
-				.order('created_at', { ascending: true })
-				.limit(25);
+        writeHistoryPending = true;
+        const logId = crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+        const t0 = performance.now?.() ?? Date.now();
+        await log('whi:start', { logId, status: matchState.status });
 
-			if (placementError) {
-				console.error('Failed to load placement history', placementError);
-			}
+        try {
+            const uid = $user?.id ?? null;
+            if (!uid) {
+            await log('whi:exit:no-uid', { logId });
+            wroteHistoryOnce = true;
+            return null;
+            }
 
-			const historyRows = (placementHistory as PlacementMatch[] | null) ?? [];
-			const placementRows = historyRows.filter((match) => match?.end_elo === null);
-			const nonDodgeMatches = placementRows.filter((match) => match?.is_dodge !== true);
-			const priorCount = nonDodgeMatches.length;
-			nextPlacementCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + (isDodge ? 0 : 1));
+            // ---------- snapshot & recompute local stats ----------
+            const rounds = matchState.completed.filter((r) => r.index > 0);
+            await log('whi:rounds', { logId, count: rounds.length });
+            if (rounds.length === 0) { wroteHistoryOnce = true; return null; }
 
-			if (!isDodge && priorCount >= PLACEMENT_MATCH_GOAL - 1) {
-				const relevantMatches = nonDodgeMatches.slice(-1 * (PLACEMENT_MATCH_GOAL - 1));
-				const priorAverageSum = relevantMatches.reduce((sum, match) => {
-					const speed = typeof match.avg_speed === 'number' ? match.avg_speed : 0;
-					return sum + speed;
-				}, 0);
-				const combinedAverage = (priorAverageSum + averageMs) / (relevantMatches.length + 1);
-				endEloToStore = placementEloForAverageSpeed(combinedAverage);
-			}
+            const totalDurationMsLocal = rounds.reduce((s, r) => s + r.durationMs, 0);
+            const totalKeysLocal = rounds.reduce((s, r) => s + r.keys.length, 0);
+            const averageMsLocal = rounds.length ? totalDurationMsLocal / rounds.length : 0;
+            const averageKeysLocal = rounds.length ? totalKeysLocal / rounds.length : 0;
+            const apmLocal = totalDurationMsLocal > 0 ? (totalKeysLocal / totalDurationMsLocal) * 60000 : 0;
 
-			startElo = null;
-		} else if (currentRating !== null) {
-			nextPlacementCount = 0;
-			const baseline = currentRating;
-			startElo = baseline;
-			const delta = lpDelta ?? 0;
-			endEloToStore = baseline + delta;
-			lpDeltaToStore = delta;
-		} else {
-			nextPlacementCount = 0;
-			startElo = null;
-			endEloToStore = null;
-			lpDeltaToStore = null;
-		}
+            const roundsWithKeysLocal = rounds.filter((r) => r.keys.length > 0);
+            const averageReactionLocal =
+            roundsWithKeysLocal.length
+                ? roundsWithKeysLocal.reduce(
+                    (sum, r) => sum + Math.max(0, (r.keys[0]?.at ?? r.startedAt) - r.startedAt),
+                    0
+                ) / roundsWithKeysLocal.length
+                : 0;
 
-		const row = {
-			match_id,
-			player_id: uid,
-			avg_speed: averageMs,
-			efficiency: averageKeys,
-			most_used: mostUsedKey?.key ?? null,
-			undos: undoCount,
-			apm: Math.round(apm),
-			reaction_time: averageReaction,
-			start_elo: startElo,
-			end_elo: endEloToStore,
-			lp_delta: lpDeltaToStore,
-			is_dodge: isDodge,
-			motion_counts: Object.keys(keyFrequency).length ? keyFrequency : {}
-		};
+            const keyFrequencyLocal = rounds.reduce<Record<string, number>>((acc, r) => {
+            r.keys.forEach((entry) => {
+                if (!isTrackableKey(entry.key)) return;
+                acc[entry.key] = (acc[entry.key] ?? 0) + 1;
+            });
+            return acc;
+            }, {});
+            const mostUsedKeyLocal = Object.entries(keyFrequencyLocal).reduce<
+            { key: string; count: number } | null
+            >((cur, [key, count]) => (!cur || count > cur.count ? { key, count } : cur), null);
 
-		const { data, error } = await supabase
-			.from('match_history')
-			.upsert([row], { onConflict: 'match_id' })
-			.select('end_elo')
-			.single();
+            // ---------- identity / idempotency ----------
+            const signature = buildSignature(matchState, uid);
+            let match_id = getOrCreateMatchId(signature, uid);
+            const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (!UUID_V4.test(match_id)) {
+            match_id = crypto?.randomUUID?.() ?? match_id;
+            await log('whi:fix-uuid', { logId, match_id });
+            } else {
+            await log('whi:uuid', { logId, match_id });
+            }
 
-		if (error) {
-			console.error('match_history upsert failed', error);
-			return null;
-		}
+            // ---------- flags ----------
+            const isDodge = matchState.outcome === 'dodge';
+            if (isDodge) {
+            await log('whi:exit:dodge', { logId });
+            wroteHistoryOnce = true;
+            return $profile?.rating ?? null;
+            }
 
-		wroteHistoryOnce = true;
+            const currentVisibleRating = $profile?.rating ?? null; // overall ladder number (not 0..100)
+            const isPlacementMatch = currentVisibleRating === null;
+            await log('whi:flags', { logId, isPlacementMatch, isDodge, currentVisibleRating });
 
-		if (signedIn && matchState.outcome !== 'dodge') {
-			try {
-				const updatedXp = await increaseXp(25);
-				profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
-			} catch (xpErr) {
-				console.error('Failed to award XP', xpErr);
-			}
-		}
+            // ---------- run Glicko-2 (hidden MMR) EVERY match ----------
+            const roundsForRating = rounds.map((r) => ({
+            timeLimitMs: r.timeLimitMs,
+            durationMs: r.durationMs,
+            succeeded: r.succeeded,
+            index: r.index,
+            targetId: (r as any)?.target?.id ?? null
+            }));
 
-		if (isPlacementMatch) {
-			profile.update((p) => (p ? { ...p, placements: nextPlacementCount } : p));
-		} else if (currentRating !== null) {
-			profile.update((p) => (p ? { ...p, placements: 0 } : p));
-		}
+            // adaptive opponent centered on the player's current MMR so E≈0.5
+            await log('whi:glicko:start', { logId, rounds: roundsForRating.length, passOpponent: false });
+            const t1 = performance.now?.() ?? Date.now();
+            const { before, updated, sBar } = await updateAfterMatch(uid, roundsForRating, { mode: 'equal', phase: isPlacementMatch ? 'placements' : 'ranked' });
+            // NOTE: our service will ignore the undefined and use before.R internally if needed
 
-		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : endEloToStore;
+            const t2 = performance.now?.() ?? Date.now();
+            const startMmr = before.R;
+            const endMmr = updated.R;
+            const mmrDelta = endMmr - startMmr;
+            const endMmrRD = updated.RD;
+            const endMmrSigma = updated.sigma;
+            await log('whi:glicko:done', {
+                logId,
+                dt: Math.round(t2 - t1),
+                startMmr,
+                endMmr,
+                rd: endMmrRD,
+                sigma: endMmrSigma,
+                sBar
+            });
 
-		if (typeof endElo === 'number') {
-			profile.update((p) => (p ? { ...p, rating: endElo } : p));
-		}
+            // persist hidden MMR on users always (placements included)
+            {
+            const { error: upMMR } = await supabase
+                .from('users')
+                .update({
+                hidden_mmr: endMmr,
+                hidden_mmr_rd: endMmrRD,
+                hidden_mmr_sigma: endMmrSigma,
+                hidden_mmr_updated_at: new Date().toISOString()
+                })
+                .eq('id', uid);
+            if (upMMR) await log('whi:user:mmr:error', { logId, err: upMMR.message });
+            else await log('whi:user:mmr:ok', { logId, endMmr, endMmrRD, endMmrSigma });
+            }
 
-		void refreshProfile();
+            // ---------- placements path ----------
+            if (isPlacementMatch) {
+                // placement counter: check prior non-dodge placements (with end_elo IS NULL)
+                type PlacementMatch = { avg_speed: number | null; is_dodge: boolean | null; end_elo: number | null };
+                const { data: placementHistory } = await supabase
+                    .from('match_history')
+                    .select('avg_speed, is_dodge, end_elo')
+                    .eq('player_id', uid)
+                    .neq('match_id', match_id)
+                    .order('created_at', { ascending: true })
+                    .limit(50);
 
-		return endElo;
-	}
+                const hist = (placementHistory as PlacementMatch[] | null) ?? [];
+                const placementRows = hist.filter((m) => m?.end_elo === null);
+                const nonDodgeMatches = placementRows.filter((m) => m?.is_dodge !== true);
+                const priorCount = nonDodgeMatches.length;
+                const isFinalPlacement = priorCount >= PLACEMENT_MATCH_GOAL - 1;
+
+                // write history row with ONLY MMR fields; visible rating fields stay NULL during placements
+                {
+                    const row = {
+                    match_id,
+                    player_id: uid,
+                    avg_speed: averageMsLocal,
+                    efficiency: averageKeysLocal,
+                    most_used: mostUsedKeyLocal?.key ?? null,
+                    undos: matchState.undoCount ?? 0,
+                    apm: Math.round(apmLocal),
+                    reaction_time: averageReactionLocal,
+                    start_elo: null,
+                    end_elo: null,
+                    lp_delta: null,
+                    start_mmr: Math.round(startMmr),
+                    end_mmr: Math.round(endMmr),
+                    mmr_delta: Math.round(mmrDelta),
+                    is_dodge: false,
+                    motion_counts: Object.keys(keyFrequencyLocal).length ? keyFrequencyLocal : {}
+                    };
+                    const { error: upHistory } = await supabase
+                    .from('match_history')
+                    .upsert([row], { onConflict: 'match_id' });
+                    if (upHistory) await log('whi:history:error', { logId, err: upHistory.message });
+                    else await log('whi:history:ok', { logId });
+                }
+
+                // if this is the final placement, seed visible rating to current hidden MMR
+                if (isFinalPlacement) {
+                    const placedRating = Math.round(endMmr);
+                    const { error: upLP } = await supabase.from('users').update({ rating: placedRating }).eq('id', uid);
+                    if (upLP) await log('whi:placement:lp:error', { logId, err: upLP.message });
+                    else await log('whi:placement:final', { logId, placedRating });
+                    profile.update((p) => (p ? { ...p, rating: placedRating, placements: PLACEMENT_MATCH_GOAL } : p));
+                } else {
+                    // increment placement counter client-side
+                    const nextCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + 1);
+                    profile.update((p) => (p ? { ...p, placements: nextCount } : p));
+                }
+
+                // XP award
+                if (signedIn) {
+                    const beforeXP = $profile?.xp ?? 0;
+                    let updatedXp = beforeXP;
+                    try { updatedXp = await increaseXp(10); } catch {}
+                    profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
+                }
+
+                void refreshProfile();
+                wroteHistoryOnce = true;
+                await log('whi:done', { logId, dt: Math.round((performance.now?.() ?? Date.now()) - t0) });
+                return null; // no visible LP delta during placements
+            }
+
+            // ---------- ranked path (post-placements): derive visible rating delta from MMR ----------
+            // compute match outcome for lp.ts (didWin) and use sBar for performance
+            const wins = rounds.filter((r) => r.succeeded).length;
+            const losses = rounds.length - wins;
+            const didWin = wins > losses;
+
+            // current overall visible rating number
+            const currentRating = currentVisibleRating ?? 0;
+            const div = divisionFromVisibleRating(currentRating);
+            const currentLPWithinDiv = currentRating - div.L;
+
+            // base LoL-ish LP movement + gentle reconciliation toward hidden MMR
+            const perfScore = typeof sBar === 'number' && Number.isFinite(sBar) ? sBar : 0.5;
+            // const baseOnly = lpDeltaFromMatch(endMmr, div, didWin, perfScore, {
+            // ...defaultLpParams, wSlope: 0, lSlope: 0
+            // });
+            // const withBias = lpDeltaFromMatch(endMmr, div, didWin, perfScore, defaultLpParams);
+            // const mmrBias  = withBias - baseOnly;
+            // const nudge = nudgeTowardTargetLP(currentLPWithinDiv, endMmr, div, 0.08, 5);
+            // const mmrInfluence = Math.max(Math.min(mmrBias + nudge, 8), -8);
+            // const lpDelta = Math.round(baseOnly + mmrInfluence);
+            // const endVisibleRating = currentRating + lpDelta;
+
+            const lpDelta = lpDeltaValorantStyle(
+                endMmr,           // hidden MMR after this match
+                div,              // division bounds
+                currentLPWithinDiv,
+                perfScore,        // sBar in [0,1]
+                wins,
+                losses,
+                defaultValorantParams // tweak these to taste
+            );
+
+            const endVisibleRating = currentRating + lpDelta;
+
+            await log('whi:lp:calc', {
+                logId,
+                wins, losses, didWin, sBar: perfScore,
+                div,
+                currentLPWithinDiv,
+                lpDelta,
+                endVisibleRating
+            });
+
+            // write history row with BOTH visible rating fields and MMR fields
+            {
+            const row = {
+                match_id,
+                player_id: uid,
+                avg_speed: averageMsLocal,
+                efficiency: averageKeysLocal,
+                most_used: mostUsedKeyLocal?.key ?? null,
+                undos: matchState.undoCount ?? 0,
+                apm: Math.round(apmLocal),
+                reaction_time: averageReactionLocal,
+                start_elo: Math.round(currentRating),
+                end_elo: Math.round(endVisibleRating),
+                lp_delta: Math.round(lpDelta),
+                start_mmr: Math.round(startMmr),
+                end_mmr: Math.round(endMmr),
+                mmr_delta: Math.round(mmrDelta),
+                is_dodge: false,
+                motion_counts: Object.keys(keyFrequencyLocal).length ? keyFrequencyLocal : {}
+            };
+            const { error: upHistory } = await supabase
+                .from('match_history')
+                .upsert([row], { onConflict: 'match_id' });
+            if (upHistory) await log('whi:history:error', { logId, err: upHistory.message });
+            else await log('whi:history:ok', { logId });
+            }
+
+            // persist users: visible rating + hidden MMR
+            {
+            const { error: upUser } = await supabase
+                .from('users')
+                .update({
+                rating: endVisibleRating,
+                hidden_mmr: endMmr,
+                hidden_mmr_rd: endMmrRD,
+                hidden_mmr_sigma: endMmrSigma,
+                hidden_mmr_updated_at: new Date().toISOString()
+                })
+                .eq('id', uid);
+            if (upUser) await log('whi:user:update:error', { logId, err: upUser.message });
+            else await log('whi:user:update:ok', { logId, endVisibleRating });
+            }
+
+            // XP + client store
+            if (signedIn) {
+            const beforeXP = $profile?.xp ?? 0;
+            let updatedXp = beforeXP;
+            try { updatedXp = await increaseXp(10); } catch {}
+            profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
+            }
+
+            profile.update((p) =>
+            p
+                ? {
+                    ...p,
+                    placements: 0,
+                    rating: endVisibleRating,
+                    hidden_mmr: endMmr
+                }
+                : p
+            );
+
+            void refreshProfile();
+            wroteHistoryOnce = true;
+
+            const tDone = performance.now?.() ?? Date.now();
+            await log('whi:done', { logId, dt: Math.round(tDone - t0) });
+
+            return endVisibleRating;
+        } catch (e: any) {
+            await log('whi:fatal', { logId, err: e?.message ?? String(e) });
+            wroteHistoryOnce = true;
+            return null;
+        } finally {
+            writeHistoryPending = false;
+        }
+    }
+
 
 	$effect(() => {
 		if (matchState.status === 'complete') {
