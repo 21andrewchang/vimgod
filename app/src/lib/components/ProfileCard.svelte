@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import CardIcon from '$lib/components/CardIcon.svelte';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import { lpForRating, rankIdFromRating, abbrevFromRankId, colorByRank } from '$lib/data/ranks';
@@ -20,6 +21,34 @@
 	}>();
 
 	const progressPercentage = (experience / maxExperience) * 100;
+
+	const usernameModal =
+		getContext<{
+			open?: (prefill?: string) => void;
+		} | null>('username-modal') ?? null;
+	const canEditUsername = Boolean(usernameModal?.open);
+
+	let usernameTooltip = $state({ show: false, x: 0, y: 0, text: '' });
+
+	function handleEditUsername() {
+		usernameModal?.open?.(userName);
+	}
+
+	function showUsernameTooltip(event: MouseEvent | FocusEvent) {
+		const target = event.currentTarget as HTMLElement | null;
+		if (!target) return;
+		const rect = target.getBoundingClientRect();
+		usernameTooltip = {
+			show: true,
+			x: rect.left + rect.width / 2,
+			y: rect.bottom + 8,
+			text: 'change username'
+		};
+	}
+
+	function hideUsernameTooltip() {
+		usernameTooltip.show = false;
+	}
 
 	let cardElement: HTMLDivElement;
 	let isHovered = $state(false);
@@ -98,11 +127,41 @@
 	<div class="relative z-10 p-5">
 		<!-- Top row: User Name (left) and Rank Badge (right) -->
 		<div class="mb-3 flex items-start justify-between">
-			<div
-				class="text-lg font-medium"
-				style="color:#e8e8e8; font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
-			>
-				{userName}
+			<div class="flex items-center gap-1">
+				<span
+					class="text-lg font-medium"
+					style="color:#e8e8e8; font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
+				>
+					{userName}
+				</span>
+
+				{#if canEditUsername}
+					<button
+						type="button"
+						class="group inline-flex items-center rounded-full p-1 text-[#5E5E5E] transition-colors duration-200 hover:text-white focus-visible:text-white focus-visible:outline-none"
+						onclick={handleEditUsername}
+						onmouseenter={showUsernameTooltip}
+						onmouseleave={hideUsernameTooltip}
+						onfocus={showUsernameTooltip}
+						onblur={hideUsernameTooltip}
+					>
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="mt-1 h-5 w-5 text-inherit transition-colors duration-200"
+							aria-hidden="true"
+						>
+							<path d="M16.862 3.487a2.2 2.2 0 0 1 3.111 3.111L9.87 16.701l-4.113.913.913-4.113Z" />
+							<path d="M15.75 5.25 18.75 8.25" />
+						</svg>
+					</button>
+				{/if}
 			</div>
 			<RankBadge {rank} {rankName} />
 		</div>
@@ -127,6 +186,15 @@
 		</div>
 	</div>
 </div>
+
+{#if usernameTooltip.show}
+	<div
+		class="pointer-events-none fixed z-50 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 shadow-lg transition-all duration-200 ease-out"
+		style={`left:${usernameTooltip.x}px; top:${usernameTooltip.y}px; transform:translateX(-50%) translateY(0); font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace; white-space:nowrap;`}
+	>
+		{usernameTooltip.text}
+	</div>
+{/if}
 
 <style>
 	/* XP-specific tweaks so the shine fits a 2–6px bar */

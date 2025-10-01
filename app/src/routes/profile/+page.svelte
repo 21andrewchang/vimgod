@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { profile } from '$lib/stores/profile';
+	import { signOut } from '$lib/stores/auth';
+	import { goto } from '$app/navigation';
 	const placementMatchCount = $derived(Math.min(5, $profile?.placements ?? 0));
 	const { data } = $props<{ data: PageData }>();
 
@@ -119,6 +121,8 @@
 		// { label: 'coverage', value: `${Math.round(totals.coverage * 100)}%` }
 	];
 
+	let isSigningOut = $state(false);
+
 	const personalBestItems = [
 		{
 			label: 'fastest avg speed',
@@ -154,6 +158,18 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 		}
 		return 'color:#c9ced6;';
 	};
+
+	async function handleSignOut() {
+		if (isSigningOut) return;
+		isSigningOut = true;
+		try {
+			await signOut();
+			goto('/');
+		} catch (error) {
+			console.error('Failed to sign out', error);
+			isSigningOut = false;
+		}
+	}
 
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import TopMotions from '$lib/components/TopMotions.svelte';
@@ -289,6 +305,21 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 				match history
 			</h2>
 			<MatchHistory {history} />
+			<div class="mt-12 flex justify-center">
+				<button
+					type="button"
+					class="inline-flex items-center rounded-full border border-neutral-700 px-6 py-2 font-mono text-xs uppercase tracking-[0.18em] text-neutral-200 transition hover:border-neutral-500 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/40 disabled:cursor-not-allowed disabled:opacity-60"
+					on:click={handleSignOut}
+					disabled={isSigningOut}
+					aria-busy={isSigningOut ? 'true' : 'false'}
+				>
+					{#if isSigningOut}
+						signing out...
+					{:else}
+						sign out
+					{/if}
+				</button>
+			</div>
 		</section>
 	</div>
 
