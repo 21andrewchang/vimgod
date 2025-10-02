@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { profile } from '$lib/stores/profile';
+	import { signOut } from '$lib/stores/auth';
+	import { goto, invalidate } from '$app/navigation';
 	const placementMatchCount = $derived(Math.min(5, $profile?.placements ?? 0));
 	const { data } = $props<{ data: PageData }>();
 
@@ -119,6 +121,8 @@
 		// { label: 'coverage', value: `${Math.round(totals.coverage * 100)}%` }
 	];
 
+	let isSigningOut = $state(false);
+
 	const personalBestItems = [
 		{
 			label: 'fastest avg speed',
@@ -155,6 +159,20 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 		return 'color:#c9ced6;';
 	};
 
+	async function handleSignOut() {
+		if (isSigningOut) return;
+		isSigningOut = true;
+		try {
+			await signOut();
+			await invalidate('app:user');
+			goto('/');
+		} catch (error) {
+			console.error('Failed to sign out', error);
+		} finally {
+			isSigningOut = false;
+		}
+	}
+
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import TopMotions from '$lib/components/TopMotions.svelte';
 	import MotionsGrid from '$lib/components/MotionsGrid.svelte';
@@ -175,7 +193,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 <BgDarkTiles />
 
 <div class="relative w-full overflow-hidden">
-	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pt-16 pb-4">
+	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pb-4 pt-16">
 		<!-- Stats row -->
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-11">
 			<div class="md:col-span-5">
@@ -256,7 +274,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 					<StatCard label={item.label} value={item.value} class="pb-card-compact">
 						<div
 							slot="corner"
-							class="absolute inset-y-0 right-3 flex items-center text-[12px] tracking-[0.12em] uppercase"
+							class="absolute inset-y-0 right-3 flex items-center text-[12px] uppercase tracking-[0.12em]"
 							class:hidden={item.percentile === null}
 							style={`${percentileBadgeStyle(item.percentile)} font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;`}
 						>
@@ -289,6 +307,15 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 				match history
 			</h2>
 			<MatchHistory {history} />
+			<div class="mt-12 flex justify-center">
+				<button
+					type="button"
+					class="inline-flex items-center rounded-full border border-red-500/30 px-6 py-2 text-xs transition hover:border-red-500 focus:outline-0 disabled:cursor-not-allowed disabled:opacity-60"
+					onclick={handleSignOut}
+				>
+					<div class="font-mono text-sm text-red-500">sign out</div>
+				</button>
+			</div>
 		</section>
 	</div>
 

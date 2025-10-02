@@ -469,15 +469,15 @@
 	/* Gentle endless twinkle (cheap) */
 	@keyframes star-twinkle {
 		0% {
-			opacity: 0.36;
+			opacity: 0.5;
 			box-shadow: 0 0 7px rgba(173, 216, 255, 0.48);
 		}
 		50% {
-			opacity: 0.52;
+			opacity: 0.7;
 			box-shadow: 0 0 9px rgba(198, 232, 255, 0.6);
 		}
 		100% {
-			opacity: 0.36;
+			opacity: 0.3;
 			box-shadow: 0 0 7px rgba(173, 216, 255, 0.48);
 		}
 	}

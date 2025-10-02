@@ -32,6 +32,7 @@ import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 
 	/* onboarding username prompt */
 	let showUsernameModal = $state(false);
+	let usernameModalManual = $state(false);
 	let usernameInput = $state('');
 	let usernameError = $state('');
 	let submittingUsername = $state(false);
@@ -45,12 +46,21 @@ import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 	const currentUserId = $derived($page.data?.user?.id ?? null);
 
 	$effect(() => {
-		const needed = requiresUsername;
-		if (needed && !showUsernameModal) {
-			showUsernameModal = true;
-			usernameInput = '';
-			usernameError = '';
-		} else if (!needed && showUsernameModal) {
+		const shouldShow = requiresUsername || usernameModalManual;
+		if (shouldShow) {
+			if (!showUsernameModal) {
+				showUsernameModal = true;
+				if (requiresUsername && !usernameModalManual) {
+					usernameInput = '';
+					usernameError = '';
+					usernameAvailability = 'unknown';
+					availabilityHover = false;
+					lastCheckedUsername = '';
+				}
+			}
+			return;
+		}
+		if (showUsernameModal) {
 			showUsernameModal = false;
 		}
 	});
@@ -118,6 +128,31 @@ import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 		}
 	}
 
+	function openUsernameModal(prefill?: string | null) {
+		const sanitized = prefill ? sanitizeUsername(prefill) : '';
+		usernameModalManual = true;
+		showUsernameModal = true;
+		usernameInput = sanitized;
+		usernameError = '';
+		availabilityHover = false;
+		usernameAvailability = 'unknown';
+		lastCheckedUsername = '';
+		if (sanitized) {
+			void checkUsernameAvailability(sanitized);
+		}
+	}
+
+	function closeUsernameModal() {
+		usernameModalManual = false;
+		showUsernameModal = false;
+	}
+
+	function handleUsernameOverlayClick(event: MouseEvent) {
+		if (requiresUsername) return;
+		if (event.target !== event.currentTarget) return;
+		closeUsernameModal();
+	}
+
 	function handleUsernameInput(event: Event) {
 		const target = event.target as HTMLInputElement;
 		usernameInput = sanitizeUsername(target.value);
@@ -163,6 +198,7 @@ import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 			if (error) throw error;
 			await refreshProfile();
 			await invalidate('app:user');
+			usernameModalManual = false;
 			showUsernameModal = false;
 			usernameInput = '';
 		} catch (err) {
@@ -272,6 +308,11 @@ import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 		setGuardDisabled(false);
 		hideReloadWarning();
 	};
+
+	setContext('username-modal', {
+		open: openUsernameModal,
+		close: closeUsernameModal
+	});
 
 	setContext('reload-guard', {
 		enable: enableReloadGuard,
@@ -423,13 +464,16 @@ import { clearDodgeSnapshot, DODGE_STORAGE_KEY } from '$lib/reloadGuard';
 	</div>
 {/if}
 
+
 {#if showUsernameModal}
 	<div
 		class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+		on:click={handleUsernameOverlayClick}
 	>
 		<form
 			class="relative w-[90%] max-w-sm rounded-xl border border-dashed border-[#3f3f48] bg-[#0a0a0a] p-6 shadow-2xl transition-all duration-300"
 			on:submit|preventDefault={submitUsername}
+			on:click|stopPropagation
 		>
 			<h2
 				class="text-lg font-semibold text-neutral-100"

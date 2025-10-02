@@ -1,7 +1,5 @@
 <script lang="ts">
-	import { user, signOut } from '$lib/stores/auth';
-	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
+	import { user } from '$lib/stores/auth';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
@@ -18,14 +16,7 @@
 	const effectiveVariant = $derived(fixed ? 'fixed' : variant);
 
 	let isHeaderHovered = $state(false);
-	let isUserIconHovered = $state(false);
 	let headerTooltip = $state({ show: false, x: 0, y: 0, text: '' });
-
-	let showUserDropdown = $state(false);
-	let dropdownHiding = $state(false);
-
-	let iconRef = $state<HTMLDivElement | null>(null);
-	let menuRef = $state<HTMLDivElement | null>(null);
 
 	const serverUser = $derived($page.data?.user ?? null);
 	const activeUser = $derived($user ?? serverUser);
@@ -77,75 +68,17 @@
 		headerTooltip.show = false;
 	}
 
-	function openMenu() {
-		if (dropdownHiding) return;
-		if (!showUserDropdown) {
-			showUserDropdown = true;
-		}
-	}
-	function startDropdownHideAnimation() {
-		dropdownHiding = true;
-		setTimeout(() => {
-			showUserDropdown = false;
-			dropdownHiding = false;
-		}, 100);
-	}
-	function closeMenu(animated = true) {
-		if (!showUserDropdown) return;
-		animated ? startDropdownHideAnimation() : (showUserDropdown = false);
-	}
-	function toggleMenu() {
-		showUserDropdown ? closeMenu() : openMenu();
+	function handleProfileClick() {
+		goto('/profile');
 	}
 
-	function handleUserIconClick() {
-		if (!isAuthed) {
-			window.location.href = '/login';
-			return;
-		}
-		toggleMenu();
-	}
-	function handleDropdownAction(action: string) {
-		closeMenu();
-		switch (action) {
-			case 'profile':
-				window.location.href = '/profile';
-				break;
-			case 'settings':
-				break;
-			case 'signout':
-				signOut().then(() => {
-					window.location.href = '/';
-				});
-				break;
-		}
+	function handleProfilePointerEnter(event: MouseEvent | FocusEvent) {
+		showHeaderTooltip(event, 'profile');
 	}
 
-	function onDocumentPointerDown(e: PointerEvent) {
-		const t = e.target as Node;
-		if (iconRef?.contains(t) || menuRef?.contains(t)) return;
-		closeMenu();
+	function handleProfilePointerLeave() {
+		hideHeaderTooltip();
 	}
-	function onTriggerKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			handleUserIconClick();
-		} else if (e.key === 'Escape') {
-			closeMenu();
-		}
-	}
-	function onMenuKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			closeMenu();
-			(iconRef as HTMLElement | null)?.focus?.();
-		}
-	}
-	onMount(() => {
-		if (!browser) return;
-		document.addEventListener('pointerdown', onDocumentPointerDown, { passive: true });
-		return () => document.removeEventListener('pointerdown', onDocumentPointerDown);
-	});
 
 	const containerClass = $derived(
 		effectiveVariant === 'fixed'
@@ -213,7 +146,7 @@
 
 	<div class="flex items-center gap-2" class:max-[740px]:hidden={variant === 'fixed'}>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
+			class="group relative mb-1 inline-flex items-center justify-center rounded-full !font-mono !text-lg text-white opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
 			onmouseenter={(event) => showHeaderTooltip(event, 'tutorial')}
 			onmouseleave={hideHeaderTooltip}
 			onfocus={(event) => showHeaderTooltip(event, 'tutorial')}
@@ -222,7 +155,7 @@
 			aria-label="tutorial"
 		>
 			<svg
-				class={`h-6 w-6 opacity-50 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100`}
+				class={`h-7 w-7 opacity-50 transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100`}
 				viewBox="0 0 24 24"
 				fill="currentColor"
 				aria-hidden="true"
@@ -234,7 +167,7 @@
 			</svg>
 		</button>
 		<button
-			class="group relative inline-flex items-center justify-center rounded-full px-2 !font-mono !text-lg opacity-70 transition outline-none hover:opacity-100 focus-visible:opacity-100"
+			class="group relative inline-flex items-center justify-center rounded-full px-2 pb-1 !font-mono !text-lg opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
 			onmouseenter={(event) => showHeaderTooltip(event, 'library')}
 			onmouseleave={hideHeaderTooltip}
 			onfocus={(event) => showHeaderTooltip(event, 'library')}
@@ -245,24 +178,20 @@
 			<img
 				src="/cards.svg"
 				alt=""
-				class={`${helpIconSizeClass} opacity-50 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100`}
+				class={`${helpIconSizeClass} opacity-50 transition-opacity duration-150 focus-visible:opacity-100 group-hover:opacity-100`}
 				aria-hidden="true"
 			/>
 		</button>
 
-		<div
-			bind:this={iconRef}
-			role="button"
-			tabindex="0"
-			class="relative flex cursor-pointer items-center p-2"
-			onclick={handleUserIconClick}
-			onkeydown={onTriggerKeydown}
-			onmouseenter={() => (isUserIconHovered = true)}
-			onmouseleave={() => (isUserIconHovered = false)}
-			aria-label={isAuthed ? 'User menu' : 'Sign in'}
-			aria-haspopup="menu"
-			aria-expanded={isAuthed && showUserDropdown ? 'true' : 'false'}
-			aria-controls="user-menu"
+		<button
+			type="button"
+			class="group relative inline-flex items-center rounded-full px-2 !font-mono !text-lg text-white opacity-70 outline-none transition hover:opacity-100 focus-visible:opacity-100"
+			onmouseenter={handleProfilePointerEnter}
+			onmouseleave={handleProfilePointerLeave}
+			onfocus={handleProfilePointerEnter}
+			onblur={handleProfilePointerLeave}
+			onclick={handleProfileClick}
+			aria-label="profile"
 		>
 			<svg
 				width="20"
@@ -274,8 +203,7 @@
 				stroke-linecap="round"
 				stroke-linejoin="round"
 				shape-rendering="geometricPrecision"
-				class="transition-colors duration-200"
-				style="color: {isUserIconHovered ? 'white' : 'rgba(255, 255, 255, 0.4)'};"
+				class="h-5 w-5 text-white/50 transition-colors duration-200 group-hover:text-white group-focus-visible:text-white"
 			>
 				<path d="M20 21.5v-2.5a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2.5h16" />
 				<circle cx="12" cy="7" r="4" />
@@ -283,58 +211,17 @@
 
 			{#if isAuthed}
 				<span
-					class="ml-2 max-w-[12rem] truncate py-[1px] font-mono text-[14px] leading-[1.2] text-neutral-300 transition-colors duration-200"
-					style="color: {isUserIconHovered ? 'white' : 'rgba(255,255,255,0.4)'};"
+					class="ml-2 max-w-[12rem] truncate py-[1px] font-mono text-[14px] leading-[1.2] text-white/60 transition-colors duration-200 group-hover:text-white group-focus-visible:text-white"
 					>{displayName}</span
 				>
 			{/if}
-
-			{#if isAuthed && showUserDropdown}
-				<div
-					id="user-menu"
-					bind:this={menuRef}
-					class="user-dropdown absolute top-full right-0 z-50 mt-1 w-40 rounded border border-neutral-700 bg-neutral-800 shadow-lg {dropdownHiding
-						? 'hiding'
-						: ''}"
-					role="menu"
-					tabindex="-1"
-					style="font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;"
-					onkeydown={onMenuKeydown}
-				>
-					<div
-						role="menuitem"
-						tabindex="0"
-						class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 transition-all duration-200 hover:bg-neutral-700/60 hover:text-white focus:bg-neutral-700/40 focus:outline-none"
-						onclick={() => handleDropdownAction('profile')}
-					>
-						user profile
-					</div>
-					<div
-						role="menuitem"
-						tabindex="0"
-						class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 transition-all duration-200 hover:bg-neutral-700/60 hover:text-white focus:bg-neutral-700/40 focus:outline-none"
-						onclick={() => handleDropdownAction('settings')}
-					>
-						account settings
-					</div>
-					<hr class="border-neutral-700" />
-					<div
-						role="menuitem"
-						tabindex="0"
-						class="w-full px-2 py-1 text-left text-[13px] text-neutral-200 transition-all duration-200 hover:bg-neutral-700/60 hover:text-white focus:bg-neutral-700/40 focus:outline-none"
-						onclick={() => handleDropdownAction('signout')}
-					>
-						sign out
-					</div>
-				</div>
-			{/if}
-		</div>
+		</button>
 	</div>
 </div>
 
 {#if headerTooltip.show}
 	<div
-		class="fixed z-50 pointer-events-none rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 shadow-lg transition-all duration-200 ease-out"
+		class="pointer-events-none fixed z-50 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-xs text-neutral-100 shadow-lg transition-all duration-200 ease-out"
 		style="
 			left: {headerTooltip.x}px;
 			top: {headerTooltip.y}px;
@@ -348,14 +235,6 @@
 {/if}
 
 <style>
-	.user-dropdown {
-		transform-origin: center top;
-		animation: dropdownExpand 0.1s ease-out forwards;
-	}
-	.user-dropdown.hiding {
-		animation: dropdownShrink 0.1s ease-in forwards;
-	}
-
 	.rank-display {
 		display: inline-flex;
 		flex-direction: column;
@@ -375,27 +254,6 @@
 		position: absolute;
 		inset: 0;
 		background: #666;
-	}
-
-	@keyframes dropdownExpand {
-		0% {
-			transform: scale(0.3);
-			opacity: 0;
-		}
-		100% {
-			transform: scale(1);
-			opacity: 1;
-		}
-	}
-	@keyframes dropdownShrink {
-		0% {
-			transform: scale(1);
-			opacity: 1;
-		}
-		100% {
-			transform: scale(0.3);
-			opacity: 0;
-		}
 	}
 
 	@keyframes blink {
