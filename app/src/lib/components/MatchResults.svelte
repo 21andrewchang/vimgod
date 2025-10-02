@@ -74,6 +74,7 @@
 	let levelSlideTimer: ReturnType<typeof setTimeout> | null = null;
 	const LEVEL_SLIDE_DURATION = 240;
 	const MATCH_XP_REWARD = 25;
+    const DODGE_LP_PENALTY = -25;
 
     let startVisibleRating = $state<number | null>(null);
     let endVisibleRating = $state<number | null>(null);
@@ -188,6 +189,22 @@
         if (!$profile || $profile.rating == null) return;
         if (matchState.status !== 'complete') return;
 
+        const currentRating = $profile.rating!;
+
+        if (matchState.outcome === 'dodge') {
+            const penalty = DODGE_LP_PENALTY;
+            lpDelta = penalty;
+            const startLPWithinDiv = lpForRating(currentRating).lp ?? 0;
+            animStartLP = startLPWithinDiv;
+            animEndLP = startLPWithinDiv + penalty;
+
+            startVisibleRating = currentRating;
+            endVisibleRating = currentRating + penalty;
+
+            lpDeltaComputed = true;
+            return;
+        }
+
         const rounds = completedRounds;
         const N = rounds.length;
         if (!N) {
@@ -220,7 +237,6 @@
         const endMmrPred = predicted.R;
 
         // Visible LP context
-        const currentRating = $profile.rating!;
         const div = divisionFromVisibleRating(currentRating);
         const currentLPWithinDiv = currentRating - div.L;
 
@@ -558,7 +574,7 @@
 
             // rounds snapshot
             const rounds = matchState.completed.filter((r) => r.index > 0);
-            if (rounds.length === 0) {
+            if (rounds.length === 0 && !isDodge) {
             wroteHistoryOnce = true;
             return null;
             }
@@ -583,32 +599,86 @@
 
             // -------------- Dodge early path (write a light row & bail) --------------
             if (isDodge) {
-            const row = {
-                match_id,
-                player_id: uid,
-                avg_speed: avgMs,
-                efficiency: avgKeys,
-                most_used: most,
-                undos,
-                apm: apmLocal,
-                reaction_time: reactMs,
-                start_elo: null,
-                end_elo: null,
-                lp_delta: null,
-                start_mmr: null,
-                end_mmr: null,
-                mmr_delta: null,
-                is_dodge: true,
-                motion_counts: motions
-            };
+                const currentVisibleRating = $profile?.rating ?? null;
 
-            // best-effort write, ignore failure for dodge
-            try {
-                await supabase.from('match_history').upsert([row], { onConflict: 'match_id' });
-            } catch {}
+                const ZERO_STATS = {
+                    avg_speed: 0,
+                    efficiency: 0,
+                    most_used: null as string | null,
+                    undos: 0,
+                    apm: 0,
+                    reaction_time: 0,
+                    motion_counts: {} as Record<string, number>,
+                };
 
-            wroteHistoryOnce = true;
-            return $profile?.rating ?? null;
+                if (currentVisibleRating == null) {
+                    const row = {
+                        match_id,
+                        player_id: uid,
+                        ...ZERO_STATS,
+                        start_elo: null,
+                        end_elo: null,
+                        lp_delta: null,
+                        start_mmr: null,
+                        end_mmr: null,
+                        mmr_delta: null,
+                        is_dodge: true,
+                    };
+                    try { await supabase.from('match_history').upsert([row], { onConflict: 'match_id' }); } catch {}
+                    wroteHistoryOnce = true;
+                    return null;
+                }
+
+                const penalty = DODGE_LP_PENALTY;
+                const newVisibleRating = currentVisibleRating + penalty;
+
+                lpDelta = penalty;
+                const startLPWithinDiv = lpForRating(currentVisibleRating).lp ?? 0;
+                animStartLP = startLPWithinDiv;
+                animEndLP = startLPWithinDiv + penalty;
+                startVisibleRating = currentVisibleRating;
+                endVisibleRating = newVisibleRating;
+
+                const row = {
+                    match_id,
+                    player_id: uid,
+                    ...ZERO_STATS,
+                    start_elo: Math.round(currentVisibleRating),
+                    end_elo: Math.round(newVisibleRating),
+                    lp_delta: Math.round(penalty),
+                    start_mmr: null,
+                    end_mmr: null,
+                    mmr_delta: null,
+                    is_dodge: true,
+                };
+
+                const { error: mhErr } = await supabase
+                    .from('match_history')
+                    .upsert([row], { onConflict: 'match_id' });
+                if (mhErr) {
+                    console.error('match_history upsert (dodge) failed', mhErr);
+                    wroteHistoryOnce = true;
+                    return null;
+                }
+
+                const { data: userRow, error: userErr } = await supabase
+                    .from('users')
+                    .update({ rating: newVisibleRating })
+                    .eq('id', uid)
+                    .select('id, rating')
+                    .single();
+                
+                if (userErr) {
+                    console.error('users update (dodge) failed', userErr);
+                    wroteHistoryOnce = true;
+                    return null;
+                }
+
+                profile.update((p) => (p ? { ...p, rating: newVisibleRating } : p));
+
+                wroteHistoryOnce = true;
+                void refreshProfile();
+                return newVisibleRating;
             }
 
             // -------------- Instant LP delta (UI-fast) --------------
@@ -758,8 +828,8 @@
             // XP award
             if (signedIn) {
                 try {
-                const updatedXp = await increaseXp(25);
-                profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
+                    const updatedXp = await increaseXp(25);
+                    profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
                 } catch {}
             }
 
