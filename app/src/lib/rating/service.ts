@@ -113,7 +113,7 @@ export async function updateAfterMatch(
     const phase = (opts as any).phase === 'placements' ? 'placements' : 'ranked';
 
     // Tunables
-    const tauRanked      = typeof (opts as any).tau === 'number' ? (opts as any).tau : 0.45;
+    const tauRanked      = typeof (opts as any).tau === 'number' ? (opts as any).tau : 0.60;
     const tauPlacements  = typeof (opts as any).tauPlacements === 'number' ? (opts as any).tauPlacements : 0.90;
     const sigmaMin       = typeof (opts as any).sigmaMin === 'number' ? (opts as any).sigmaMin : 0.03;
 
@@ -146,7 +146,7 @@ export async function updateAfterMatch(
     };
 
     // Effective rounds: never cap during placements
-    const NmaxRanked = typeof (opts as any).Nmax === 'number' ? (opts as any).Nmax : 14;
+    const NmaxRanked = typeof (opts as any).Nmax === 'number' ? (opts as any).Nmax : 16;
     const N_eff = phase === 'placements' ? clean.length : Math.min(clean.length, NmaxRanked);
 
     // Glicko update
@@ -169,9 +169,9 @@ export async function updateAfterMatch(
     const rawSig = Number.isFinite(updatedRaw.sigma)? updatedRaw.sigma: before.sigma;
 
     // Soft-clip & momentum (ranked only)
-    const softCap   = typeof (opts as any).softCap === 'number' ? (opts as any).softCap : 14;
-    const beta      = typeof (opts as any).smoothBeta === 'number' ? (opts as any).smoothBeta : 0.65;
-    const RD_beta   = 0.35;
+    const softCap   = typeof (opts as any).softCap === 'number' ? (opts as any).softCap : 30;
+    const beta      = typeof (opts as any).smoothBeta === 'number' ? (opts as any).smoothBeta : 0.75;
+    const RD_beta   = 0.45;
 
     const dR       = rawR - before.R;
     const dR_soft  = softCap * Math.tanh(dR / softCap);

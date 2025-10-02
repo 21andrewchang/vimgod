@@ -159,19 +159,19 @@ export type Division = {
   };
   
   export const defaultValorantParams: ValorantParams = {
-    base: 4,               // symmetric base (win = +8, loss = -8)
-    perfScale: 14,         // same perf impact for win & loss
-    marginScale: 12,        // margin effect (±), modest
-    mmrZeta: 0.05,         // gentle symmetric nudge toward MMR
-    mmrCap: 3,             // at most 4 LP from MMR on win/loss
-    drawZeta: 0.03,        // smaller nudge on draws
-    drawCap: 3,
-    winClamp: [4, 16],     // smaller gains (short matches)
-    lossClamp: [-16, -4],  // smaller losses
-    drawClamp: [-3, 3],    // draws barely move
-    closeLossFloor: -6,    // protect close losses with good perf
-    drawFloor: -3,
-    globalScale: 0.85      // reduce all LP magnitudes ~15%
+    base: 6,               // symmetric base (win = +8, loss = -8)
+    perfScale: 18,         // same perf impact for win & loss
+    marginScale: 14,        // margin effect (±), modest
+    mmrZeta: 0.07,         // gentle symmetric nudge toward MMR
+    mmrCap: 5,             // at most 4 LP from MMR on win/loss
+    drawZeta: 0.06,        // smaller nudge on draws
+    drawCap: 6,
+    winClamp: [8, 25],     // smaller gains (short matches)
+    lossClamp: [-25, -8],  // smaller losses
+    drawClamp: [-8, 8],    // draws barely move
+    closeLossFloor: -8,    // protect close losses with good perf
+    drawFloor: -5,
+    globalScale: 1      // reduce all LP magnitudes ~15%
   };
   
   const clampNum = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
