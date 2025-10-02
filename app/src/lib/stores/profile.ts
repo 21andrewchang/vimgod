@@ -10,6 +10,8 @@ type Profile = {
 	rating: number | null;
 	xp: number | null;
 	hidden_mmr: number | null;
+	hidden_mmr_rd: number | null;
+	hidden_mmr_sigma: number | null;
 	placements: number;
 	loading: boolean;
 };
@@ -19,6 +21,8 @@ const initialProfile: Profile = {
 	rating: null,
 	xp: null,
 	hidden_mmr: null,
+	hidden_mmr_rd: null,
+	hidden_mmr_sigma: null,
 	placements: 0,
 	loading: true
 };
@@ -33,7 +37,7 @@ export async function refreshProfile() {
 	}
 	const { data, error } = await supabase
 		.from('users')
-		.select('id,rating,xp,hidden_mmr')
+		.select('id, rating, xp, hidden_mmr, hidden_mmr_rd, hidden_mmr_sigma')
 		.eq('id', uid)
 		.single();
 

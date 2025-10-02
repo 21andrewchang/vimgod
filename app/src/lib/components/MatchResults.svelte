@@ -14,6 +14,9 @@
 	import RollingNumber from '$lib/components/RollingNumber.svelte';
 	import { levelFromXP } from '$lib/utils';
 	import { lpForRating, rankIdFromRating, prettyRank, bigRank } from '$lib/data/ranks';
+    import { updateAfterMatch } from '$lib/rating/service';
+    import { glicko2UpdateEqualOpp, performanceScore, type Glicko2 } from '$lib/rating/glicko2';
+    import { defaultLpParams, lpDeltaFromMatch, nudgeTowardTargetLP, defaultValorantParams, lpDeltaValorantStyle, type Division } from '$lib/rating/lp';
 
 	const { match, deltaApplied, rankUp, resetDeltaApplied, unlockMotion } = $props<{
 		match: MatchController;
@@ -36,15 +39,24 @@
 	const big = $derived(rankId ? bigRank(rankId) : 'Unranked');
 	const showRankup = $derived(startBig !== big);
 
-	let wasRankup = $state(false);
+	let didFireRankup = $state(false);
 
-	$effect(() => {
-		const now = showRankup;
-		if (showRankup && !wasRankup) {
-			rankUp(rank);
-		}
-		wasRankup = now;
-	});
+    $effect(() => {
+        const crossed = eloTween.current > 100 || eloTween.current < 0;
+
+        if (showRankup && crossed && !didFireRankup) {
+            // If you added frozen labels, prefer endRankLabel; otherwise fallback to `rank`
+            rankUp(typeof endRankLabel === 'string' ? endRankLabel : rank);
+        }
+
+        // fire once per results screen
+        didFireRankup = showRankup && crossed;
+
+        // reset guard when leaving the results page
+        if (matchState.status !== 'complete') {
+            didFireRankup = false;
+        }
+    });
 
 	const eloTween = new Tween<number>(0);
 	let eloAnimated = false;
@@ -62,6 +74,24 @@
 	let levelSlideTimer: ReturnType<typeof setTimeout> | null = null;
 	const LEVEL_SLIDE_DURATION = 240;
 	const MATCH_XP_REWARD = 25;
+    const DODGE_LP_PENALTY = -25;
+
+    let startVisibleRating = $state<number | null>(null);
+    let endVisibleRating = $state<number | null>(null);
+
+    const startRankLabel = $derived(
+        typeof startVisibleRating === 'number'
+            ? prettyRank(rankIdFromRating(startVisibleRating))
+            : startRank
+    );
+
+    const endRankLabel = $derived(
+        typeof endVisibleRating === 'number'
+            ? prettyRank(rankIdFromRating(endVisibleRating))
+            : rank
+    );
+
+
 
 	function computeXpStats(current: number) {
 		const { level, experience, maxExperience } = levelFromXP(current);
@@ -82,6 +112,13 @@
 	function clamp(n: number, min: number, max: number) {
 		return Math.min(Math.max(n, min), max);
 	}
+
+    function divisionFromVisibleRating(ratingNumber: number): Division {
+        const L = Math.floor(ratingNumber / 100) * 100;
+        const U = L + 100;
+        return { L, U, name: `${L}-${U}` };
+    }
+
 
 	function scheduleEloAnimation(start: number, end: number) {
 		eloTween.set(start, { duration: 0 });
@@ -121,7 +158,8 @@
 
 	onMount(() => {
 		matchStatus.set('complete');
-		eloTween.set($profile?.rating ?? 0, { duration: 0 });
+		const currentRating = $profile?.rating ?? 0;
+        eloTween.set(lpForRating(currentRating).lp ?? 0, { duration: 0 });
 		void refreshProfile();
 	});
 
@@ -137,7 +175,94 @@
 					? 'Defeat'
 					: 'Draw'
 	);
-	const lpDelta = $derived(matchState.totalPoints);
+	// const lpDelta = $derived(matchState.totalPoints);
+
+    let lpDelta = $state<number>(0);
+    let lpDeltaComputed = $state(false);
+
+    let animStartLP = $state<number | null>(null);
+    let animEndLP   = $state<number | null>(null);
+
+
+    $effect(() => {
+        if (lpDeltaComputed) return;
+        if (!$profile || $profile.rating == null) return;
+        if (matchState.status !== 'complete') return;
+
+        const currentRating = $profile.rating!;
+
+        if (matchState.outcome === 'dodge') {
+            const penalty = DODGE_LP_PENALTY;
+            lpDelta = penalty;
+            const startLPWithinDiv = lpForRating(currentRating).lp ?? 0;
+            animStartLP = startLPWithinDiv;
+            animEndLP = startLPWithinDiv + penalty;
+
+            startVisibleRating = currentRating;
+            endVisibleRating = currentRating + penalty;
+
+            lpDeltaComputed = true;
+            return;
+        }
+
+        const rounds = completedRounds;
+        const N = rounds.length;
+        if (!N) {
+            return;
+        }
+
+        // Smooth per-round performance score in [0,1]
+        const scores = rounds.map((r) => {
+            const base = performanceScore(r.timeLimitMs, r.durationMs); // ~0.5 at threshold
+            return r.succeeded ? base : base * 0.5;
+        });
+        const sBar = scores.reduce((a, b) => a + b, 0) / N;
+
+        // Hidden MMR snapshot (fallbacks are safe)
+        const startMmr = Number.isFinite($profile.hidden_mmr) ? Number($profile.hidden_mmr) : 400;
+        const startRD = Number.isFinite(($profile as any).hidden_mmr_rd) ? Number(($profile as any).hidden_mmr_rd) : 180;
+        const startSigma = Number.isFinite(($profile as any).hidden_mmr_sigma) ? Number(($profile as any).hidden_mmr_sigma) : 0.06;
+
+        const player: Glicko2 = { R: startMmr, RD: startRD, sigma: startSigma };
+
+        // Equal-opponent prediction to keep E≈0.5
+        const predicted = glicko2UpdateEqualOpp(
+            player,
+            N,
+            sBar,
+            { R: startMmr, RD: 80 }, // equal opponent at current MMR
+            0.5,                     // tau
+            0.03                     // sigmaMin
+        );
+        const endMmrPred = predicted.R;
+
+        // Visible LP context
+        const div = divisionFromVisibleRating(currentRating);
+        const currentLPWithinDiv = currentRating - div.L;
+
+        const wins = rounds.filter((r) => r.succeeded).length;
+        const losses = N - wins;
+
+        // Valorant-style LP calc (same function used server-side)
+        lpDelta = lpDeltaValorantStyle(
+            endMmrPred,
+            div,
+            currentLPWithinDiv,
+            sBar,
+            wins,
+            losses,
+            defaultValorantParams
+        );
+
+        const startLPWithinDiv = lpForRating(currentRating).lp ?? 0;
+        animStartLP = startLPWithinDiv;
+        animEndLP = startLPWithinDiv + lpDelta;
+
+        lpDeltaComputed = true;
+        startVisibleRating = currentRating;
+        endVisibleRating = currentRating + lpDelta;
+    });
+
 
 	const averageMs = $derived(
 		completedRounds.length
@@ -310,17 +435,14 @@
 				clearTimeout(eloStartTimer);
 				eloStartTimer = null;
 			}
-			eloTween.set(0, { duration: 0 });
+			eloTween.set(lpForRating(elo).lp ?? 0, { duration: 0 });
 			return;
 		}
 
-		if (matchState.status === 'complete' && !eloAnimated && !deltaApplied) {
+		if (matchState.status === 'complete' && !eloAnimated && animStartLP !== null && animEndLP !== null) {
 			eloAnimated = true;
 
-			const startElo = lpForRating(elo).lp ?? 0;
-			let endElo = startElo + (lpDelta ?? 0);
-
-			scheduleEloAnimation(startElo, endElo);
+			scheduleEloAnimation(animStartLP, animEndLP);
 		}
 
 		if (matchState.status !== 'complete') {
@@ -329,6 +451,8 @@
 				clearTimeout(eloStartTimer);
 				eloStartTimer = null;
 			}
+            animStartLP = null;
+            animEndLP = null;
 			eloTween.set(lpForRating(elo).lp ?? 0, { duration: 0 });
 		}
 	});
@@ -424,131 +548,351 @@
 	});
 
 	let wroteHistoryOnce = false;
+	let writeHistoryPending = false;
 
-	async function writeHistoryIdempotent(): Promise<number | null> {
-		if (wroteHistoryOnce) return null;
-		if (matchState.status !== 'complete') return null;
+	// Requires a module-level guard somewhere above:
+    // let writeHistoryPending = false;
 
-		const uid = $user?.id ?? null;
+    // inside <script lang="ts"> of MatchResults.svelte
 
-		const signature = buildSignature(matchState, uid);
-		const match_id = getOrCreateMatchId(signature, uid);
+    async function writeHistoryIdempotent(): Promise<number | null> {
+        // quick guardrails
+        if (wroteHistoryOnce || writeHistoryPending) return null;
+        if (matchState.status !== 'complete') return null;
 
-		const currentRating = $profile?.rating ?? null;
-		const isPlacementMatch = uid !== null && currentRating === null;
-		const isDodge = matchState.outcome === 'dodge';
-		let startElo: number | null = currentRating;
-		let endEloToStore: number | null = null;
-		let lpDeltaToStore: number | null = null;
-		let nextPlacementCount = 0;
+        writeHistoryPending = true;
 
-		if (isPlacementMatch) {
-			type PlacementMatch = {
-				avg_speed: number | null;
-				is_dodge: boolean | null;
-				end_elo: number | null;
-			};
-			const { data: placementHistory, error: placementError } = await supabase
-				.from('match_history')
-				.select('avg_speed, is_dodge, end_elo')
-				.eq('player_id', uid)
-				.neq('match_id', match_id)
-				.order('created_at', { ascending: true })
-				.limit(25);
+        try {
+            const uid = $user?.id ?? null;
+            const isDodge = matchState.outcome === 'dodge';
 
-			if (placementError) {
-				console.error('Failed to load placement history', placementError);
-			}
+            // no user → nothing to persist, but mark as handled
+            if (!uid) {
+            wroteHistoryOnce = true;
+            return null;
+            }
 
-			const historyRows = (placementHistory as PlacementMatch[] | null) ?? [];
-			const placementRows = historyRows.filter((match) => match?.end_elo === null);
-			const nonDodgeMatches = placementRows.filter((match) => match?.is_dodge !== true);
-			const priorCount = nonDodgeMatches.length;
-			nextPlacementCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + (isDodge ? 0 : 1));
+            // rounds snapshot
+            const rounds = matchState.completed.filter((r) => r.index > 0);
+            if (rounds.length === 0 && !isDodge) {
+            wroteHistoryOnce = true;
+            return null;
+            }
 
-			if (!isDodge && priorCount >= PLACEMENT_MATCH_GOAL - 1) {
-				const relevantMatches = nonDodgeMatches.slice(-1 * (PLACEMENT_MATCH_GOAL - 1));
-				const priorAverageSum = relevantMatches.reduce((sum, match) => {
-					const speed = typeof match.avg_speed === 'number' ? match.avg_speed : 0;
-					return sum + speed;
-				}, 0);
-				const combinedAverage = (priorAverageSum + averageMs) / (relevantMatches.length + 1);
-				endEloToStore = placementEloForAverageSpeed(combinedAverage);
-			}
+            // idempotency key
+            const signature = buildSignature(matchState, uid);
+            const match_id = getOrCreateMatchId(signature, uid);
 
-			startElo = null;
-		} else if (currentRating !== null) {
-			nextPlacementCount = 0;
-			const baseline = currentRating;
-			startElo = baseline;
-			const delta = lpDelta ?? 0;
-			endEloToStore = baseline + delta;
-			lpDeltaToStore = delta;
-		} else {
-			nextPlacementCount = 0;
-			startElo = null;
-			endEloToStore = null;
-			lpDeltaToStore = null;
-		}
+            // convenience locals (you already compute these as $derived; reusing is fine)
+            const N = rounds.length;
+            const avgMs = averageMs;
+            const avgKeys = averageKeys;
+            const reactMs = averageReaction;
+            const apmLocal = Math.round(apm);
+            const undos = undoCount;
+            const motions = Object.keys(keyFrequency).length ? keyFrequency : {};
+            const most = mostUsedKey?.key ?? null;
 
-		const row = {
-			match_id,
-			player_id: uid,
-			avg_speed: averageMs,
-			efficiency: averageKeys,
-			most_used: mostUsedKey?.key ?? null,
-			undos: undoCount,
-			apm: Math.round(apm),
-			reaction_time: averageReaction,
-			start_elo: startElo,
-			end_elo: endEloToStore,
-			lp_delta: lpDeltaToStore,
-			is_dodge: isDodge,
-			motion_counts: Object.keys(keyFrequency).length ? keyFrequency : {}
-		};
+            // placements detection
+            const currentVisibleRating = $profile?.rating ?? null;
+            const isPlacementMatch = currentVisibleRating === null;
 
-		const { data, error } = await supabase
-			.from('match_history')
-			.upsert([row], { onConflict: 'match_id' })
-			.select('end_elo')
-			.single();
+            // -------------- Dodge early path (write a light row & bail) --------------
+            if (isDodge) {
+                const currentVisibleRating = $profile?.rating ?? null;
 
-		if (error) {
-			console.error('match_history upsert failed', error);
-			return null;
-		}
+                const ZERO_STATS = {
+                    avg_speed: 0,
+                    efficiency: 0,
+                    most_used: null as string | null,
+                    undos: 0,
+                    apm: 0,
+                    reaction_time: 0,
+                    motion_counts: {} as Record<string, number>,
+                };
 
-		wroteHistoryOnce = true;
+                if (currentVisibleRating == null) {
+                    const row = {
+                        match_id,
+                        player_id: uid,
+                        ...ZERO_STATS,
+                        start_elo: null,
+                        end_elo: null,
+                        lp_delta: null,
+                        start_mmr: null,
+                        end_mmr: null,
+                        mmr_delta: null,
+                        is_dodge: true,
+                    };
+                    try { await supabase.from('match_history').upsert([row], { onConflict: 'match_id' }); } catch {}
+                    wroteHistoryOnce = true;
+                    return null;
+                }
 
-		if (signedIn && matchState.outcome !== 'dodge') {
-			try {
-				const updatedXp = await increaseXp(25);
-				profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
-			} catch (xpErr) {
-				console.error('Failed to award XP', xpErr);
-			}
-		}
+                const penalty = DODGE_LP_PENALTY;
+                const newVisibleRating = currentVisibleRating + penalty;
 
-		if (isPlacementMatch) {
-			profile.update((p) => (p ? { ...p, placements: nextPlacementCount } : p));
-		} else if (currentRating !== null) {
-			profile.update((p) => (p ? { ...p, placements: 0 } : p));
-		}
+                lpDelta = penalty;
+                const startLPWithinDiv = lpForRating(currentVisibleRating).lp ?? 0;
+                animStartLP = startLPWithinDiv;
+                animEndLP = startLPWithinDiv + penalty;
+                startVisibleRating = currentVisibleRating;
+                endVisibleRating = newVisibleRating;
 
-		const endElo = typeof data?.end_elo === 'number' ? data.end_elo : endEloToStore;
+                const row = {
+                    match_id,
+                    player_id: uid,
+                    ...ZERO_STATS,
+                    start_elo: Math.round(currentVisibleRating),
+                    end_elo: Math.round(newVisibleRating),
+                    lp_delta: Math.round(penalty),
+                    start_mmr: null,
+                    end_mmr: null,
+                    mmr_delta: null,
+                    is_dodge: true,
+                };
 
-		if (typeof endElo === 'number') {
-			profile.update((p) => (p ? { ...p, rating: endElo } : p));
-		}
+                const { error: mhErr } = await supabase
+                    .from('match_history')
+                    .upsert([row], { onConflict: 'match_id' });
+                if (mhErr) {
+                    console.error('match_history upsert (dodge) failed', mhErr);
+                    wroteHistoryOnce = true;
+                    return null;
+                }
 
-		void refreshProfile();
+                const { data: userRow, error: userErr } = await supabase
+                    .from('users')
+                    .update({ rating: newVisibleRating })
+                    .eq('id', uid)
+                    .select('id, rating')
+                    .single();
+                
+                if (userErr) {
+                    console.error('users update (dodge) failed', userErr);
+                    wroteHistoryOnce = true;
+                    return null;
+                }
 
-		return endElo;
-	}
+                profile.update((p) => (p ? { ...p, rating: newVisibleRating } : p));
+
+                wroteHistoryOnce = true;
+                void refreshProfile();
+                return newVisibleRating;
+            }
+
+            // -------------- Instant LP delta (UI-fast) --------------
+            // Smooth per-round performance (0..1), penalize failed rounds
+            const scores = rounds.map((r) => {
+            const base = performanceScore(r.timeLimitMs, r.durationMs); // 0..1, ~0.5 near threshold
+            return r.succeeded ? base : base * 0.5;
+            });
+            const sBarLocal = scores.reduce((a, b) => a + b, 0) / N;
+
+            // Hidden MMR snapshot (fallbacks are safe)
+            const startMmr   = Number.isFinite($profile?.hidden_mmr)       ? Number($profile!.hidden_mmr)       : 1500;
+            const startRD    = Number.isFinite($profile?.hidden_mmr_rd)    ? Number($profile!.hidden_mmr_rd)    : 220;
+            const startSigma = Number.isFinite($profile?.hidden_mmr_sigma) ? Number($profile!.hidden_mmr_sigma) : 0.06;
+
+            // Predict end MMR quickly via equal-opponent update (keeps E≈0.5, deterministic)
+            const predicted = glicko2UpdateEqualOpp(
+            { R: startMmr, RD: startRD, sigma: startSigma },
+            N,
+            sBarLocal,
+            { R: startMmr, RD: 80 }, // equal opponent RD ~80–90 works well
+            0.5,                      // tau
+            0.03                      // sigmaMin
+            );
+            const endMmrPred = predicted.R;
+
+            // Valorant-style LP delta using predicted end MMR
+            let lpDeltaInstant = 0;
+            let endVisibleRatingInstant: number | null = null;
+
+            if (!isPlacementMatch) {
+            const currentRating = currentVisibleRating!;
+
+            const L = Math.floor(currentRating / 100) * 100;
+            const U = L + 100;
+            const div = { L, U, name: `${L}-${U}` }; // Division
+
+            const currentLPWithinDiv = currentRating - L;
+            const wins = rounds.filter((r) => r.succeeded).length;
+            const losses = N - wins;
+
+            lpDeltaInstant = lpDeltaValorantStyle(
+                endMmrPred,
+                div,
+                currentLPWithinDiv,
+                sBarLocal,
+                wins,
+                losses,
+                defaultValorantParams
+            );
+
+            endVisibleRatingInstant = currentRating + lpDeltaInstant;
+
+            // push to UI immediately
+            startVisibleRating = currentRating;
+            endVisibleRating = endVisibleRatingInstant;
+            }
+
+            // -------------- Authoritative MMR update via service (persisted) --------------
+            // Build minimal per-round payload for the service
+            const roundsForRating = rounds.map((r) => ({
+            timeLimitMs: r.timeLimitMs,
+            durationMs: r.durationMs,
+            succeeded: r.succeeded,
+            index: r.index,
+            targetId: (r as any)?.target?.id ?? null
+            }));
+
+            const { before, updated, sBar } = await updateAfterMatch(uid, roundsForRating, {
+            mode: 'equal',
+            phase: isPlacementMatch ? 'placements' : 'ranked'
+            });
+
+            const endMmr = updated.R;
+            const mmrDelta = endMmr - before.R;
+
+            // -------------- Write match_history (one upsert) --------------
+            // For placements: keep visible fields NULL; for ranked: use the instant LP/visible end values
+            const row = {
+            match_id,
+            player_id: uid,
+            avg_speed: avgMs,
+            efficiency: avgKeys,
+            most_used: most,
+            undos,
+            apm: apmLocal,
+            reaction_time: reactMs,
+
+            start_elo: isPlacementMatch ? null : Math.round(currentVisibleRating!),
+            end_elo: isPlacementMatch ? null : Math.round(endVisibleRatingInstant!),
+            lp_delta: isPlacementMatch ? null : Math.round(lpDeltaInstant),
+
+            start_mmr: Math.round(before.R),
+            end_mmr: Math.round(endMmr),
+            mmr_delta: Math.round(mmrDelta),
+
+            is_dodge: false,
+            motion_counts: motions
+            };
+
+            await supabase.from('match_history').upsert([row], { onConflict: 'match_id' });
+
+            // -------------- Persist user record --------------
+            if (isPlacementMatch) {
+            // placements counter – use history to compute how many finished so far
+            type PlacementMatch = { avg_speed: number | null; is_dodge: boolean | null; end_elo: number | null };
+            const { data: placementHistory } = await supabase
+                .from('match_history')
+                .select('avg_speed, is_dodge, end_elo')
+                .eq('player_id', uid)
+                .neq('match_id', match_id)
+                .order('created_at', { ascending: true })
+                .limit(50);
+
+            const hist = (placementHistory as PlacementMatch[] | null) ?? [];
+            const placementRows = hist.filter((m) => m?.end_elo === null);
+            const nonDodgeMatches = placementRows.filter((m) => m?.is_dodge !== true);
+            const priorCount = nonDodgeMatches.length;
+            const isFinalPlacement = priorCount >= PLACEMENT_MATCH_GOAL - 1;
+
+            // Always persist hidden MMR fields
+            await supabase
+                .from('users')
+                .update({
+                hidden_mmr: endMmr,
+                hidden_mmr_rd: updated.RD,
+                hidden_mmr_sigma: updated.sigma,
+                hidden_mmr_updated_at: new Date().toISOString()
+                })
+                .eq('id', uid);
+
+            if (isFinalPlacement) {
+                // seed visible rating to MMR at the end of placements
+                const placedRating = Math.round(endMmr);
+                await supabase.from('users').update({ rating: placedRating }).eq('id', uid);
+
+                profile.update((p) =>
+                p ? { ...p, rating: placedRating, placements: PLACEMENT_MATCH_GOAL, hidden_mmr: endMmr } : p
+                );
+            } else {
+                const nextCount = Math.min(PLACEMENT_MATCH_GOAL, priorCount + 1);
+                profile.update((p) => (p ? { ...p, placements: nextCount, hidden_mmr: endMmr } : p));
+            }
+
+            wroteHistoryOnce = true;
+
+            // XP award
+            if (signedIn) {
+                try {
+                    const updatedXp = await increaseXp(25);
+                    profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
+                } catch {}
+            }
+
+            void refreshProfile();
+            return null; // no visible LP delta during placements
+            } else {
+            // ranked: persist both visible and hidden sides
+            await supabase
+                .from('users')
+                .update({
+                rating: endVisibleRatingInstant!, // keep visible rating exactly what UI showed
+                hidden_mmr: endMmr,
+                hidden_mmr_rd: updated.RD,
+                hidden_mmr_sigma: updated.sigma,
+                hidden_mmr_updated_at: new Date().toISOString()
+                })
+                .eq('id', uid);
+
+            // XP award
+            if (signedIn) {
+                try {
+                const updatedXp = await increaseXp(25);
+                profile.update((p) => (p ? { ...p, xp: updatedXp } : p));
+                } catch {}
+            }
+
+            // update local store immediately (no flicker)
+            profile.update((p) =>
+                p
+                ? {
+                    ...p,
+                    placements: 0,
+                    rating: endVisibleRatingInstant!,
+                    hidden_mmr: endMmr
+                    }
+                : p
+            );
+
+            wroteHistoryOnce = true;
+            void refreshProfile();
+
+            return endVisibleRatingInstant!;
+            }
+        } catch (err) {
+            console.error('writeHistoryIdempotent failed:', err);
+            wroteHistoryOnce = true;
+            return null;
+        } finally {
+            writeHistoryPending = false;
+        }
+    }
+
+
+
 
 	$effect(() => {
-		if (matchState.status === 'complete') {
-			void writeHistoryIdempotent();
+		if (matchState.status === 'complete' && !wroteHistoryOnce && !writeHistoryPending) {
+            startVisibleRating = $profile?.rating ?? null;
+			
+            (async () => {
+                const end = await writeHistoryIdempotent();
+                endVisibleRating = typeof end === 'number' ? end : null;
+            })();
 		}
 	});
 
@@ -594,7 +938,7 @@
 			clearTimeout(eloStartTimer);
 			eloStartTimer = null;
 		}
-		eloTween.set($profile?.rating ?? 0, { duration: 0 });
+		eloTween.set(lpForRating($profile?.rating ?? 0).lp ?? 0, { duration: 0 });
 
 		const resetXp = $profile?.xp ?? 0;
 		xpBaseline = resetXp;
@@ -607,6 +951,14 @@
 		visibleLevel = xpStats.level;
 		slideLevels = [visibleLevel, visibleLevel + 1];
 		levelSliding = false;
+
+        animStartLP = null;
+        animEndLP = null;
+
+        lpDeltaComputed = false;
+        lpDelta = 0;
+        startVisibleRating = null;
+        endVisibleRating = null;
 	};
 
 	const graphHeight = 200;
@@ -683,9 +1035,9 @@
 								class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
 							>
 								{#if eloTween.current > 100 || eloTween.current < 0}
-									<div in:scale={{ start: 0.4, duration: 200 }}>{rank}</div>
+									<div in:scale={{ start: 0.4, duration: 200 }}>{endRankLabel}</div>
 								{:else}
-									<div>{startRank}</div>
+									<div>{startRankLabel}</div>
 								{/if}
 								{#if startRank !== rank || showRankup}
 									{#if lpDelta < 0}
