@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { profile } from '$lib/stores/profile';
 	import { signOut } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	const placementMatchCount = $derived(Math.min(5, $profile?.placements ?? 0));
 	const { data } = $props<{ data: PageData }>();
 
@@ -164,9 +164,11 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 		isSigningOut = true;
 		try {
 			await signOut();
+			await invalidate('app:user');
 			goto('/');
 		} catch (error) {
 			console.error('Failed to sign out', error);
+		} finally {
 			isSigningOut = false;
 		}
 	}
@@ -191,7 +193,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 <BgDarkTiles />
 
 <div class="relative w-full overflow-hidden">
-	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pt-16 pb-4">
+	<div class="relative z-[2] mx-auto max-w-6xl space-y-8 px-6 pb-4 pt-16">
 		<!-- Stats row -->
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-11">
 			<div class="md:col-span-5">
@@ -272,7 +274,7 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 					<StatCard label={item.label} value={item.value} class="pb-card-compact">
 						<div
 							slot="corner"
-							class="absolute inset-y-0 right-3 flex items-center text-[12px] tracking-[0.12em] uppercase"
+							class="absolute inset-y-0 right-3 flex items-center text-[12px] uppercase tracking-[0.12em]"
 							class:hidden={item.percentile === null}
 							style={`${percentileBadgeStyle(item.percentile)} font-family:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',Monaco,monospace;`}
 						>
@@ -308,16 +310,10 @@ text-shadow: 0 0 6px rgba(206, 182, 255, 0.5), 0 0 12px rgba(255, 248, 255, 0.4)
 			<div class="mt-12 flex justify-center">
 				<button
 					type="button"
-					class="inline-flex items-center rounded-full border border-neutral-700 px-6 py-2 font-mono text-xs uppercase tracking-[0.18em] text-neutral-200 transition hover:border-neutral-500 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/40 disabled:cursor-not-allowed disabled:opacity-60"
-					on:click={handleSignOut}
-					disabled={isSigningOut}
-					aria-busy={isSigningOut ? 'true' : 'false'}
+					class="inline-flex items-center rounded-full border border-red-500/30 px-6 py-2 text-xs transition hover:border-red-500 focus:outline-0 disabled:cursor-not-allowed disabled:opacity-60"
+					onclick={handleSignOut}
 				>
-					{#if isSigningOut}
-						signing out...
-					{:else}
-						sign out
-					{/if}
+					<div class="font-mono text-sm text-red-500">sign out</div>
 				</button>
 			</div>
 		</section>
