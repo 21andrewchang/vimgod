@@ -42,7 +42,7 @@
 	let didFireRankup = $state(false);
 
     $effect(() => {
-        const crossed = eloTween.current > 100 || eloTween.current < 0;
+        const crossed = eloTween.current > 99 || eloTween.current < 0;
 
         if (showRankup && crossed && !didFireRankup) {
             // If you added frozen labels, prefer endRankLabel; otherwise fallback to `rank`
@@ -1034,12 +1034,12 @@
 							<div
 								class="flex items-center gap-1 font-mono text-xs uppercase tracking-widest text-neutral-400"
 							>
-								{#if eloTween.current > 100 || eloTween.current < 0}
+								{#if eloTween.current > 99 || eloTween.current < 0}
 									<div in:scale={{ start: 0.4, duration: 200 }}>{endRankLabel}</div>
 								{:else}
 									<div>{startRankLabel}</div>
 								{/if}
-								{#if startRank !== rank || showRankup}
+								{#if ((startRankLabel !== endRankLabel) && (eloTween.current > 99 || eloTween.current < 0)) || showRankup}
 									{#if lpDelta < 0}
 										<svg
 											class="mb-0.5 h-2 w-2 rotate-180 text-red-400"
