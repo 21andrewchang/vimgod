@@ -23,7 +23,7 @@
 	let rounds = $derived(signedIn ? 20 : 10);
 	let showRankup = $state(false);
 	let displayRank = $state('');
-	let match = createMatchController({ totalRounds: rounds });
+	let match = $derived(createMatchController({ totalRounds: rounds }));
 	let unlockedMotion = $state<Motion | null>(null);
 	let pendingMotion = $state<Motion | null>(null);
 	let showMotion = $state(false);
