@@ -348,11 +348,23 @@ export function createVimController(options: VimOptions): VimController {
   function exitCommand() {
     const cmd = commandBuffer.trim();
     if (cmd) {
+      executeCommand(cmd);
       options.onCommand?.(cmd);
     }
     setMode('normal');
     commandBuffer = '';
     emitUiState();
+  }
+
+  function executeCommand(cmd: string): boolean {
+    if (/^\d+$/.test(cmd)) {
+      const lineNumber = Number(cmd);
+      if (!Number.isNaN(lineNumber)) {
+        gotoLineNumber(lineNumber);
+        return true;
+      }
+    }
+    return false;
   }
 
   function backspace() {
@@ -456,6 +468,17 @@ export function createVimController(options: VimOptions): VimController {
     ensureGoal();
     cursor.row = lines.length - 1;
     cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
+    if (currentMode === 'line') updateLineSelection();
+    else if (currentMode === 'visual') updateVisualCharSelection();
+  }
+
+  function gotoLineNumber(lineNumber: number) {
+    ensureGoal();
+    const maxRow = Math.max(0, lines.length - 1);
+    const targetRow = clamp(lineNumber - 1, 0, maxRow);
+    cursor.row = targetRow;
+    cursor.col = clamp(cursor.goalCol!, 0, lineLen(cursor.row));
+    setPendingCount(null);
     if (currentMode === 'line') updateLineSelection();
     else if (currentMode === 'visual') updateVisualCharSelection();
   }
